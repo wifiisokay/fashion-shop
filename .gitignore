@@ -1,0 +1,71 @@
+# ==============================
+# FRONTEND (React + Vite)
+# ==============================
+frontend/node_modules/
+frontend/dist/
+frontend/.env
+frontend/.env.local
+frontend/.env.development
+frontend/.env.production
+frontend/.env.*.local
+frontend/src/.context
+# ==============================
+# BACKEND (Spring Boot + Maven)
+# ==============================
+backend/target/
+backend/.env
+backend/.env.*
+!backend/.env.example
+
+# Maven wrapper
+backend/.mvn/wrapper/maven-wrapper.jar
+!backend/.mvn/wrapper/maven-wrapper.properties
+
+# ==============================
+# IDE & EDITOR
+# ==============================
+.agent
+.idea/
+*.iml
+*.iws
+*.ipr
+.vscode/
+*.suo
+*.ntvs*
+*.njsproj
+*.sln
+*.sw?
+
+# ==============================
+# OS
+# ==============================
+.DS_Store
+.DS_Store?
+._*
+Thumbs.db
+ehthumbs.db
+Desktop.ini
+
+# ==============================
+# LOGS
+# ==============================
+*.log
+logs/
+frontend/npm-debug.log*
+frontend/yarn-debug.log*
+frontend/yarn-error.log*
+
+# ==============================
+# MISC
+# ==============================
+*.class
+*.jar
+!gradle-wrapper.jar
+*.war
+*.ear
+*.zip
+*.tar.gz
+*.rar
+uploads/
+temp/
+tmp/
