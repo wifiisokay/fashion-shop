@@ -39,6 +39,9 @@ public class PasswordResetTokenService {
     }
 
     public String consumeToken(String rawToken) {
+        if (rawToken == null || rawToken.isBlank()) {
+            return null;
+        }
         String key = hash(rawToken);
         TokenEntry entry = tokenStore.remove(key); // one-time use
         if (entry == null || entry.expiresAt().isBefore(Instant.now())) {

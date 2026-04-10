@@ -1,9 +1,10 @@
 package com.fashionshop.backend.config;
 
-import com.fashionshop.backend.module.auth.entity.User;
+import com.fashionshop.backend.domain.User;
 import io.jsonwebtoken.*;
 import io.jsonwebtoken.io.Decoders;
 import io.jsonwebtoken.security.Keys;
+import jakarta.annotation.PostConstruct;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.security.core.userdetails.UserDetails;
@@ -18,6 +19,8 @@ import java.util.function.Function;
  * JWT service — generate, validate, extract.
  * Token chứa claims: sub=email, userId, role.
  * Token được lưu trong HttpOnly Cookie (set bởi AuthController).
+ *
+ * signingKey được cache bằng @PostConstruct để tránh parse lại mỗi request.
  */
 @Slf4j
 @Service
@@ -26,28 +29,13 @@ public class JwtService {
 
     private final JwtProperties jwtProperties;
 
-    private SecretKey signingKey() {
-        String rawSecret = jwtProperties.getSecret();
-        if (rawSecret == null || rawSecret.isBlank()) {
-            throw new IllegalStateException("JWT secret is missing. Please set jwt.secret or JWT_SECRET.");
-        }
+    /** Cache signing key — tính một lần khi bean khởi động. */
+    private SecretKey cachedSigningKey;
 
-        // Prefer Base64 secret if provided; fallback to plain text for compatibility with existing setups.
-        try {
-            byte[] base64Key = Decoders.BASE64.decode(rawSecret);
-            if (base64Key.length >= 32) {
-                return Keys.hmacShaKeyFor(base64Key);
-            }
-            log.warn("JWT secret appears Base64 but too short (<32 bytes). Falling back to plain-text secret bytes.");
-        } catch (IllegalArgumentException ignored) {
-            // Not a Base64 string, continue with plain text secret.
-        }
-
-        byte[] plainKey = rawSecret.getBytes(StandardCharsets.UTF_8);
-        if (plainKey.length < 32) {
-            throw new IllegalStateException("JWT secret must be at least 32 bytes for HS256.");
-        }
-        return Keys.hmacShaKeyFor(plainKey);
+    @PostConstruct
+    void init() {
+        this.cachedSigningKey = buildSigningKey();
+        log.debug("JwtService initialized — signing key cached");
     }
 
     /**
@@ -60,7 +48,7 @@ public class JwtService {
             .claim("role", user.getRole().name())
             .issuedAt(new Date())
             .expiration(new Date(System.currentTimeMillis() + jwtProperties.getExpiration()))
-            .signWith(signingKey())
+            .signWith(cachedSigningKey)
             .compact();
     }
 
@@ -69,6 +57,14 @@ public class JwtService {
      */
     public String extractEmail(String token) {
         return extractClaim(token, Claims::getSubject);
+    }
+
+    /**
+     * Extract expiry date từ token claims.
+     * Dùng để blacklist token khi logout — không cần phụ thuộc vào JwtProperties ở nơi khác.
+     */
+    public Date getExpiry(String token) {
+        return extractClaim(token, Claims::getExpiration);
     }
 
     /**
@@ -97,6 +93,8 @@ public class JwtService {
         }
     }
 
+    // ============ Private helpers ============
+
     private boolean isExpired(String token) {
         return extractClaim(token, Claims::getExpiration).before(new Date());
     }
@@ -107,9 +105,33 @@ public class JwtService {
 
     private Claims getClaims(String token) {
         return Jwts.parser()
-            .verifyWith(signingKey())
+            .verifyWith(cachedSigningKey)
             .build()
             .parseSignedClaims(token)
             .getPayload();
+    }
+
+    private SecretKey buildSigningKey() {
+        String rawSecret = jwtProperties.getSecret();
+        if (rawSecret == null || rawSecret.isBlank()) {
+            throw new IllegalStateException("JWT secret is missing. Please set jwt.secret or JWT_SECRET.");
+        }
+
+        // Prefer Base64 secret if provided; fallback to plain text for compatibility with existing setups.
+        try {
+            byte[] base64Key = Decoders.BASE64.decode(rawSecret);
+            if (base64Key.length >= 32) {
+                return Keys.hmacShaKeyFor(base64Key);
+            }
+            log.warn("JWT secret appears Base64 but too short (<32 bytes). Falling back to plain-text secret bytes.");
+        } catch (IllegalArgumentException ignored) {
+            // Not a Base64 string, continue with plain text secret.
+        }
+
+        byte[] plainKey = rawSecret.getBytes(StandardCharsets.UTF_8);
+        if (plainKey.length < 32) {
+            throw new IllegalStateException("JWT secret must be at least 32 bytes for HS256.");
+        }
+        return Keys.hmacShaKeyFor(plainKey);
     }
 }

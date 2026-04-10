@@ -1,4 +1,4 @@
-package com.fashionshop.backend.module.auth.entity;
+package com.fashionshop.backend.domain;
 
 import com.fashionshop.backend.common.enums.Role;
 import com.fashionshop.backend.common.enums.UserStatus;
