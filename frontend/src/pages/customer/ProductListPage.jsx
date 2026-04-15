@@ -10,14 +10,14 @@ const COLORS = ['Đen', 'Trắng', 'Xanh', 'Đỏ', 'Be'];
 const SIZES = ['S', 'M', 'L', 'XL'];
 
 const MOCK_PRODUCTS = [
-  { id: 1, name: 'Áo Thun Basic Nam', price: 250000, salePrice: 199000, saleStartDate: '2026-03-01T00:00', saleEndDate: '2026-04-30T23:59', category: 'Áo', color: 'Trắng', sizes: ['S', 'M', 'L'], isNew: true },
-  { id: 2, name: 'Quần Jean Ống Rộng', price: 550000, category: 'Quần', color: 'Xanh', sizes: ['M', 'L', 'XL'], isNew: false },
-  { id: 3, name: 'Váy Hoa Mùa Hè', price: 450000, salePrice: 350000, saleStartDate: '2026-03-15T00:00', saleEndDate: '2026-05-15T23:59', category: 'Váy', color: 'Đỏ', sizes: ['S', 'M'], isNew: true },
-  { id: 4, name: 'Áo Khoác Denim', price: 850000, category: 'Áo Khoác', color: 'Xanh', sizes: ['L', 'XL'], isNew: false },
-  { id: 5, name: 'Áo Sơ Mi Cổ Tàu', price: 350000, category: 'Áo', color: 'Đen', sizes: ['M', 'L'], isNew: true },
-  { id: 6, name: 'Quần Short Kaki', price: 290000, salePrice: 250000, saleStartDate: '2026-03-01T00:00', saleEndDate: '2026-03-10T23:59', category: 'Quần', color: 'Be', sizes: ['S', 'M', 'L', 'XL'], isNew: false },
-  { id: 7, name: 'Áo Len Cổ Lọ', price: 420000, category: 'Áo', color: 'Đen', sizes: ['M', 'L'], isNew: true },
-  { id: 8, name: 'Chân Váy Xếp Ly', price: 320000, category: 'Váy', color: 'Trắng', sizes: ['S', 'M'], isNew: false },
+  { id: 1, name: 'Áo Thun Basic Nam', price: 250000, salePrice: 199000, saleStartDate: '2026-03-01T00:00', saleEndDate: '2026-04-30T23:59', category: 'Áo', color: 'Trắng', sizes: ['S', 'M', 'L'], isNew: true, stock: 10 },
+  { id: 2, name: 'Quần Jean Ống Rộng', price: 550000, category: 'Quần', color: 'Xanh', sizes: ['M', 'L', 'XL'], isNew: false, stock: 0 },
+  { id: 3, name: 'Váy Hoa Mùa Hè', price: 450000, salePrice: 350000, saleStartDate: '2026-03-15T00:00', saleEndDate: '2026-05-15T23:59', category: 'Váy', color: 'Đỏ', sizes: ['S', 'M'], isNew: true, stock: 5 },
+  { id: 4, name: 'Áo Khoác Denim', price: 850000, category: 'Áo Khoác', color: 'Xanh', sizes: ['L', 'XL'], isNew: false, stock: 2 },
+  { id: 5, name: 'Áo Sơ Mi Cổ Tàu', price: 350000, category: 'Áo', color: 'Đen', sizes: ['M', 'L'], isNew: true, stock: 0 },
+  { id: 6, name: 'Quần Short Kaki', price: 290000, salePrice: 250000, saleStartDate: '2026-03-01T00:00', saleEndDate: '2026-03-10T23:59', category: 'Quần', color: 'Be', sizes: ['S', 'M', 'L', 'XL'], isNew: false, stock: 15 },
+  { id: 7, name: 'Áo Len Cổ Lọ', price: 420000, category: 'Áo', color: 'Đen', sizes: ['M', 'L'], isNew: true, stock: 8 },
+  { id: 8, name: 'Chân Váy Xếp Ly', price: 320000, category: 'Váy', color: 'Trắng', sizes: ['S', 'M'], isNew: false, stock: 0 },
 ];
 
 const ProductListPage = () => {
@@ -75,13 +75,13 @@ const ProductListPage = () => {
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 border-b border-gray-200 pb-4">
         <h1 className="text-3xl font-bold text-gray-900">Tất cả sản phẩm</h1>
         <div className="flex items-center gap-3">
-          <button 
+          <button
             className="lg:hidden flex items-center gap-2 px-4 py-2 border border-gray-300 rounded-lg text-sm font-medium"
             onClick={() => setIsMobileFilterOpen(true)}
           >
             <Filter className="w-4 h-4" /> Lọc
           </button>
-          <select 
+          <select
             value={sortBy}
             onChange={(e) => setSortBy(e.target.value)}
             className="border-gray-300 rounded-lg text-sm focus:ring-black focus:border-black p-2.5 border bg-white"
@@ -92,7 +92,7 @@ const ProductListPage = () => {
           </select>
         </div>
       </div>
-      
+
       <div className="flex flex-col lg:flex-row gap-8">
         {/* Sidebar Filters (Desktop) */}
         <div className="hidden lg:block w-64 flex-shrink-0 space-y-8">
@@ -111,8 +111,8 @@ const ProductListPage = () => {
             <div className="space-y-2">
               {CATEGORIES.map(cat => (
                 <label key={cat} className="flex items-center gap-2 cursor-pointer">
-                  <input 
-                    type="checkbox" 
+                  <input
+                    type="checkbox"
                     checked={filters.category === cat}
                     onChange={() => handleFilterChange('category', cat)}
                     className="rounded border-gray-300 text-black focus:ring-black"
@@ -133,8 +133,8 @@ const ProductListPage = () => {
                   onClick={() => handleFilterChange('color', color)}
                   className={clsx(
                     "px-3 py-1.5 text-xs rounded-full border transition-colors",
-                    filters.color === color 
-                      ? "bg-black text-white border-black" 
+                    filters.color === color
+                      ? "bg-black text-white border-black"
                       : "bg-white text-gray-600 border-gray-300 hover:border-gray-400"
                   )}
                 >
@@ -154,8 +154,8 @@ const ProductListPage = () => {
                   onClick={() => handleFilterChange('size', size)}
                   className={clsx(
                     "py-2 text-xs font-medium rounded border transition-colors text-center",
-                    filters.size === size 
-                      ? "bg-black text-white border-black" 
+                    filters.size === size
+                      ? "bg-black text-white border-black"
                       : "bg-white text-gray-600 border-gray-300 hover:border-gray-400"
                   )}
                 >
@@ -184,8 +184,8 @@ const ProductListPage = () => {
                   <div className="space-y-3">
                     {CATEGORIES.map(cat => (
                       <label key={cat} className="flex items-center gap-3 cursor-pointer">
-                        <input 
-                          type="checkbox" 
+                        <input
+                          type="checkbox"
                           checked={filters.category === cat}
                           onChange={() => handleFilterChange('category', cat)}
                           className="w-5 h-5 rounded border-gray-300 text-black focus:ring-black"
@@ -205,8 +205,8 @@ const ProductListPage = () => {
                         onClick={() => handleFilterChange('color', color)}
                         className={clsx(
                           "px-4 py-2 text-sm rounded-full border transition-colors",
-                          filters.color === color 
-                            ? "bg-black text-white border-black" 
+                          filters.color === color
+                            ? "bg-black text-white border-black"
                             : "bg-white text-gray-600 border-gray-300"
                         )}
                       >
@@ -225,8 +225,8 @@ const ProductListPage = () => {
                         onClick={() => handleFilterChange('size', size)}
                         className={clsx(
                           "py-3 text-sm font-medium rounded border transition-colors text-center",
-                          filters.size === size 
-                            ? "bg-black text-white border-black" 
+                          filters.size === size
+                            ? "bg-black text-white border-black"
                             : "bg-white text-gray-600 border-gray-300"
                         )}
                       >
@@ -237,13 +237,13 @@ const ProductListPage = () => {
                 </div>
               </div>
               <div className="p-4 border-t border-gray-200 flex gap-3">
-                <button 
+                <button
                   onClick={clearFilters}
                   className="flex-1 py-3 border border-gray-300 rounded-lg font-medium text-gray-700"
                 >
                   Xóa
                 </button>
-                <button 
+                <button
                   onClick={() => setIsMobileFilterOpen(false)}
                   className="flex-1 py-3 bg-black text-white rounded-lg font-medium"
                 >
@@ -259,7 +259,7 @@ const ProductListPage = () => {
           {filteredAndSortedProducts.length === 0 ? (
             <div className="text-center py-20 bg-gray-50 rounded-2xl border border-dashed border-gray-300">
               <p className="text-gray-500 mb-4">Không tìm thấy sản phẩm nào phù hợp với bộ lọc.</p>
-              <button 
+              <button
                 onClick={clearFilters}
                 className="px-6 py-2 bg-black text-white rounded-lg text-sm font-medium hover:bg-gray-800 transition-colors"
               >
@@ -269,10 +269,10 @@ const ProductListPage = () => {
           ) : (
             <div className="grid grid-cols-2 md:grid-cols-3 gap-4 sm:gap-6">
               {filteredAndSortedProducts.map(product => (
-                <ProductCard 
-                  key={product.id} 
-                  product={product} 
-                  onAddToCart={(p) => console.log('Add to cart', p)} 
+                <ProductCard
+                  key={product.id}
+                  product={product}
+                  onAddToCart={(p) => console.log('Add to cart', p)}
                 />
               ))}
             </div>

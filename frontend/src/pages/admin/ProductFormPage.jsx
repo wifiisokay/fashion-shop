@@ -64,7 +64,7 @@ const ProductFormPage = () => {
   const handleVariationChange = (id, field, value) => {
     setFormData(prev => ({
       ...prev,
-      variations: prev.variations.map(v => 
+      variations: prev.variations.map(v =>
         v.id === id ? { ...v, [field]: value } : v
       )
     }));
@@ -101,7 +101,7 @@ const ProductFormPage = () => {
               placeholder="Nhập tên sản phẩm"
             />
           </div>
-          
+
           <div className="space-y-2">
             <label className="block text-sm font-medium text-gray-700">Danh mục *</label>
             <select
@@ -179,7 +179,7 @@ const ProductFormPage = () => {
               <Plus className="w-4 h-4" /> Thêm phân loại
             </Button>
           </div>
-          
+
           {formData.variations.length === 0 ? (
             <div className="text-center py-4 text-sm text-gray-500 bg-gray-50 rounded-lg border border-dashed border-gray-300">
               Chưa có phân loại nào. Hãy thêm phân loại để quản lý tồn kho chi tiết.
@@ -190,10 +190,10 @@ const ProductFormPage = () => {
                 <div key={variation.id} className="flex items-start sm:items-center gap-3 bg-gray-50 p-3 rounded-lg border border-gray-200">
                   <div className="grid grid-cols-1 sm:grid-cols-4 gap-3 flex-1">
                     <div className="flex items-center gap-2">
-                      <input 
-                        type="file" 
-                        accept="image/*" 
-                        className="hidden" 
+                      <input
+                        type="file"
+                        accept="image/*"
+                        className="hidden"
                         id={`upload-${variation.id}`}
                         onChange={(e) => {
                           if (e.target.files && e.target.files[0]) {
@@ -202,8 +202,8 @@ const ProductFormPage = () => {
                           }
                         }}
                       />
-                      <label 
-                        htmlFor={`upload-${variation.id}`} 
+                      <label
+                        htmlFor={`upload-${variation.id}`}
                         className="cursor-pointer shrink-0 flex items-center justify-center w-10 h-10 border border-dashed border-gray-400 rounded-lg hover:bg-gray-100 overflow-hidden"
                         title="Tải ảnh cho phân loại này"
                       >
@@ -244,9 +244,9 @@ const ProductFormPage = () => {
                       />
                     </div>
                   </div>
-                  <Button 
-                    type="button" 
-                    variant="ghost" 
+                  <Button
+                    type="button"
+                    variant="ghost"
                     className="p-2 text-red-600 hover:bg-red-100 shrink-0"
                     onClick={() => handleRemoveVariation(variation.id)}
                   >
@@ -258,16 +258,54 @@ const ProductFormPage = () => {
           )}
         </div>
 
-        <div className="space-y-2 border-t border-gray-200 pt-6">
-          <label className="block text-sm font-medium text-gray-700">URL Hình ảnh</label>
-          <input
-            type="url"
-            name="imageUrl"
-            value={formData.imageUrl}
-            onChange={handleChange}
-            className="w-full border-gray-300 rounded-lg p-2.5 border focus:ring-black focus:border-black"
-            placeholder="https://example.com/image.jpg"
-          />
+        <div className="space-y-4 border-t border-gray-200 pt-6">
+          <label className="block text-sm font-medium text-gray-700">Hình ảnh sản phẩm</label>
+          <div className="flex items-start gap-4">
+            <div className="shrink-0 w-32 h-32 border border-dashed border-gray-400 rounded-lg overflow-hidden flex items-center justify-center bg-gray-50">
+              {formData.imageUrl ? (
+                <img src={formData.imageUrl} alt="Product" className="w-full h-full object-cover" />
+              ) : (
+                <div className="text-center">
+                  <Upload className="w-6 h-6 text-gray-400 mx-auto mb-1" />
+                  <span className="text-xs text-gray-500">Chưa có ảnh</span>
+                </div>
+              )}
+            </div>
+            <div className="flex-1 space-y-3">
+              <div>
+                <input
+                  type="file"
+                  accept="image/*"
+                  id="main-image-upload"
+                  className="hidden"
+                  onChange={(e) => {
+                    if (e.target.files && e.target.files[0]) {
+                      const url = URL.createObjectURL(e.target.files[0]);
+                      setFormData(prev => ({ ...prev, imageUrl: url }));
+                    }
+                  }}
+                />
+                <label
+                  htmlFor="main-image-upload"
+                  className="inline-flex items-center gap-2 px-4 py-2 bg-white border border-gray-300 rounded-lg text-sm font-medium text-gray-700 hover:bg-gray-50 cursor-pointer"
+                >
+                  <Upload className="w-4 h-4" />
+                  Tải ảnh từ thiết bị
+                </label>
+              </div>
+              <div className="flex items-center gap-2">
+                <span className="text-sm text-gray-500">hoặc</span>
+              </div>
+              <input
+                type="url"
+                name="imageUrl"
+                value={formData.imageUrl}
+                onChange={handleChange}
+                className="w-full border-gray-300 rounded-lg p-2.5 border focus:ring-black focus:border-black text-sm"
+                placeholder="Nhập URL hình ảnh (https://example.com/image.jpg)"
+              />
+            </div>
+          </div>
         </div>
 
         <div className="space-y-2">

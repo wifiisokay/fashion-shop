@@ -343,13 +343,8 @@ class AddressServiceImplTest {
             .ward("Phúc Xá").wardCode("00031")
             .street("123 Đường Test")
             .isDefault(isDefault)
+            .createdAt(createdAt)
             .build();
-        // Set createdAt thông qua reflection để test sort
-        try {
-            var field = Address.class.getDeclaredField("createdAt");
-            field.setAccessible(true);
-            field.set(a, createdAt);
-        } catch (Exception ignored) { }
         return a;
     }
 
@@ -364,13 +359,7 @@ class AddressServiceImplTest {
         r.setWard("Phúc Xá");
         r.setWardCode("00031");
         r.setStreet("123 Đường ABC");
-        // isDefault setter là setDefault() do Lombok stripping 'is' prefix
-        // Dùng reflection để set field trực tiếp tránh nhầm lẫn
-        try {
-            var field = AddressRequest.class.getDeclaredField("isDefault");
-            field.setAccessible(true);
-            field.set(r, isDefault);
-        } catch (Exception ignored) { }
+        r.setDefault(isDefault);
         return r;
     }
 }

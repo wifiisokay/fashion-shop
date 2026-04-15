@@ -5,15 +5,22 @@ import { authApi } from '../api/authApi';
 const AuthContext = createContext(null);
 const USER_STORAGE_KEY = 'user';
 
+/**
+ * Normalize user object từ backend response.
+ * Backend trả: { userId, fullName, email, role, avatarUrl, status, createdAt }
+ * AuthContext giữ cùng shape này để ProfilePage không cần transform thêm.
+ */
 const normalizeUser = (rawUser) => {
   if (!rawUser) return null;
 
   return {
-    userId: rawUser.userId ?? rawUser.id ?? null,
-    fullName: rawUser.fullName ?? rawUser.name ?? '',
-    email: rawUser.email ?? '',
-    role: rawUser.role ?? 'CUSTOMER',
-    avatarUrl: rawUser.avatarUrl ?? null,
+    userId:    rawUser.userId   ?? rawUser.id   ?? null,
+    fullName:  rawUser.fullName ?? rawUser.name ?? '',   // backend: fullName
+    email:     rawUser.email    ?? '',
+    role:      rawUser.role     ?? 'CUSTOMER',
+    avatarUrl: rawUser.avatarUrl ?? null,                // backend: avatarUrl
+    status:    rawUser.status   ?? 'ACTIVE',
+    createdAt: rawUser.createdAt ?? null,
   };
 };
 

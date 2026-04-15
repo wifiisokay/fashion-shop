@@ -3,35 +3,41 @@ import { zodResolver } from '@hookform/resolvers/zod';
 import { z } from 'zod';
 import { useNavigate, Link } from 'react-router-dom';
 import { useCart } from '../../hooks/useCart';
+import { useAddresses } from '../../hooks/useAddresses';
 import { ROUTES } from '../../constants/routes';
 import Button from '../../components/ui/Button';
 import Spinner from '../../components/ui/Spinner';
 import { formatPrice } from '../../utils/format';
 
 const checkoutSchema = z.object({
-  fullName: z.string().min(2, 'Vui lòng nhập họ tên'),
-  phone: z.string().regex(/(84|0[3|5|7|8|9])+([0-9]{8})\b/, 'Số điện thoại không hợp lệ'),
-  address: z.string().min(10, 'Vui lòng nhập địa chỉ chi tiết'),
+  addressId: z.number({ required_error: 'Vui lòng chọn địa chỉ giao hàng' }),
   paymentMethod: z.enum(['COD', 'VNPAY']),
 });
 
 const CheckoutPage = () => {
   const navigate = useNavigate();
-  const { data: cartData, isLoading } = useCart();
-  
-  const { register, handleSubmit, formState: { errors, isSubmitting } } = useForm({
+  const { data: cartData, isLoading: cartLoading } = useCart();
+  const { data: addresses = [], isLoading: addressLoading } = useAddresses();
+
+  const defaultAddressId = addresses.find((a) => a.isDefault)?.id;
+
+  const { register, handleSubmit, watch, formState: { errors, isSubmitting } } = useForm({
     resolver: zodResolver(checkoutSchema),
     defaultValues: {
-      paymentMethod: 'COD'
-    }
+      paymentMethod: 'COD',
+      addressId: defaultAddressId,
+    },
+    values: {
+      paymentMethod: 'COD',
+      addressId: defaultAddressId,
+    },
   });
 
-  const cartItems = cartData?.items || [
-    { id: 1, name: 'Áo Thun Basic Nam', price: 250000, quantity: 2 },
-    { id: 2, name: 'Váy Hoa Mùa Hè', price: 450000, quantity: 1 },
-  ];
+  const selectedAddressId = watch('addressId');
+
+  const cartItems = cartData?.items || [];
   const subtotal = cartItems.reduce((sum, item) => sum + item.price * item.quantity, 0);
-  const shippingFee = 30000; // Mock shipping fee
+  const shippingFee = 30000;
   const total = subtotal + shippingFee;
 
   const onSubmit = async (data) => {
@@ -39,7 +45,7 @@ const CheckoutPage = () => {
       // Mock API call to create order
       await new Promise(resolve => setTimeout(resolve, 1500));
       console.log('Order created:', { ...data, items: cartItems, total });
-      
+
       if (data.paymentMethod === 'VNPAY') {
         // Mock redirect to VNPAY
         navigate(`${ROUTES.PAYMENT_RESULT}?status=success&orderId=ORD-${Date.now()}`);
@@ -51,7 +57,7 @@ const CheckoutPage = () => {
     }
   };
 
-  if (isLoading) return <div className="flex justify-center py-20"><Spinner size="lg" /></div>;
+  if (cartLoading || addressLoading) return <div className="flex justify-center py-20"><Spinner size="lg" /></div>;
 
   if (cartItems.length === 0) {
     return (
@@ -65,65 +71,82 @@ const CheckoutPage = () => {
   return (
     <div className="space-y-8">
       <h1 className="text-3xl font-bold text-gray-900">Thanh toán</h1>
-      
+
       <form onSubmit={handleSubmit(onSubmit)} className="grid lg:grid-cols-3 gap-8">
         <div className="lg:col-span-2 space-y-6">
           <div className="bg-white p-6 rounded-2xl border border-gray-200 shadow-sm space-y-6">
-            <h2 className="text-xl font-bold text-gray-900">Thông tin giao hàng</h2>
-            
-            <div className="space-y-4">
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">Họ và tên</label>
-                <input
-                  {...register('fullName')}
-                  type="text"
-                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-black focus:border-transparent"
-                  placeholder="Nguyễn Văn A"
-                />
-                {errors.fullName && <p className="mt-1 text-sm text-red-600">{errors.fullName.message}</p>}
-              </div>
-              
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">Số điện thoại</label>
-                <input
-                  {...register('phone')}
-                  type="tel"
-                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-black focus:border-transparent"
-                  placeholder="0912345678"
-                />
-                {errors.phone && <p className="mt-1 text-sm text-red-600">{errors.phone.message}</p>}
-              </div>
-              
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">Địa chỉ chi tiết</label>
-                <textarea
-                  {...register('address')}
-                  rows={3}
-                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-black focus:border-transparent"
-                  placeholder="Số nhà, tên đường, phường/xã, quận/huyện, tỉnh/thành phố"
-                />
-                {errors.address && <p className="mt-1 text-sm text-red-600">{errors.address.message}</p>}
-              </div>
+            <div className="flex items-center justify-between">
+              <h2 className="text-xl font-bold text-gray-900">Địa chỉ giao hàng</h2>
+              <Link to={ROUTES.PROFILE} className="text-sm text-blue-600 hover:underline font-medium">
+                Quản lý địa chỉ
+              </Link>
             </div>
+
+            {errors.addressId && <p className="text-sm text-red-600">{errors.addressId.message}</p>}
+
+            {addresses.length === 0 ? (
+              <div className="text-center py-6 bg-gray-50 rounded-xl border border-dashed border-gray-300">
+                <p className="text-gray-500 text-sm">Bạn chưa có địa chỉ nào.</p>
+                <Link to={ROUTES.PROFILE} className="text-sm text-blue-600 hover:underline font-medium mt-1 inline-block">
+                  Thêm địa chỉ ngay
+                </Link>
+              </div>
+            ) : (
+              <div className="space-y-3">
+                {addresses.map((address) => (
+                  <label
+                    key={address.id}
+                    className={`flex items-start p-4 border rounded-xl cursor-pointer transition-colors ${
+                      Number(selectedAddressId) === address.id
+                        ? 'border-black bg-gray-50'
+                        : 'border-gray-200 hover:bg-gray-50'
+                    }`}
+                  >
+                    <input
+                      type="radio"
+                      value={address.id}
+                      {...register('addressId', { valueAsNumber: true })}
+                      className="mt-1 w-4 h-4 text-black focus:ring-black border-gray-300"
+                    />
+                    <div className="ml-3 space-y-1 w-full">
+                      <div className="flex items-center gap-2 flex-wrap">
+                        <span className="font-bold text-gray-900">{address.fullName}</span>
+                        <span className="text-gray-400">|</span>
+                        <span className="text-gray-600">{address.phone}</span>
+                        {address.isDefault && (
+                          <span className="ml-1 px-2 py-0.5 bg-black text-white text-[10px] uppercase tracking-wider font-bold rounded-sm">
+                            Mặc định
+                          </span>
+                        )}
+                      </div>
+                      <p className="text-gray-600 text-sm">{address.street}</p>
+                      <p className="text-gray-500 text-sm">
+                        {address.ward}, {address.district}, {address.province}
+                      </p>
+                    </div>
+                  </label>
+                ))}
+              </div>
+            )}
           </div>
 
           <div className="bg-white p-6 rounded-2xl border border-gray-200 shadow-sm space-y-6">
             <h2 className="text-xl font-bold text-gray-900">Phương thức thanh toán</h2>
             <div className="space-y-3">
               <label className="flex items-center p-4 border border-gray-200 rounded-xl cursor-pointer hover:bg-gray-50 transition-colors">
-                <input 
-                  type="radio" 
-                  value="COD" 
-                  {...register('paymentMethod')} 
+                <input
+                  type="radio"
+                  value="COD"
+                  {...register('paymentMethod')}
                   className="w-4 h-4 text-black focus:ring-black border-gray-300"
                 />
                 <span className="ml-3 font-medium text-gray-900">Thanh toán khi nhận hàng (COD)</span>
               </label>
               <label className="flex items-center p-4 border border-gray-200 rounded-xl cursor-pointer hover:bg-gray-50 transition-colors">
-                <input 
-                  type="radio" 
-                  value="VNPAY" 
-                  {...register('paymentMethod')} 
+                <input
+                  type="radio"
+                  value="VNPAY"
+                  {...register('paymentMethod')}
                   className="w-4 h-4 text-black focus:ring-black border-gray-300"
                 />
                 <span className="ml-3 font-medium text-gray-900">Thanh toán qua VNPAY</span>
@@ -134,7 +157,7 @@ const CheckoutPage = () => {
 
         <div className="bg-white p-6 rounded-2xl border border-gray-200 shadow-sm h-fit sticky top-24">
           <h2 className="text-lg font-bold mb-4 text-gray-900">Đơn hàng của bạn</h2>
-          
+
           <div className="space-y-4 mb-6 max-h-60 overflow-y-auto pr-2">
             {cartItems.map(item => (
               <div key={item.id} className="flex justify-between text-sm">
@@ -162,7 +185,7 @@ const CheckoutPage = () => {
               <span className="text-red-600">{formatPrice(total)}</span>
             </div>
           </div>
-          
+
           <Button type="submit" className="w-full" size="lg" loading={isSubmitting}>
             Đặt hàng
           </Button>

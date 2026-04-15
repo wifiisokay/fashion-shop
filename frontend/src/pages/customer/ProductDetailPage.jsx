@@ -34,7 +34,7 @@ const ProductDetailPage = () => {
 
   // Ensure we have an array of images
   const images = [...(product.images || [product.imageUrl])];
-  
+
   // Add variation images if they exist and aren't already in the array
   if (product.variations) {
     product.variations.forEach(v => {
@@ -90,23 +90,23 @@ const ProductDetailPage = () => {
       <div className="space-y-4">
         {/* Main Image Carousel */}
         <div className="relative rounded-3xl overflow-hidden bg-gray-100 border border-gray-200 aspect-[4/5] group">
-          <img 
-            src={images[currentImageIndex]} 
-            alt={`${product.name} - Image ${currentImageIndex + 1}`} 
+          <img
+            src={images[currentImageIndex]}
+            alt={`${product.name} - Image ${currentImageIndex + 1}`}
             className="w-full h-full object-cover transition-opacity duration-300"
             referrerPolicy="no-referrer"
           />
-          
+
           {images.length > 1 && (
             <>
-              <button 
+              <button
                 onClick={prevImage}
                 className="absolute left-4 top-1/2 -translate-y-1/2 bg-white/80 hover:bg-white text-gray-800 p-2 rounded-full shadow-md opacity-0 group-hover:opacity-100 transition-opacity"
                 aria-label="Previous image"
               >
                 <ChevronLeft className="w-6 h-6" />
               </button>
-              <button 
+              <button
                 onClick={nextImage}
                 className="absolute right-4 top-1/2 -translate-y-1/2 bg-white/80 hover:bg-white text-gray-800 p-2 rounded-full shadow-md opacity-0 group-hover:opacity-100 transition-opacity"
                 aria-label="Next image"
@@ -124,13 +124,12 @@ const ProductDetailPage = () => {
               <button
                 key={idx}
                 onClick={() => setCurrentImageIndex(idx)}
-                className={`relative shrink-0 w-20 h-24 rounded-xl overflow-hidden border-2 transition-all snap-start ${
-                  currentImageIndex === idx ? 'border-black' : 'border-transparent hover:border-gray-300'
-                }`}
+                className={`relative shrink-0 w-20 h-24 rounded-xl overflow-hidden border-2 transition-all snap-start ${currentImageIndex === idx ? 'border-black' : 'border-transparent hover:border-gray-300'
+                  }`}
               >
-                <img 
-                  src={img} 
-                  alt={`Thumbnail ${idx + 1}`} 
+                <img
+                  src={img}
+                  alt={`Thumbnail ${idx + 1}`}
                   className="w-full h-full object-cover"
                   referrerPolicy="no-referrer"
                 />
@@ -155,7 +154,7 @@ const ProductDetailPage = () => {
             )}
           </div>
         </div>
-        
+
         {/* Variations */}
         {availableColors.length > 0 && (
           <div className="space-y-3">
@@ -165,11 +164,10 @@ const ProductDetailPage = () => {
                 <button
                   key={color}
                   onClick={() => handleColorSelect(color)}
-                  className={`px-4 py-2 rounded-full border text-sm font-medium transition-colors ${
-                    selectedColor === color 
-                      ? 'border-black bg-black text-white' 
+                  className={`px-4 py-2 rounded-full border text-sm font-medium transition-colors ${selectedColor === color
+                      ? 'border-black bg-black text-white'
                       : 'border-gray-300 bg-white text-gray-900 hover:border-gray-400'
-                  }`}
+                    }`}
                 >
                   {color}
                 </button>
@@ -190,13 +188,12 @@ const ProductDetailPage = () => {
                     key={size}
                     onClick={() => isAvailable && setSelectedSize(size)}
                     disabled={!isAvailable}
-                    className={`min-w-[3rem] px-3 py-2 rounded-lg border text-sm font-medium transition-colors ${
-                      selectedSize === size 
-                        ? 'border-black bg-black text-white' 
-                        : isAvailable 
-                          ? 'border-gray-300 bg-white text-gray-900 hover:border-gray-400' 
+                    className={`min-w-[3rem] px-3 py-2 rounded-lg border text-sm font-medium transition-colors ${selectedSize === size
+                        ? 'border-black bg-black text-white'
+                        : isAvailable
+                          ? 'border-gray-300 bg-white text-gray-900 hover:border-gray-400'
                           : 'border-gray-200 bg-gray-50 text-gray-400 cursor-not-allowed'
-                    }`}
+                      }`}
                   >
                     {size}
                   </button>

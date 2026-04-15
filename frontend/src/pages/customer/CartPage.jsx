@@ -4,7 +4,7 @@ import Button from '../../components/ui/Button';
 import { formatPrice } from '../../utils/format';
 import { Link } from 'react-router-dom';
 import { ROUTES } from '../../constants/routes';
-import { Trash2, Plus, Minus } from 'lucide-react';
+import { Trash2, Plus, Minus, ShoppingCart } from 'lucide-react';
 
 const CartPage = () => {
   const { data, isLoading, isError, updateCartItem, removeCartItem } = useCart();
@@ -12,21 +12,27 @@ const CartPage = () => {
   if (isLoading) return <div className="flex justify-center py-20"><Spinner size="lg" /></div>;
   if (isError) return <div className="text-center py-20 text-red-500">Lỗi tải giỏ hàng</div>;
 
-  // Fallback mock data for preview
-  const cartItems = data?.items?.length ? data.items : [
-    { id: 1, productId: 1, name: 'Áo Thun Basic Nam', price: 250000, quantity: 2 },
-    { id: 2, productId: 3, name: 'Váy Hoa Mùa Hè', price: 450000, quantity: 1 },
-  ];
-  
+  // Fallback mock data for preview if data is undefined
+  const cartItems = data ? (data.items || []) : [];
+
   const total = cartItems.reduce((sum, item) => sum + item.price * item.quantity, 0);
 
   if (cartItems.length === 0) {
     return (
-      <div className="text-center py-32 space-y-6 bg-white rounded-3xl border border-gray-100">
-        <h2 className="text-2xl font-bold text-gray-900">Giỏ hàng trống</h2>
-        <p className="text-gray-500">Bạn chưa có sản phẩm nào trong giỏ hàng.</p>
-        <Link to={ROUTES.PRODUCTS} className="inline-block">
-          <Button>Tiếp tục mua sắm</Button>
+      <div className="flex flex-col items-center justify-center py-24 px-4 space-y-6 bg-white rounded-3xl border border-gray-100 shadow-sm">
+        <div className="w-24 h-24 bg-gray-50 rounded-full flex items-center justify-center text-gray-300 mb-2">
+          <ShoppingCart className="w-12 h-12" />
+        </div>
+        <div className="text-center space-y-3">
+          <h2 className="text-2xl font-bold text-gray-900">Giỏ hàng của bạn đang trống</h2>
+          <p className="text-gray-500 max-w-md mx-auto">
+            Có vẻ như bạn chưa thêm sản phẩm nào vào giỏ hàng. Hãy khám phá các sản phẩm hấp dẫn của chúng tôi nhé!
+          </p>
+        </div>
+        <Link to={ROUTES.PRODUCTS} className="inline-block mt-4">
+          <Button size="lg" className="flex items-center gap-2 px-8">
+            Tiếp tục mua sắm
+          </Button>
         </Link>
       </div>
     );
@@ -39,19 +45,19 @@ const CartPage = () => {
         <div className="lg:col-span-2 space-y-4">
           {cartItems.map(item => (
             <div key={item.id} className="flex gap-4 bg-white p-4 rounded-2xl border border-gray-100 shadow-sm">
-              <img 
-                src={item.imageUrl || `https://picsum.photos/seed/${item.productId}/200/200`} 
-                alt={item.name} 
-                className="w-24 h-24 object-cover rounded-xl bg-gray-100" 
-                referrerPolicy="no-referrer" 
+              <img
+                src={item.imageUrl || `https://picsum.photos/seed/${item.productId}/200/200`}
+                alt={item.name}
+                className="w-24 h-24 object-cover rounded-xl bg-gray-100"
+                referrerPolicy="no-referrer"
               />
               <div className="flex-grow flex flex-col justify-between">
                 <div className="flex justify-between items-start gap-4">
                   <Link to={`/products/${item.productId}`} className="font-medium text-gray-900 line-clamp-2 hover:text-gray-600">
                     {item.name}
                   </Link>
-                  <button 
-                    onClick={() => removeCartItem.mutate(item.id)} 
+                  <button
+                    onClick={() => removeCartItem.mutate(item.id)}
                     className="text-gray-400 hover:text-red-500 transition-colors p-1"
                     title="Xóa sản phẩm"
                   >
@@ -61,16 +67,16 @@ const CartPage = () => {
                 <div className="flex items-center justify-between mt-4">
                   <span className="font-bold text-gray-900">{formatPrice(item.price)}</span>
                   <div className="flex items-center gap-3 bg-gray-50 rounded-lg p-1 border border-gray-200">
-                    <button 
-                      onClick={() => updateCartItem.mutate({ itemId: item.id, quantity: item.quantity - 1 })} 
-                      disabled={item.quantity <= 1} 
+                    <button
+                      onClick={() => updateCartItem.mutate({ itemId: item.id, quantity: item.quantity - 1 })}
+                      disabled={item.quantity <= 1}
                       className="p-1 hover:bg-white rounded-md disabled:opacity-50 transition-colors"
                     >
                       <Minus className="w-4 h-4" />
                     </button>
                     <span className="w-6 text-center text-sm font-medium">{item.quantity}</span>
-                    <button 
-                      onClick={() => updateCartItem.mutate({ itemId: item.id, quantity: item.quantity + 1 })} 
+                    <button
+                      onClick={() => updateCartItem.mutate({ itemId: item.id, quantity: item.quantity + 1 })}
                       className="p-1 hover:bg-white rounded-md transition-colors"
                     >
                       <Plus className="w-4 h-4" />
