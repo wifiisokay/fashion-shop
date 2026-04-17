@@ -138,4 +138,35 @@ public class CloudinaryStorageService implements StorageService {
             throw new BusinessException(ErrorCode.INTERNAL_ERROR, HttpStatus.INTERNAL_SERVER_ERROR, "Upload avatar thất bại");
         }
     }
+
+    // ============ Generic image upload (Product, v.v.) ============
+
+    @Override
+    public UploadResult uploadImage(MultipartFile file, String folder) {
+        validateImageFile(file);
+        String publicId = folder + "/" + java.util.UUID.randomUUID();
+        byte[] bytes = readBytes(file, publicId);
+        String url = doUpload(bytes, publicId);
+        return new UploadResult(url, publicId);
+    }
+
+    @Override
+    public void deleteImage(String publicId) {
+        try {
+            Map<?, ?> result = cloudinary.uploader().destroy(
+                publicId,
+                ObjectUtils.asMap("resource_type", RESOURCE_TYPE_IMG, "invalidate", true)
+            );
+
+            String resultStatus = String.valueOf(result.get("result"));
+            if (!"ok".equals(resultStatus) && !"not found".equals(resultStatus)) {
+                log.warn("Cloudinary destroy trả kết quả lạ publicId={} result={}", publicId, resultStatus);
+            }
+        } catch (IOException ex) {
+            log.error("IOException khi xóa ảnh publicId={}", publicId, ex);
+            // Không throw — chấp nhận orphan trên Cloudinary cho DATN
+        } catch (RuntimeException ex) {
+            log.error("RuntimeException khi xóa ảnh publicId={}: {}", publicId, ex.getMessage(), ex);
+        }
+    }
 }

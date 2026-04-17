@@ -25,6 +25,7 @@ const Navbar = () => {
   const adminMenuItems = [
     { label: 'Dashboard', path: ROUTES.ADMIN_DASHBOARD },
     { label: 'Sản phẩm', path: ROUTES.ADMIN_PRODUCTS },
+    { label: 'Danh mục', path: ROUTES.ADMIN_CATEGORIES },
     { label: 'Người dùng', path: ROUTES.ADMIN_USERS },
     { label: 'Đơn hàng', path: ROUTES.STAFF_ORDERS },
     { label: 'Đổi/Trả', path: ROUTES.STAFF_RETURNS },
@@ -35,12 +36,17 @@ const Navbar = () => {
       user?.role === 'EMPLOYEE' ? staffMenuItems :
         customerMenuItems;
 
+  const brandLink =
+    user?.role === 'ADMIN' ? ROUTES.ADMIN_DASHBOARD :
+      user?.role === 'EMPLOYEE' ? ROUTES.STAFF_ORDERS :
+        ROUTES.HOME;
+
   return (
     <nav className="bg-white border-b border-gray-200 sticky top-0 z-50">
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
         <div className="flex justify-between h-16">
           <div className="flex items-center">
-            <Link to={ROUTES.HOME} className="flex-shrink-0 flex items-center">
+            <Link to={brandLink} className="flex-shrink-0 flex items-center">
               <span className="text-xl font-bold tracking-tight">FASHION<span className="text-gray-500">SHOP</span></span>
             </Link>
             <div className="hidden sm:ml-8 sm:flex sm:space-x-8">

@@ -1,73 +1,72 @@
 import { useState, useMemo } from 'react';
+import { useSearchParams } from 'react-router-dom';
 import { useProducts } from '../../hooks/useProducts';
+import { useCategories } from '../../hooks/useCategories';
 import ProductCard from '../../components/product/ProductCard';
 import Spinner from '../../components/ui/Spinner';
 import { Filter, X } from 'lucide-react';
 import { clsx } from 'clsx';
 
-const CATEGORIES = ['Áo', 'Quần', 'Váy', 'Áo Khoác'];
-const COLORS = ['Đen', 'Trắng', 'Xanh', 'Đỏ', 'Be'];
-const SIZES = ['S', 'M', 'L', 'XL'];
-
-const MOCK_PRODUCTS = [
-  { id: 1, name: 'Áo Thun Basic Nam', price: 250000, salePrice: 199000, saleStartDate: '2026-03-01T00:00', saleEndDate: '2026-04-30T23:59', category: 'Áo', color: 'Trắng', sizes: ['S', 'M', 'L'], isNew: true, stock: 10 },
-  { id: 2, name: 'Quần Jean Ống Rộng', price: 550000, category: 'Quần', color: 'Xanh', sizes: ['M', 'L', 'XL'], isNew: false, stock: 0 },
-  { id: 3, name: 'Váy Hoa Mùa Hè', price: 450000, salePrice: 350000, saleStartDate: '2026-03-15T00:00', saleEndDate: '2026-05-15T23:59', category: 'Váy', color: 'Đỏ', sizes: ['S', 'M'], isNew: true, stock: 5 },
-  { id: 4, name: 'Áo Khoác Denim', price: 850000, category: 'Áo Khoác', color: 'Xanh', sizes: ['L', 'XL'], isNew: false, stock: 2 },
-  { id: 5, name: 'Áo Sơ Mi Cổ Tàu', price: 350000, category: 'Áo', color: 'Đen', sizes: ['M', 'L'], isNew: true, stock: 0 },
-  { id: 6, name: 'Quần Short Kaki', price: 290000, salePrice: 250000, saleStartDate: '2026-03-01T00:00', saleEndDate: '2026-03-10T23:59', category: 'Quần', color: 'Be', sizes: ['S', 'M', 'L', 'XL'], isNew: false, stock: 15 },
-  { id: 7, name: 'Áo Len Cổ Lọ', price: 420000, category: 'Áo', color: 'Đen', sizes: ['M', 'L'], isNew: true, stock: 8 },
-  { id: 8, name: 'Chân Váy Xếp Ly', price: 320000, category: 'Váy', color: 'Trắng', sizes: ['S', 'M'], isNew: false, stock: 0 },
+const GENDER_OPTIONS = [
+  { value: 'MALE', label: 'Nam' },
+  { value: 'FEMALE', label: 'Nữ' },
+  { value: 'UNISEX', label: 'Unisex' }
 ];
 
 const ProductListPage = () => {
-  const [filters, setFilters] = useState({ category: '', color: '', size: '' });
-  const [sortBy, setSortBy] = useState('new');
+  const [searchParams] = useSearchParams();
+  
+  const [filters, setFilters] = useState({
+    categoryId: searchParams.get('category') ? parseInt(searchParams.get('category')) : '',
+    gender: searchParams.get('gender') || '',
+    isSale: searchParams.get('isSale') === 'true',
+  });
+  
+  const [sortBy, setSortBy] = useState('newest');
+  const [page, setPage] = useState(0);
   const [isMobileFilterOpen, setIsMobileFilterOpen] = useState(false);
 
-  // Pass filters to API
-  const { data, isLoading, isError } = useProducts({ ...filters, sort: sortBy });
+  // Fetch true category tree
+  const { data: categoriesData = [] } = useCategories();
+  
+  const categoryOptions = useMemo(() => {
+    let opts = [];
+    categoriesData.forEach(root => {
+      opts.push({ id: root.id, name: root.name, isRoot: true });
+      (root.children || []).forEach(child => {
+        opts.push({ id: child.id, name: child.name, isRoot: false });
+      });
+    });
+    return opts;
+  }, [categoriesData]);
 
-  const products = data?.content?.length ? data.content : MOCK_PRODUCTS;
+  // Request to true backend API
+  const queryParams = {
+    categoryId: filters.categoryId || undefined,
+    gender: filters.gender || undefined,
+    isSale: filters.isSale || undefined,
+    sort: sortBy,
+    page,
+    size: 12
+  };
+  
+  const { data, isLoading, isError } = useProducts(queryParams);
 
-  // Apply local filtering & sorting for mock data
-  const filteredAndSortedProducts = useMemo(() => {
-    let result = [...products];
-
-    if (filters.category) {
-      result = result.filter(p => p.category === filters.category);
-    }
-    if (filters.color) {
-      result = result.filter(p => p.color === filters.color);
-    }
-    if (filters.size) {
-      result = result.filter(p => p.sizes?.includes(filters.size));
-    }
-
-    if (sortBy === 'price_asc') {
-      result.sort((a, b) => a.price - b.price);
-    } else if (sortBy === 'price_desc') {
-      result.sort((a, b) => b.price - a.price);
-    } else if (sortBy === 'new') {
-      result.sort((a, b) => (b.isNew === a.isNew ? 0 : b.isNew ? 1 : -1));
-    }
-
-    return result;
-  }, [products, filters, sortBy]);
+  const products = data?.content || [];
+  const totalPages = data?.totalPages || 0;
 
   const handleFilterChange = (key, value) => {
     setFilters(prev => ({
       ...prev,
-      [key]: prev[key] === value ? '' : value // toggle filter
+      [key]: prev[key] === value ? (typeof value === 'boolean' ? false : '') : value
     }));
+    setPage(0);
   };
 
   const clearFilters = () => {
-    setFilters({ category: '', color: '', size: '' });
+    setFilters({ categoryId: '', gender: '', isSale: false });
+    setPage(0);
   };
-
-  if (isLoading) return <div className="flex justify-center py-20"><Spinner size="lg" /></div>;
-  if (isError) return <div className="text-center py-20 text-red-500">Lỗi tải dữ liệu sản phẩm</div>;
 
   return (
     <div className="space-y-6">
@@ -83,12 +82,16 @@ const ProductListPage = () => {
           </button>
           <select
             value={sortBy}
-            onChange={(e) => setSortBy(e.target.value)}
+            onChange={(e) => {
+              setSortBy(e.target.value);
+              setPage(0);
+            }}
             className="border-gray-300 rounded-lg text-sm focus:ring-black focus:border-black p-2.5 border bg-white"
           >
-            <option value="new">Mới nhất</option>
+            <option value="newest">Mới nhất</option>
             <option value="price_asc">Giá: Thấp đến Cao</option>
             <option value="price_desc">Giá: Cao đến Thấp</option>
+            <option value="name_asc">Tên (A-Z)</option>
           </select>
         </div>
       </div>
@@ -99,7 +102,7 @@ const ProductListPage = () => {
           <div>
             <div className="flex items-center justify-between mb-4">
               <h3 className="font-bold text-gray-900">Bộ lọc</h3>
-              {(filters.category || filters.color || filters.size) && (
+              {(filters.categoryId || filters.gender || filters.isSale) && (
                 <button onClick={clearFilters} className="text-xs text-blue-600 hover:underline">Xóa tất cả</button>
               )}
             </div>
@@ -108,61 +111,53 @@ const ProductListPage = () => {
           {/* Category Filter */}
           <div>
             <h4 className="font-semibold text-sm text-gray-900 mb-3 uppercase tracking-wider">Danh mục</h4>
-            <div className="space-y-2">
-              {CATEGORIES.map(cat => (
-                <label key={cat} className="flex items-center gap-2 cursor-pointer">
+            <div className="space-y-2 max-h-64 overflow-y-auto pr-2">
+              {categoryOptions.map(cat => (
+                <label key={cat.id} className={`flex items-center gap-2 cursor-pointer ${!cat.isRoot ? 'ml-4' : ''}`}>
                   <input
                     type="checkbox"
-                    checked={filters.category === cat}
-                    onChange={() => handleFilterChange('category', cat)}
+                    checked={filters.categoryId === cat.id}
+                    onChange={() => handleFilterChange('categoryId', cat.id)}
                     className="rounded border-gray-300 text-black focus:ring-black"
                   />
-                  <span className="text-sm text-gray-600">{cat}</span>
+                  <span className={`text-sm ${cat.isRoot ? 'font-medium text-gray-800' : 'text-gray-600'}`}>{cat.name}</span>
                 </label>
               ))}
             </div>
           </div>
 
-          {/* Color Filter */}
+          {/* Gender Filter */}
           <div>
-            <h4 className="font-semibold text-sm text-gray-900 mb-3 uppercase tracking-wider">Màu sắc</h4>
+            <h4 className="font-semibold text-sm text-gray-900 mb-3 uppercase tracking-wider">Giới tính</h4>
             <div className="flex flex-wrap gap-2">
-              {COLORS.map(color => (
+              {GENDER_OPTIONS.map(opt => (
                 <button
-                  key={color}
-                  onClick={() => handleFilterChange('color', color)}
+                  key={opt.value}
+                  onClick={() => handleFilterChange('gender', opt.value)}
                   className={clsx(
                     "px-3 py-1.5 text-xs rounded-full border transition-colors",
-                    filters.color === color
+                    filters.gender === opt.value
                       ? "bg-black text-white border-black"
                       : "bg-white text-gray-600 border-gray-300 hover:border-gray-400"
                   )}
                 >
-                  {color}
+                  {opt.label}
                 </button>
               ))}
             </div>
           </div>
 
-          {/* Size Filter */}
+          {/* Sale Filter */}
           <div>
-            <h4 className="font-semibold text-sm text-gray-900 mb-3 uppercase tracking-wider">Kích thước</h4>
-            <div className="grid grid-cols-4 gap-2">
-              {SIZES.map(size => (
-                <button
-                  key={size}
-                  onClick={() => handleFilterChange('size', size)}
-                  className={clsx(
-                    "py-2 text-xs font-medium rounded border transition-colors text-center",
-                    filters.size === size
-                      ? "bg-black text-white border-black"
-                      : "bg-white text-gray-600 border-gray-300 hover:border-gray-400"
-                  )}
-                >
-                  {size}
-                </button>
-              ))}
-            </div>
+            <label className="flex items-center gap-2 cursor-pointer mt-4 border p-3 rounded-lg hover:border-red-500 transition-colors">
+              <input
+                type="checkbox"
+                checked={filters.isSale}
+                onChange={() => handleFilterChange('isSale', !filters.isSale)}
+                className="rounded border-gray-300 text-red-500 focus:ring-red-500 w-5 h-5"
+              />
+              <span className="text-sm font-semibold text-red-600">Đang khuyến mãi</span>
+            </label>
           </div>
         </div>
 
@@ -182,58 +177,50 @@ const ProductListPage = () => {
                 <div>
                   <h4 className="font-semibold text-sm text-gray-900 mb-3 uppercase tracking-wider">Danh mục</h4>
                   <div className="space-y-3">
-                    {CATEGORIES.map(cat => (
-                      <label key={cat} className="flex items-center gap-3 cursor-pointer">
+                    {categoryOptions.map(cat => (
+                      <label key={cat.id} className={`flex items-center gap-3 cursor-pointer ${!cat.isRoot ? 'ml-4' : ''}`}>
                         <input
                           type="checkbox"
-                          checked={filters.category === cat}
-                          onChange={() => handleFilterChange('category', cat)}
+                          checked={filters.categoryId === cat.id}
+                          onChange={() => handleFilterChange('categoryId', cat.id)}
                           className="w-5 h-5 rounded border-gray-300 text-black focus:ring-black"
                         />
-                        <span className="text-gray-700">{cat}</span>
+                        <span className={`text-sm ${cat.isRoot ? 'font-medium text-gray-800' : 'text-gray-600'}`}>{cat.name}</span>
                       </label>
                     ))}
                   </div>
                 </div>
-                {/* Mobile Colors */}
+                {/* Mobile Gender */}
                 <div>
-                  <h4 className="font-semibold text-sm text-gray-900 mb-3 uppercase tracking-wider">Màu sắc</h4>
+                  <h4 className="font-semibold text-sm text-gray-900 mb-3 uppercase tracking-wider">Giới tính</h4>
                   <div className="flex flex-wrap gap-2">
-                    {COLORS.map(color => (
+                    {GENDER_OPTIONS.map(opt => (
                       <button
-                        key={color}
-                        onClick={() => handleFilterChange('color', color)}
+                        key={opt.value}
+                        onClick={() => handleFilterChange('gender', opt.value)}
                         className={clsx(
                           "px-4 py-2 text-sm rounded-full border transition-colors",
-                          filters.color === color
+                          filters.gender === opt.value
                             ? "bg-black text-white border-black"
                             : "bg-white text-gray-600 border-gray-300"
                         )}
                       >
-                        {color}
+                        {opt.label}
                       </button>
                     ))}
                   </div>
                 </div>
-                {/* Mobile Sizes */}
+                {/* Mobile Sale */}
                 <div>
-                  <h4 className="font-semibold text-sm text-gray-900 mb-3 uppercase tracking-wider">Kích thước</h4>
-                  <div className="grid grid-cols-4 gap-2">
-                    {SIZES.map(size => (
-                      <button
-                        key={size}
-                        onClick={() => handleFilterChange('size', size)}
-                        className={clsx(
-                          "py-3 text-sm font-medium rounded border transition-colors text-center",
-                          filters.size === size
-                            ? "bg-black text-white border-black"
-                            : "bg-white text-gray-600 border-gray-300"
-                        )}
-                      >
-                        {size}
-                      </button>
-                    ))}
-                  </div>
+                  <label className="flex items-center gap-3 cursor-pointer border p-3 rounded-lg">
+                    <input
+                      type="checkbox"
+                      checked={filters.isSale}
+                      onChange={() => handleFilterChange('isSale', !filters.isSale)}
+                      className="w-5 h-5 rounded border-gray-300 text-red-500 focus:ring-red-500"
+                    />
+                    <span className="text-sm font-semibold text-red-600">Đang khuyến mãi</span>
+                  </label>
                 </div>
               </div>
               <div className="p-4 border-t border-gray-200 flex gap-3">
@@ -255,8 +242,12 @@ const ProductListPage = () => {
         )}
 
         {/* Product Grid */}
-        <div className="flex-1">
-          {filteredAndSortedProducts.length === 0 ? (
+        <div className="flex-1 flex flex-col">
+          {isLoading ? (
+            <div className="flex justify-center py-20"><Spinner size="lg" /></div>
+          ) : isError ? (
+            <div className="text-center py-20 text-red-500">Lỗi tải dữ liệu sản phẩm</div>
+          ) : products.length === 0 ? (
             <div className="text-center py-20 bg-gray-50 rounded-2xl border border-dashed border-gray-300">
               <p className="text-gray-500 mb-4">Không tìm thấy sản phẩm nào phù hợp với bộ lọc.</p>
               <button
@@ -267,15 +258,38 @@ const ProductListPage = () => {
               </button>
             </div>
           ) : (
-            <div className="grid grid-cols-2 md:grid-cols-3 gap-4 sm:gap-6">
-              {filteredAndSortedProducts.map(product => (
-                <ProductCard
-                  key={product.id}
-                  product={product}
-                  onAddToCart={(p) => console.log('Add to cart', p)}
-                />
-              ))}
-            </div>
+            <>
+              <div className="grid grid-cols-2 md:grid-cols-3 xl:grid-cols-4 gap-4 sm:gap-6">
+                {products.map(product => (
+                  <ProductCard
+                    key={product.id}
+                    product={product}
+                    onAddToCart={(p) => console.log('Add to cart', p)}
+                  />
+                ))}
+              </div>
+              
+              {/* Pagination UI */}
+              {totalPages > 1 && (
+                <div className="flex justify-center gap-2 mt-10">
+                  <button
+                    disabled={page === 0}
+                    onClick={() => setPage(page - 1)}
+                    className="px-4 py-2 border rounded-lg hover:bg-gray-50 disabled:opacity-50"
+                  >
+                    Trước
+                  </button>
+                  <span className="py-2 px-4 font-medium">Trang {page + 1} / {totalPages}</span>
+                  <button
+                    disabled={page >= totalPages - 1}
+                    onClick={() => setPage(page + 1)}
+                    className="px-4 py-2 border rounded-lg hover:bg-gray-50 disabled:opacity-50"
+                  >
+                    Tiếp
+                  </button>
+                </div>
+              )}
+            </>
           )}
         </div>
       </div>

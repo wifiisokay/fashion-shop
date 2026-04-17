@@ -17,6 +17,9 @@ public enum ErrorCode {
     PRODUCT_NOT_FOUND("PRODUCT_001", "Sản phẩm không tồn tại"),
     PRODUCT_OUT_OF_STOCK("PRODUCT_002", "Sản phẩm đã hết hàng"),
     VARIANT_NOT_FOUND("PRODUCT_003", "Biến thể sản phẩm không tồn tại"),
+    VARIANT_DUPLICATED("PRODUCT_004", "Đã tồn tại biến thể cùng màu và size"),
+    INVALID_SALE_PRICE("PRODUCT_005", "Giá khuyến mãi phải nhỏ hơn giá gốc"),
+    IMAGE_UPLOAD_FAILED("PRODUCT_006", "Upload ảnh thất bại"),
 
     // CATEGORY
     CATEGORY_NOT_FOUND("CATEGORY_001", "Danh mục không tồn tại"),

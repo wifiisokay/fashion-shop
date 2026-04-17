@@ -1,4 +1,4 @@
-import { Routes, Route, Outlet } from 'react-router-dom';
+import { Routes, Route, Outlet, Navigate } from 'react-router-dom';
 import { ROUTES } from '../constants/routes';
 import PrivateRoute from './PrivateRoute';
 import RoleRoute from './RoleRoute';
@@ -73,6 +73,7 @@ const AppRouter = () => {
         <Route path="/admin" element={
           <PrivateRoute><RoleRoute allowedRoles={['ADMIN']}><Outlet /></RoleRoute></PrivateRoute>
         }>
+          <Route index element={<Navigate to="dashboard" replace />} />
           <Route path="dashboard" element={<DashboardPage />} />
           <Route path="products" element={<ProductManagePage />} />
           <Route path="products/form" element={<ProductFormPage />} />
