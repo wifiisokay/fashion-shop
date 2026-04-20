@@ -54,6 +54,13 @@ public enum ErrorCode {
     RATE_LIMIT_EXCEEDED("RATE_LIMIT_001", "Quá nhiều yêu cầu, vui lòng thử lại sau"),
     INTERNAL_ERROR("SYSTEM_001", "Lỗi hệ thống"),
 
+    // CART
+    CART_ITEM_NOT_FOUND("CART_001", "Không tìm thấy sản phẩm trong giỏ hàng"),
+    INSUFFICIENT_STOCK ("CART_002", "Không đủ số lượng trong kho"),
+    CART_EMPTY         ("CART_003", "Giỏ hàng trống"),
+    INVALID_QUANTITY   ("CART_004", "Số lượng phải từ 1 đến 99"),
+    VARIANT_IN_CART    ("CART_005", "Biến thể đang có trong giỏ hàng của người dùng, không thể xóa"),
+
     // ADDRESS
     ADDRESS_NOT_FOUND("ADDRESS_001", "Địa chỉ không tồn tại"),
 

@@ -3,6 +3,7 @@ package com.fashionshop.backend.module.product;
 import com.fashionshop.backend.domain.Product;
 import com.fashionshop.backend.domain.ProductColor;
 import com.fashionshop.backend.domain.ProductVariant;
+import com.fashionshop.backend.domain.repository.CartItemRepository;
 import com.fashionshop.backend.domain.repository.ProductColorRepository;
 import com.fashionshop.backend.domain.repository.ProductRepository;
 import com.fashionshop.backend.domain.repository.ProductVariantRepository;
@@ -24,6 +25,7 @@ public class ProductVariantServiceImpl implements ProductVariantService {
     private final ProductVariantRepository variantRepository;
     private final ProductRepository productRepository;
     private final ProductColorRepository colorRepository;
+    private final CartItemRepository cartItemRepository;
 
     @Override
     @Transactional(readOnly = true)
@@ -79,6 +81,11 @@ public class ProductVariantServiceImpl implements ProductVariantService {
     @Transactional
     public void delete(Long productId, Long variantId) {
         ProductVariant variant = findVariantOrThrow(variantId, productId);
+        // Enforce RESTRICT: chặn xóa nếu variant đang có trong giỏ hàng của ai đó
+        if (cartItemRepository.existsByVariantId(variantId)) {
+            throw new BusinessException(ErrorCode.VARIANT_IN_CART, HttpStatus.CONFLICT,
+                "Biến thể đang có trong giỏ hàng, không thể xóa");
+        }
         variantRepository.delete(variant);
     }
 

@@ -1,9 +1,7 @@
 import { Link } from 'react-router-dom';
 import { formatPrice } from '../../utils/format';
-import Button from '../ui/Button';
-import { ShoppingCart } from 'lucide-react';
 
-const ProductCard = ({ product, onAddToCart }) => {
+const ProductCard = ({ product }) => {
   const hasActiveSale = product.isSale && product.salePrice;
 
   return (
@@ -36,18 +34,6 @@ const ProductCard = ({ product, onAddToCart }) => {
               <span className="text-base font-bold text-gray-900">{formatPrice(product.basePrice)}</span>
             )}
           </div>
-          <Button
-            variant="ghost"
-            size="sm"
-            className="p-2 rounded-full hover:bg-gray-100"
-            onClick={(e) => {
-              e.preventDefault();
-              onAddToCart(product);
-            }}
-            title="Thêm vào giỏ hàng"
-          >
-            <ShoppingCart className="w-5 h-5" />
-          </Button>
         </div>
       </div>
     </div>

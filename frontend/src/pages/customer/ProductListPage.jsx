@@ -264,7 +264,6 @@ const ProductListPage = () => {
                   <ProductCard
                     key={product.id}
                     product={product}
-                    onAddToCart={(p) => console.log('Add to cart', p)}
                   />
                 ))}
               </div>

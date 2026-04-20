@@ -1,6 +1,7 @@
 import { useState, useMemo } from 'react';
 import { useParams } from 'react-router-dom';
 import { useProduct } from '../../hooks/useProduct';
+import { useCart } from '../../hooks/useCart';
 import Spinner from '../../components/ui/Spinner';
 import Button from '../../components/ui/Button';
 import { formatPrice, isSaleActive } from '../../utils/format';
@@ -11,6 +12,7 @@ import remarkGfm from 'remark-gfm';
 const ProductDetailPage = () => {
   const { id } = useParams();
   const { data, isLoading } = useProduct(id);
+  const { addToCart } = useCart();
 
   // Fallback mock data — sẽ xóa khi backend sẵn sàng
   const product = data || {
@@ -241,10 +243,13 @@ const ProductDetailPage = () => {
         {/* Add to cart */}
         <div className="pt-6 border-t border-gray-200">
           <Button size="lg" className="w-full sm:w-auto"
-            disabled={!selectedSize}
+            disabled={!selectedSize || addToCart.isPending}
+            loading={addToCart.isPending}
             onClick={() => {
               const variant = availableSizes.find((s) => s.size === selectedSize);
-              console.log('Add to cart:', { variantId: variant?.variantId, color: selectedColor?.colorName, size: selectedSize });
+              if (variant) {
+                addToCart.mutate({ variantId: variant.variantId, quantity: 1 });
+              }
             }}>
             <ShoppingCart className="w-5 h-5 mr-2" />
             {selectedSize ? 'Thêm vào giỏ hàng' : 'Chọn kích thước'}

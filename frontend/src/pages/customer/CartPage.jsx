@@ -12,10 +12,8 @@ const CartPage = () => {
   if (isLoading) return <div className="flex justify-center py-20"><Spinner size="lg" /></div>;
   if (isError) return <div className="text-center py-20 text-red-500">Lỗi tải giỏ hàng</div>;
 
-  // Fallback mock data for preview if data is undefined
-  const cartItems = data ? (data.items || []) : [];
-
-  const total = cartItems.reduce((sum, item) => sum + item.price * item.quantity, 0);
+  const cartItems = data?.items || [];
+  const total = data?.totalPrice || 0;
 
   if (cartItems.length === 0) {
     return (
@@ -44,40 +42,48 @@ const CartPage = () => {
       <div className="grid lg:grid-cols-3 gap-8">
         <div className="lg:col-span-2 space-y-4">
           {cartItems.map(item => (
-            <div key={item.id} className="flex gap-4 bg-white p-4 rounded-2xl border border-gray-100 shadow-sm">
+            <div key={item.variantId} className={`flex gap-4 bg-white p-4 rounded-2xl border border-gray-100 shadow-sm ${!item.available ? 'opacity-50 grayscale' : ''}`}>
               <img
-                src={item.imageUrl || `https://picsum.photos/seed/${item.productId}/200/200`}
-                alt={item.name}
-                className="w-24 h-24 object-cover rounded-xl bg-gray-100"
+                src={item.primaryImageUrl || `https://picsum.photos/seed/${item.productId}/200/200`}
+                alt={item.productName}
+                className="w-24 h-24 object-cover rounded-xl bg-gray-100 shrink-0"
                 referrerPolicy="no-referrer"
               />
               <div className="flex-grow flex flex-col justify-between">
                 <div className="flex justify-between items-start gap-4">
-                  <Link to={`/products/${item.productId}`} className="font-medium text-gray-900 line-clamp-2 hover:text-gray-600">
-                    {item.name}
-                  </Link>
+                  <div>
+                    <Link to={`/products/${item.productId}`} className="font-medium text-gray-900 line-clamp-2 hover:text-gray-600">
+                      {item.productName}
+                    </Link>
+                    <p className="text-sm text-gray-500 mt-1">
+                      {item.color} | {item.size}
+                      {!item.available && <span className="ml-2 text-red-500 font-medium">(Hết hàng)</span>}
+                    </p>
+                  </div>
                   <button
-                    onClick={() => removeCartItem.mutate(item.id)}
-                    className="text-gray-400 hover:text-red-500 transition-colors p-1"
+                    onClick={() => removeCartItem.mutate(item.variantId)}
+                    disabled={removeCartItem.isPending}
+                    className="text-gray-400 hover:text-red-500 transition-colors p-1 shrink-0"
                     title="Xóa sản phẩm"
                   >
                     <Trash2 className="w-5 h-5" />
                   </button>
                 </div>
                 <div className="flex items-center justify-between mt-4">
-                  <span className="font-bold text-gray-900">{formatPrice(item.price)}</span>
+                  <span className="font-bold text-gray-900">{formatPrice(item.unitPrice)}</span>
                   <div className="flex items-center gap-3 bg-gray-50 rounded-lg p-1 border border-gray-200">
                     <button
-                      onClick={() => updateCartItem.mutate({ itemId: item.id, quantity: item.quantity - 1 })}
-                      disabled={item.quantity <= 1}
+                      onClick={() => updateCartItem.mutate({ itemId: item.variantId, quantity: item.quantity - 1 })}
+                      disabled={item.quantity <= 1 || !item.available || updateCartItem.isPending}
                       className="p-1 hover:bg-white rounded-md disabled:opacity-50 transition-colors"
                     >
                       <Minus className="w-4 h-4" />
                     </button>
                     <span className="w-6 text-center text-sm font-medium">{item.quantity}</span>
                     <button
-                      onClick={() => updateCartItem.mutate({ itemId: item.id, quantity: item.quantity + 1 })}
-                      className="p-1 hover:bg-white rounded-md transition-colors"
+                      onClick={() => updateCartItem.mutate({ itemId: item.variantId, quantity: item.quantity + 1 })}
+                      disabled={!item.available || item.quantity >= item.stockQuantity || updateCartItem.isPending}
+                      className="p-1 hover:bg-white rounded-md disabled:opacity-50 transition-colors"
                     >
                       <Plus className="w-4 h-4" />
                     </button>
@@ -103,8 +109,15 @@ const CartPage = () => {
               <span>{formatPrice(total)}</span>
             </div>
           </div>
-          <Link to={ROUTES.CHECKOUT} className="block">
-            <Button className="w-full" size="lg">Thanh toán ngay</Button>
+          <Link to={ROUTES.CHECKOUT} className="block" onClick={(e) => {
+            if (data?.hasUnavailableItems) {
+              e.preventDefault();
+              alert("Giỏ hàng của bạn có sản phẩm hết hàng. Vui lòng xóa sản phẩm đó trước khi thanh toán.");
+            }
+          }}>
+            <Button className="w-full" size="lg" disabled={data?.hasUnavailableItems || cartItems.length === 0}>
+              Thanh toán ngay
+            </Button>
           </Link>
         </div>
       </div>

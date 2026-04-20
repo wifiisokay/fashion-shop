@@ -36,7 +36,7 @@ const CheckoutPage = () => {
   const selectedAddressId = watch('addressId');
 
   const cartItems = cartData?.items || [];
-  const subtotal = cartItems.reduce((sum, item) => sum + item.price * item.quantity, 0);
+  const subtotal = cartData?.totalPrice || 0;
   const shippingFee = 30000;
   const total = subtotal + shippingFee;
 
@@ -160,12 +160,18 @@ const CheckoutPage = () => {
 
           <div className="space-y-4 mb-6 max-h-60 overflow-y-auto pr-2">
             {cartItems.map(item => (
-              <div key={item.id} className="flex justify-between text-sm">
-                <span className="text-gray-600 line-clamp-1 pr-4">
-                  {item.quantity} x {item.name}
-                </span>
-                <span className="font-medium text-gray-900 whitespace-nowrap">
-                  {formatPrice(item.price * item.quantity)}
+              <div key={item.variantId} className={`flex justify-between text-sm ${!item.available ? 'opacity-50 line-through' : ''}`}>
+                <div className="flex flex-col flex-1 pr-4">
+                  <span className="text-gray-600 line-clamp-1">
+                    {item.quantity} x {item.productName}
+                  </span>
+                  <span className="text-xs text-gray-400">
+                    {item.color} | {item.size}
+                    {!item.available && <span className="ml-1 text-red-500">(Hết hàng)</span>}
+                  </span>
+                </div>
+                <span className="font-medium text-gray-900 whitespace-nowrap mt-0.5">
+                  {formatPrice(item.subtotal)}
                 </span>
               </div>
             ))}
@@ -186,8 +192,8 @@ const CheckoutPage = () => {
             </div>
           </div>
 
-          <Button type="submit" className="w-full" size="lg" loading={isSubmitting}>
-            Đặt hàng
+          <Button type="submit" className="w-full" size="lg" loading={isSubmitting} disabled={cartData?.hasUnavailableItems}>
+            {cartData?.hasUnavailableItems ? 'Vui lòng cập nhật giỏ hàng' : 'Đặt hàng'}
           </Button>
         </div>
       </form>

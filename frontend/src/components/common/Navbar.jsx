@@ -1,11 +1,13 @@
 import { Link, useNavigate } from 'react-router-dom';
 import { useAuth } from '../../contexts/AuthContext';
+import { useCart } from '../../hooks/useCart';
 import { ROUTES } from '../../constants/routes';
 import { LogOut, ShoppingCart, User } from 'lucide-react';
 
 const Navbar = () => {
   const { user, isAuthenticated, logout } = useAuth();
   const navigate = useNavigate();
+  const { data: cartData } = useCart();
 
   const handleLogout = () => {
     logout();
@@ -68,7 +70,7 @@ const Navbar = () => {
                   <Link to={ROUTES.CART} className="text-gray-500 hover:text-gray-900 relative">
                     <ShoppingCart className="w-6 h-6" />
                     <span className="absolute -top-1 -right-1 bg-black text-white text-[10px] font-bold w-4 h-4 rounded-full flex items-center justify-center">
-                      0
+                      {cartData?.totalItems || 0}
                     </span>
                   </Link>
                 )}

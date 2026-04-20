@@ -5,6 +5,7 @@ import com.fashionshop.backend.common.enums.ProductStatus;
 import com.fashionshop.backend.domain.Product;
 import com.fashionshop.backend.domain.ProductColor;
 import com.fashionshop.backend.domain.ProductVariant;
+import com.fashionshop.backend.domain.repository.CartItemRepository;
 import com.fashionshop.backend.domain.repository.ProductColorRepository;
 import com.fashionshop.backend.domain.repository.ProductRepository;
 import com.fashionshop.backend.domain.repository.ProductVariantRepository;
@@ -37,6 +38,7 @@ class ProductVariantServiceImplTest {
     @Mock private ProductVariantRepository variantRepository;
     @Mock private ProductRepository productRepository;
     @Mock private ProductColorRepository colorRepository;
+    @Mock private CartItemRepository cartItemRepository;
     @InjectMocks private ProductVariantServiceImpl variantService;
 
     private Product mockProduct;
@@ -196,10 +198,23 @@ class ProductVariantServiceImplTest {
     @Test
     void delete_deletesVariant_whenValid() {
         when(variantRepository.findById(1L)).thenReturn(Optional.of(variant1));
+        when(cartItemRepository.existsByVariantId(1L)).thenReturn(false);
 
         variantService.delete(1L, 1L);
 
         verify(variantRepository).delete(variant1);
+    }
+
+    @Test
+    void delete_throwsConflict_whenVariantExistsInCart() {
+        when(variantRepository.findById(1L)).thenReturn(Optional.of(variant1));
+        when(cartItemRepository.existsByVariantId(1L)).thenReturn(true);
+
+        assertThatThrownBy(() -> variantService.delete(1L, 1L))
+            .isInstanceOf(BusinessException.class)
+            .hasFieldOrPropertyWithValue("errorCode", ErrorCode.VARIANT_IN_CART);
+
+        verify(variantRepository, never()).delete(any());
     }
 
     @Test
