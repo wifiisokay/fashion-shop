@@ -23,12 +23,24 @@ export const productApi = {
 
   // === IMAGES ===
   getImages: (productId) => axiosInstance.get(`/api/admin/products/${productId}/images`),
-  uploadImage: (productId, formData) =>
-    axiosInstance.post(`/api/admin/products/${productId}/images`, formData, {
+  uploadPrimaryImage: (productId, formData) =>
+    axiosInstance.post(`/api/admin/products/${productId}/images/primary`, formData, {
       headers: { 'Content-Type': 'multipart/form-data' },
     }),
-  setPrimaryImage: (productId, imageId) =>
-    axiosInstance.patch(`/api/admin/products/${productId}/images/${imageId}/primary`),
+  uploadColorImage: (productId, colorId, formData) =>
+    axiosInstance.post(`/api/admin/products/${productId}/images/color/${colorId}`, formData, {
+      headers: { 'Content-Type': 'multipart/form-data' },
+    }),
+  reorderImage: (productId, imageId, newSortOrder) =>
+    axiosInstance.patch(`/api/admin/products/${productId}/images/${imageId}/reorder`, { sortOrder: newSortOrder }),
   deleteImage: (productId, imageId) =>
     axiosInstance.delete(`/api/admin/products/${productId}/images/${imageId}`),
+
+  // === COLORS ===
+  getColors: (productId) => axiosInstance.get(`/api/admin/products/${productId}/colors`),
+  createColor: (productId, data) => axiosInstance.post(`/api/admin/products/${productId}/colors`, data),
+  updateColor: (productId, colorId, data) =>
+    axiosInstance.put(`/api/admin/products/${productId}/colors/${colorId}`, data),
+  deleteColor: (productId, colorId) =>
+    axiosInstance.delete(`/api/admin/products/${productId}/colors/${colorId}`),
 };

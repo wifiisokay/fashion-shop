@@ -2,16 +2,14 @@ import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { QUERY_KEYS } from '../constants/queryKeys';
 import { productApi } from '../api/productApi';
 
-/** Upload ảnh sản phẩm (multipart) */
-export const useUploadImage = () => {
+/** Upload ảnh chính (listing) */
+export const useUploadPrimaryImage = () => {
   const queryClient = useQueryClient();
   return useMutation({
-    mutationFn: ({ productId, file, variantId, isPrimary }) => {
+    mutationFn: ({ productId, file }) => {
       const formData = new FormData();
       formData.append('file', file);
-      if (variantId) formData.append('variantId', variantId);
-      if (isPrimary) formData.append('isPrimary', true);
-      return productApi.uploadImage(productId, formData);
+      return productApi.uploadPrimaryImage(productId, formData);
     },
     onSuccess: (_, variables) => {
       queryClient.invalidateQueries({ queryKey: QUERY_KEYS.adminProduct(variables.productId) });
@@ -19,11 +17,27 @@ export const useUploadImage = () => {
   });
 };
 
-/** Đặt ảnh chính */
-export const useSetPrimaryImage = () => {
+/** Upload ảnh gallery theo màu */
+export const useUploadColorImage = () => {
   const queryClient = useQueryClient();
   return useMutation({
-    mutationFn: ({ productId, imageId }) => productApi.setPrimaryImage(productId, imageId),
+    mutationFn: ({ productId, colorId, file }) => {
+      const formData = new FormData();
+      formData.append('file', file);
+      return productApi.uploadColorImage(productId, colorId, formData);
+    },
+    onSuccess: (_, variables) => {
+      queryClient.invalidateQueries({ queryKey: QUERY_KEYS.adminProduct(variables.productId) });
+    },
+  });
+};
+
+/** Đổi thứ tự ảnh gallery theo màu */
+export const useReorderImage = () => {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: ({ productId, imageId, newSortOrder }) => 
+      productApi.reorderImage(productId, imageId, newSortOrder),
     onSuccess: (_, variables) => {
       queryClient.invalidateQueries({ queryKey: QUERY_KEYS.adminProduct(variables.productId) });
     },

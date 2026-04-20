@@ -44,4 +44,8 @@ public class ProductRequest {
     private List<String> styleTags;
 
     private List<String> occasionTags;
+
+    private String fitType;
+
+    private String season;
 }

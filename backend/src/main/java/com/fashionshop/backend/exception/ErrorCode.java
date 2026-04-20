@@ -20,6 +20,11 @@ public enum ErrorCode {
     VARIANT_DUPLICATED("PRODUCT_004", "Đã tồn tại biến thể cùng màu và size"),
     INVALID_SALE_PRICE("PRODUCT_005", "Giá khuyến mãi phải nhỏ hơn giá gốc"),
     IMAGE_UPLOAD_FAILED("PRODUCT_006", "Upload ảnh thất bại"),
+    IMAGE_LIMIT_EXCEEDED("PRODUCT_007", "Màu này đã đạt giới hạn 5 ảnh tối đa"),
+    COLOR_NOT_FOUND("PRODUCT_008", "Không tìm thấy màu sắc này"),
+    COLOR_NOT_BELONG("PRODUCT_009", "Màu không thuộc sản phẩm này"),
+    PRIMARY_IMAGE_REQUIRED("PRODUCT_010", "Sản phẩm chưa có ảnh thẻ chính"),
+    IMAGE_NOT_FOUND("PRODUCT_011", "Không tìm thấy ảnh"),
 
     // CATEGORY
     CATEGORY_NOT_FOUND("CATEGORY_001", "Danh mục không tồn tại"),

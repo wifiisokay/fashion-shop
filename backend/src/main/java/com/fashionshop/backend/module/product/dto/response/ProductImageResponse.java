@@ -11,7 +11,7 @@ public class ProductImageResponse {
     private String imageUrl;
     private Boolean isPrimary;
     private Integer sortOrder;
-    private Long variantId;
+    private Long colorId;
 
     public static ProductImageResponse from(ProductImage image) {
         return ProductImageResponse.builder()
@@ -19,7 +19,7 @@ public class ProductImageResponse {
             .imageUrl(image.getImageUrl())
             .isPrimary(image.getIsPrimary())
             .sortOrder(image.getSortOrder())
-            .variantId(image.getVariantId())
+            .colorId(image.getColor() != null ? image.getColor().getId() : null)
             .build();
     }
 }

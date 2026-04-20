@@ -9,8 +9,10 @@ public interface ProductVariantRepository extends JpaRepository<ProductVariant, 
 
     List<ProductVariant> findByProductId(Long productId);
 
-    boolean existsByProductIdAndColorAndSize(Long productId, String color, String size);
+    List<ProductVariant> findByColorId(Long colorId);
+
+    boolean existsByColorIdAndSize(Long colorId, String size);
 
     /** Check trùng khi update — loại trừ chính variant đang sửa. */
-    boolean existsByProductIdAndColorAndSizeAndIdNot(Long productId, String color, String size, Long id);
+    boolean existsByColorIdAndSizeAndIdNot(Long colorId, String size, Long id);
 }

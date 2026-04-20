@@ -66,6 +66,12 @@ public class Product {
     @Builder.Default
     private List<String> occasionTags = new ArrayList<>();
 
+    @Column(name = "fit_type", length = 20)
+    private String fitType;
+
+    @Column(length = 20)
+    private String season;
+
     @Enumerated(EnumType.STRING)
     @Column(nullable = false)
     @Builder.Default
@@ -78,6 +84,10 @@ public class Product {
     @ManyToOne(fetch = FetchType.LAZY)
     @JoinColumn(name = "created_by")
     private User createdBy;
+
+    @OneToMany(mappedBy = "product", cascade = CascadeType.ALL, orphanRemoval = true)
+    @Builder.Default
+    private List<ProductColor> colors = new ArrayList<>();
 
     @OneToMany(mappedBy = "product", cascade = CascadeType.ALL, orphanRemoval = true)
     @Builder.Default

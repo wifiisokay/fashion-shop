@@ -1,8 +1,8 @@
 export const QUERY_KEYS = {
   // === PUBLIC ===
   products:          (filters = {}) => ['products', filters],
-  product:           (id)           => ['products', id],
-  outfitSuggestions: (productId)    => ['outfitSuggestions', productId],
+  product:           (id)           => ['products', String(id)],
+  outfitSuggestions: (productId)    => ['outfitSuggestions', String(productId)],
   categories:        ()             => ['categories'],
 
   // === CUSTOMER ===
@@ -26,6 +26,6 @@ export const QUERY_KEYS = {
   // === ADMIN ===
   stats:             (period)       => ['admin', 'stats', period],
   adminProducts:     (params = {})  => ['admin', 'products', params],
-  adminProduct:      (id)           => ['admin', 'products', id],
+  adminProduct:      (id)           => ['admin', 'products', String(id)],
   users:             (params = {})  => ['admin', 'users', params],
 };

@@ -9,9 +9,14 @@ public interface ProductImageService {
 
     List<ProductImageResponse> getByProductId(Long productId);
 
-    ProductImageResponse upload(Long productId, MultipartFile file, Long variantId, Boolean isPrimary);
+    /** Upload ảnh thẻ sản phẩm (color=null, isPrimary=true). Tự thay thế nếu đã có. */
+    ProductImageResponse uploadPrimary(Long productId, MultipartFile file);
 
-    ProductImageResponse setPrimary(Long productId, Long imageId);
+    /** Upload ảnh gallery theo màu. Giới hạn 5 ảnh/màu, sort_order tự tính. */
+    ProductImageResponse uploadColorImage(Long productId, Long colorId, MultipartFile file);
+
+    /** Đổi sort_order của ảnh trong cùng màu. */
+    ProductImageResponse reorder(Long productId, Long imageId, Integer newSortOrder);
 
     void delete(Long productId, Long imageId);
 }

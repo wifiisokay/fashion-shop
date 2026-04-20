@@ -10,9 +10,8 @@ import java.math.BigDecimal;
 @Setter
 public class ProductVariantRequest {
 
-    @NotBlank(message = "Màu sắc không được để trống")
-    @Size(max = 50, message = "Màu sắc tối đa 50 ký tự")
-    private String color;
+    @NotNull(message = "colorId không được để trống")
+    private Long colorId;
 
     @NotBlank(message = "Size không được để trống")
     @Size(max = 20, message = "Size tối đa 20 ký tự")

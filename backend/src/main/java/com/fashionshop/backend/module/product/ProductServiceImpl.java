@@ -17,6 +17,7 @@ import com.fashionshop.backend.common.enums.Gender;
 import com.fashionshop.backend.common.enums.ProductStatus;
 import com.fashionshop.backend.domain.Category;
 import com.fashionshop.backend.domain.Product;
+import com.fashionshop.backend.domain.ProductColor;
 import com.fashionshop.backend.domain.ProductVariant;
 import com.fashionshop.backend.domain.User;
 import com.fashionshop.backend.domain.repository.CategoryRepository;
@@ -57,6 +58,8 @@ public class ProductServiceImpl implements ProductService {
             .gender(request.getGender())
             .material(request.getMaterial())
             .colorFamily(request.getColorFamily())
+            .fitType(request.getFitType())
+            .season(request.getSeason())
             .styleTags(request.getStyleTags() != null ? request.getStyleTags() : new ArrayList<>())
             .occasionTags(request.getOccasionTags() != null ? request.getOccasionTags() : new ArrayList<>())
             .category(category)
@@ -81,6 +84,8 @@ public class ProductServiceImpl implements ProductService {
         product.setGender(request.getGender());
         product.setMaterial(request.getMaterial());
         product.setColorFamily(request.getColorFamily());
+        product.setFitType(request.getFitType());
+        product.setSeason(request.getSeason());
         product.setStyleTags(request.getStyleTags() != null ? request.getStyleTags() : new ArrayList<>());
         product.setOccasionTags(request.getOccasionTags() != null ? request.getOccasionTags() : new ArrayList<>());
         product.setCategory(category);
@@ -181,15 +186,20 @@ public class ProductServiceImpl implements ProductService {
                 predicates.add(cb.equal(root.get("status"), ProductStatus.ACTIVE));
             }
 
-            if (publicOnly || (color != null && !color.isBlank()) || (sizeOption != null && !sizeOption.isBlank())) {
+            // Filter theo color → join qua product_colors
+            if (color != null && !color.isBlank()) {
+                query.distinct(true);
+                Join<Product, ProductColor> colorJoin = root.join("colors", JoinType.INNER);
+                predicates.add(cb.equal(colorJoin.get("colorName"), color));
+            }
+
+            // Filter theo size / publicOnly → join qua variants
+            if (publicOnly || (sizeOption != null && !sizeOption.isBlank())) {
                 query.distinct(true);
                 Join<Product, ProductVariant> variantJoin = root.join("variants", JoinType.INNER);
                 
                 if (publicOnly) {
                     predicates.add(cb.greaterThan(variantJoin.get("stockQuantity"), 0));
-                }
-                if (color != null && !color.isBlank()) {
-                    predicates.add(cb.equal(variantJoin.get("color"), color));
                 }
                 if (sizeOption != null && !sizeOption.isBlank()) {
                     predicates.add(cb.equal(variantJoin.get("size"), sizeOption));

@@ -1,7 +1,9 @@
 package com.fashionshop.backend.module.product;
 
 import com.fashionshop.backend.domain.Product;
+import com.fashionshop.backend.domain.ProductColor;
 import com.fashionshop.backend.domain.ProductVariant;
+import com.fashionshop.backend.domain.repository.ProductColorRepository;
 import com.fashionshop.backend.domain.repository.ProductRepository;
 import com.fashionshop.backend.domain.repository.ProductVariantRepository;
 import com.fashionshop.backend.exception.BusinessException;
@@ -21,6 +23,7 @@ public class ProductVariantServiceImpl implements ProductVariantService {
 
     private final ProductVariantRepository variantRepository;
     private final ProductRepository productRepository;
+    private final ProductColorRepository colorRepository;
 
     @Override
     @Transactional(readOnly = true)
@@ -33,16 +36,17 @@ public class ProductVariantServiceImpl implements ProductVariantService {
     @Transactional
     public ProductVariantResponse create(Long productId, ProductVariantRequest request) {
         Product product = findProductOrThrow(productId);
+        ProductColor color = findColorOrThrow(request.getColorId(), productId);
 
-        // Check UNIQUE(product_id, color, size)
-        if (variantRepository.existsByProductIdAndColorAndSize(productId, request.getColor(), request.getSize())) {
+        // Check UNIQUE(color_id, size)
+        if (variantRepository.existsByColorIdAndSize(color.getId(), request.getSize())) {
             throw new BusinessException(ErrorCode.VARIANT_NOT_FOUND, HttpStatus.CONFLICT,
-                "Đã tồn tại biến thể cùng màu '" + request.getColor() + "' và size '" + request.getSize() + "'");
+                "Đã tồn tại biến thể cùng màu '" + color.getColorName() + "' và size '" + request.getSize() + "'");
         }
 
         ProductVariant variant = ProductVariant.builder()
             .product(product)
-            .color(request.getColor().trim())
+            .color(color)
             .size(request.getSize().trim())
             .stockQuantity(request.getStockQuantity())
             .priceAdjustment(request.getPrice())
@@ -55,15 +59,15 @@ public class ProductVariantServiceImpl implements ProductVariantService {
     @Transactional
     public ProductVariantResponse update(Long productId, Long variantId, ProductVariantRequest request) {
         ProductVariant variant = findVariantOrThrow(variantId, productId);
+        ProductColor color = findColorOrThrow(request.getColorId(), productId);
 
         // Check UNIQUE trừ chính variant đang sửa
-        if (variantRepository.existsByProductIdAndColorAndSizeAndIdNot(
-                productId, request.getColor(), request.getSize(), variantId)) {
+        if (variantRepository.existsByColorIdAndSizeAndIdNot(color.getId(), request.getSize(), variantId)) {
             throw new BusinessException(ErrorCode.VARIANT_NOT_FOUND, HttpStatus.CONFLICT,
-                "Đã tồn tại biến thể cùng màu '" + request.getColor() + "' và size '" + request.getSize() + "'");
+                "Đã tồn tại biến thể cùng màu '" + color.getColorName() + "' và size '" + request.getSize() + "'");
         }
 
-        variant.setColor(request.getColor().trim());
+        variant.setColor(color);
         variant.setSize(request.getSize().trim());
         variant.setStockQuantity(request.getStockQuantity());
         variant.setPriceAdjustment(request.getPrice());
@@ -75,7 +79,6 @@ public class ProductVariantServiceImpl implements ProductVariantService {
     @Transactional
     public void delete(Long productId, Long variantId) {
         ProductVariant variant = findVariantOrThrow(variantId, productId);
-        // TODO: Khi cart/order module sẵn sàng — check usage trước khi xóa
         variantRepository.delete(variant);
     }
 
@@ -84,6 +87,17 @@ public class ProductVariantServiceImpl implements ProductVariantService {
     private Product findProductOrThrow(Long id) {
         return productRepository.findById(id)
             .orElseThrow(() -> new BusinessException(ErrorCode.PRODUCT_NOT_FOUND, HttpStatus.NOT_FOUND));
+    }
+
+    private ProductColor findColorOrThrow(Long colorId, Long productId) {
+        ProductColor color = colorRepository.findById(colorId)
+            .orElseThrow(() -> new BusinessException(ErrorCode.PRODUCT_NOT_FOUND, HttpStatus.NOT_FOUND,
+                "Không tìm thấy màu sắc"));
+        if (!color.getProduct().getId().equals(productId)) {
+            throw new BusinessException(ErrorCode.PRODUCT_NOT_FOUND, HttpStatus.NOT_FOUND,
+                "Màu sắc không thuộc sản phẩm này");
+        }
+        return color;
     }
 
     private ProductVariant findVariantOrThrow(Long variantId, Long productId) {

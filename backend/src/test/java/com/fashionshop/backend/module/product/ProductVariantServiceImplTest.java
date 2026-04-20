@@ -3,7 +3,9 @@ package com.fashionshop.backend.module.product;
 import com.fashionshop.backend.common.enums.Gender;
 import com.fashionshop.backend.common.enums.ProductStatus;
 import com.fashionshop.backend.domain.Product;
+import com.fashionshop.backend.domain.ProductColor;
 import com.fashionshop.backend.domain.ProductVariant;
+import com.fashionshop.backend.domain.repository.ProductColorRepository;
 import com.fashionshop.backend.domain.repository.ProductRepository;
 import com.fashionshop.backend.domain.repository.ProductVariantRepository;
 import com.fashionshop.backend.exception.BusinessException;
@@ -34,9 +36,11 @@ class ProductVariantServiceImplTest {
 
     @Mock private ProductVariantRepository variantRepository;
     @Mock private ProductRepository productRepository;
+    @Mock private ProductColorRepository colorRepository;
     @InjectMocks private ProductVariantServiceImpl variantService;
 
     private Product mockProduct;
+    private ProductColor mockColor;
     private ProductVariant variant1;
     private ProductVariant variant2;
 
@@ -49,14 +53,24 @@ class ProductVariantServiceImplTest {
             .variants(new ArrayList<>()).images(new ArrayList<>())
             .build();
 
+        mockColor = ProductColor.builder()
+            .id(10L).product(mockProduct)
+            .colorName("Trắng").colorCode("#FFFFFF")
+            .build();
+
+        ProductColor blackColor = ProductColor.builder()
+            .id(11L).product(mockProduct)
+            .colorName("Đen").colorCode("#000000")
+            .build();
+
         variant1 = ProductVariant.builder()
             .id(1L).product(mockProduct)
-            .color("Trắng").size("M").stockQuantity(10)
+            .color(mockColor).size("M").stockQuantity(10)
             .build();
 
         variant2 = ProductVariant.builder()
             .id(2L).product(mockProduct)
-            .color("Đen").size("L").stockQuantity(5)
+            .color(blackColor).size("L").stockQuantity(5)
             .priceAdjustment(new BigDecimal("50000"))
             .build();
     }
@@ -72,7 +86,7 @@ class ProductVariantServiceImplTest {
         List<ProductVariantResponse> result = variantService.getByProductId(1L);
 
         assertThat(result).hasSize(2);
-        assertThat(result.get(0).getColor()).isEqualTo("Trắng");
+        assertThat(result.get(0).getColorName()).isEqualTo("Trắng");
         assertThat(result.get(1).getPriceAdjustment()).isEqualByComparingTo("50000");
     }
 
@@ -91,9 +105,10 @@ class ProductVariantServiceImplTest {
 
     @Test
     void create_savesVariant_withValidRequest() {
-        ProductVariantRequest request = buildVariantRequest("Xanh", "XL", 20, null);
+        ProductVariantRequest request = buildVariantRequest(10L, "XL", 20, null);
         when(productRepository.findById(1L)).thenReturn(Optional.of(mockProduct));
-        when(variantRepository.existsByProductIdAndColorAndSize(1L, "Xanh", "XL")).thenReturn(false);
+        when(colorRepository.findById(10L)).thenReturn(Optional.of(mockColor));
+        when(variantRepository.existsByColorIdAndSize(10L, "XL")).thenReturn(false);
         when(variantRepository.save(any(ProductVariant.class))).thenAnswer(inv -> inv.getArgument(0));
 
         variantService.create(1L, request);
@@ -102,7 +117,7 @@ class ProductVariantServiceImplTest {
         verify(variantRepository).save(captor.capture());
 
         ProductVariant saved = captor.getValue();
-        assertThat(saved.getColor()).isEqualTo("Xanh");
+        assertThat(saved.getColor().getColorName()).isEqualTo("Trắng");
         assertThat(saved.getSize()).isEqualTo("XL");
         assertThat(saved.getStockQuantity()).isEqualTo(20);
         assertThat(saved.getProduct()).isEqualTo(mockProduct);
@@ -110,9 +125,10 @@ class ProductVariantServiceImplTest {
 
     @Test
     void create_throwsConflict_whenDuplicateColorSize() {
-        ProductVariantRequest request = buildVariantRequest("Trắng", "M", 5, null);
+        ProductVariantRequest request = buildVariantRequest(10L, "M", 5, null);
         when(productRepository.findById(1L)).thenReturn(Optional.of(mockProduct));
-        when(variantRepository.existsByProductIdAndColorAndSize(1L, "Trắng", "M")).thenReturn(true);
+        when(colorRepository.findById(10L)).thenReturn(Optional.of(mockColor));
+        when(variantRepository.existsByColorIdAndSize(10L, "M")).thenReturn(true);
 
         assertThatThrownBy(() -> variantService.create(1L, request))
             .isInstanceOf(BusinessException.class);
@@ -124,7 +140,7 @@ class ProductVariantServiceImplTest {
     void create_throwsNotFound_whenProductNotExists() {
         when(productRepository.findById(99L)).thenReturn(Optional.empty());
 
-        assertThatThrownBy(() -> variantService.create(99L, buildVariantRequest("X", "S", 1, null)))
+        assertThatThrownBy(() -> variantService.create(99L, buildVariantRequest(10L, "S", 1, null)))
             .isInstanceOf(BusinessException.class)
             .hasFieldOrPropertyWithValue("errorCode", ErrorCode.PRODUCT_NOT_FOUND);
     }
@@ -135,15 +151,16 @@ class ProductVariantServiceImplTest {
 
     @Test
     void update_updatesFields_correctly() {
-        ProductVariantRequest request = buildVariantRequest("Trắng Updated", "L", 15, new BigDecimal("30000"));
+        ProductVariantRequest request = buildVariantRequest(10L, "L", 15, new BigDecimal("30000"));
         when(variantRepository.findById(1L)).thenReturn(Optional.of(variant1));
-        when(variantRepository.existsByProductIdAndColorAndSizeAndIdNot(1L, "Trắng Updated", "L", 1L))
+        when(colorRepository.findById(10L)).thenReturn(Optional.of(mockColor));
+        when(variantRepository.existsByColorIdAndSizeAndIdNot(10L, "L", 1L))
             .thenReturn(false);
         when(variantRepository.save(any())).thenAnswer(inv -> inv.getArgument(0));
 
         variantService.update(1L, 1L, request);
 
-        assertThat(variant1.getColor()).isEqualTo("Trắng Updated");
+        assertThat(variant1.getColor().getColorName()).isEqualTo("Trắng");
         assertThat(variant1.getSize()).isEqualTo("L");
         assertThat(variant1.getStockQuantity()).isEqualTo(15);
         assertThat(variant1.getPriceAdjustment()).isEqualByComparingTo("30000");
@@ -151,10 +168,12 @@ class ProductVariantServiceImplTest {
 
     @Test
     void update_throwsConflict_whenDuplicateColorSizeOnOther() {
-        // Cố đổi variant1 thành cùng color/size với variant2
-        ProductVariantRequest request = buildVariantRequest("Đen", "L", 10, null);
+        ProductVariantRequest request = buildVariantRequest(11L, "L", 10, null);
+        ProductColor blackColor = ProductColor.builder()
+            .id(11L).product(mockProduct).colorName("Đen").build();
         when(variantRepository.findById(1L)).thenReturn(Optional.of(variant1));
-        when(variantRepository.existsByProductIdAndColorAndSizeAndIdNot(1L, "Đen", "L", 1L))
+        when(colorRepository.findById(11L)).thenReturn(Optional.of(blackColor));
+        when(variantRepository.existsByColorIdAndSizeAndIdNot(11L, "L", 1L))
             .thenReturn(true);
 
         assertThatThrownBy(() -> variantService.update(1L, 1L, request))
@@ -163,10 +182,9 @@ class ProductVariantServiceImplTest {
 
     @Test
     void update_throwsNotFound_whenVariantNotBelongToProduct() {
-        // variant1 thuộc product id=1, nhưng request gửi productId=99
         when(variantRepository.findById(1L)).thenReturn(Optional.of(variant1));
 
-        assertThatThrownBy(() -> variantService.update(99L, 1L, buildVariantRequest("X", "S", 1, null)))
+        assertThatThrownBy(() -> variantService.update(99L, 1L, buildVariantRequest(10L, "S", 1, null)))
             .isInstanceOf(BusinessException.class)
             .hasFieldOrPropertyWithValue("errorCode", ErrorCode.VARIANT_NOT_FOUND);
     }
@@ -197,10 +215,10 @@ class ProductVariantServiceImplTest {
     // Fixtures
     // ================================================================
 
-    private ProductVariantRequest buildVariantRequest(String color, String size,
+    private ProductVariantRequest buildVariantRequest(Long colorId, String size,
                                                        Integer stock, BigDecimal price) {
         ProductVariantRequest r = new ProductVariantRequest();
-        r.setColor(color);
+        r.setColorId(colorId);
         r.setSize(size);
         r.setStockQuantity(stock);
         r.setPrice(price);

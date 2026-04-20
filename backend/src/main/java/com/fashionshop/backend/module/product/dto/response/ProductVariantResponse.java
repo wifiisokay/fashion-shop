@@ -10,7 +10,8 @@ import java.math.BigDecimal;
 @Builder
 public class ProductVariantResponse {
     private Long id;
-    private String color;
+    private Long colorId;
+    private String colorName;
     private String size;
     private Integer stockQuantity;
     private BigDecimal priceAdjustment;
@@ -18,7 +19,8 @@ public class ProductVariantResponse {
     public static ProductVariantResponse from(ProductVariant variant) {
         return ProductVariantResponse.builder()
             .id(variant.getId())
-            .color(variant.getColor())
+            .colorId(variant.getColor() != null ? variant.getColor().getId() : null)
+            .colorName(variant.getColor() != null ? variant.getColor().getColorName() : null)
             .size(variant.getSize())
             .stockQuantity(variant.getStockQuantity())
             .priceAdjustment(variant.getPriceAdjustment())

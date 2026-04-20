@@ -6,13 +6,12 @@ import lombok.*;
 import java.math.BigDecimal;
 
 /**
- * Biến thể sản phẩm (color + size).
- * UNIQUE constraint: (product_id, color, size).
+ * Biến thể sản phẩm (color × size).
+ * UNIQUE constraint: (color_id, size).
  */
 @Entity
 @Table(name = "product_variants", uniqueConstraints = {
-    @UniqueConstraint(name = "uk_variant_product_color_size",
-                      columnNames = {"product_id", "color", "size"})
+    @UniqueConstraint(name = "uq_variant_v2", columnNames = {"color_id", "size"})
 })
 @Getter
 @Setter
@@ -29,8 +28,9 @@ public class ProductVariant {
     @JoinColumn(name = "product_id", nullable = false)
     private Product product;
 
-    @Column(nullable = false, length = 50)
-    private String color;
+    @ManyToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = "color_id", nullable = false)
+    private ProductColor color;
 
     @Column(nullable = false, length = 20)
     private String size;

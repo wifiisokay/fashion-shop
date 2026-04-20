@@ -1,7 +1,9 @@
 package com.fashionshop.backend.module.product;
 
 import com.fashionshop.backend.domain.Product;
+import com.fashionshop.backend.domain.ProductColor;
 import com.fashionshop.backend.domain.ProductImage;
+import com.fashionshop.backend.domain.repository.ProductColorRepository;
 import com.fashionshop.backend.domain.repository.ProductImageRepository;
 import com.fashionshop.backend.domain.repository.ProductRepository;
 import com.fashionshop.backend.exception.BusinessException;
@@ -17,6 +19,7 @@ import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.multipart.MultipartFile;
 
 import java.util.List;
+import java.util.Set;
 
 @Slf4j
 @Service
@@ -24,9 +27,13 @@ import java.util.List;
 public class ProductImageServiceImpl implements ProductImageService {
 
     private static final String CLOUDINARY_FOLDER = "fashion-shop/products";
+    private static final long MAX_FILE_SIZE = 5 * 1024 * 1024; // 5MB
+    private static final int MAX_IMAGES_PER_COLOR = 5;
+    private static final Set<String> ALLOWED_TYPES = Set.of("image/jpeg", "image/png", "image/webp");
 
     private final ProductImageRepository imageRepository;
     private final ProductRepository productRepository;
+    private final ProductColorRepository colorRepository;
     private final StorageService storageService;
 
     @Override
@@ -38,25 +45,32 @@ public class ProductImageServiceImpl implements ProductImageService {
 
     @Override
     @Transactional
-    public ProductImageResponse upload(Long productId, MultipartFile file, Long variantId, Boolean isPrimary) {
+    public ProductImageResponse uploadPrimary(Long productId, MultipartFile file) {
         Product product = findProductOrThrow(productId);
+        validateFile(file);
 
-        // 1. Upload lên Cloudinary
+        // Upload lên Cloudinary trước
         UploadResult uploadResult = storageService.uploadImage(file, CLOUDINARY_FOLDER);
 
         try {
-            // 2. Nếu isPrimary → clear primary cũ
-            if (Boolean.TRUE.equals(isPrimary)) {
-                imageRepository.clearPrimaryByProductId(productId);
+            // Tìm và xóa ảnh primary cũ (cả DB + Cloudinary)
+            List<ProductImage> oldPrimaries = imageRepository.findAllPrimaryByProductId(productId);
+            for (ProductImage old : oldPrimaries) {
+                try {
+                    storageService.deleteImage(old.getPublicId());
+                } catch (Exception ex) {
+                    log.warn("Không thể xóa ảnh Cloudinary cũ publicId={}", old.getPublicId(), ex);
+                }
+                imageRepository.delete(old);
             }
 
-            // 3. Save DB
+            // Save ảnh mới
             ProductImage image = ProductImage.builder()
                 .product(product)
-                .variantId(variantId)
+                .color(null)
                 .imageUrl(uploadResult.url())
                 .publicId(uploadResult.publicId())
-                .isPrimary(Boolean.TRUE.equals(isPrimary))
+                .isPrimary(true)
                 .sortOrder(0)
                 .build();
 
@@ -72,10 +86,55 @@ public class ProductImageServiceImpl implements ProductImageService {
 
     @Override
     @Transactional
-    public ProductImageResponse setPrimary(Long productId, Long imageId) {
+    public ProductImageResponse uploadColorImage(Long productId, Long colorId, MultipartFile file) {
+        Product product = findProductOrThrow(productId);
+        validateFile(file);
+
+        // Validate color tồn tại và thuộc product
+        ProductColor color = findColorOrThrow(colorId, productId);
+
+        // Enforce giới hạn 5 ảnh / màu
+        long currentCount = imageRepository.countByColorId(colorId);
+        if (currentCount >= MAX_IMAGES_PER_COLOR) {
+            throw new BusinessException(ErrorCode.IMAGE_LIMIT_EXCEEDED, HttpStatus.BAD_REQUEST);
+        }
+
+        // Tính sort_order tự động
+        int nextSortOrder = imageRepository.findMaxSortOrderByColorId(colorId) + 1;
+
+        // Upload lên Cloudinary
+        UploadResult uploadResult = storageService.uploadImage(file, CLOUDINARY_FOLDER);
+
+        try {
+            ProductImage image = ProductImage.builder()
+                .product(product)
+                .color(color)
+                .imageUrl(uploadResult.url())
+                .publicId(uploadResult.publicId())
+                .isPrimary(false)
+                .sortOrder(nextSortOrder)
+                .build();
+
+            return ProductImageResponse.from(imageRepository.save(image));
+
+        } catch (Exception ex) {
+            log.warn("DB save thất bại, cleanup Cloudinary publicId={}", uploadResult.publicId());
+            storageService.deleteImage(uploadResult.publicId());
+            throw ex;
+        }
+    }
+
+    @Override
+    @Transactional
+    public ProductImageResponse reorder(Long productId, Long imageId, Integer newSortOrder) {
         ProductImage image = findImageOrThrow(imageId, productId);
-        imageRepository.clearPrimaryByProductId(productId);
-        image.setIsPrimary(true);
+
+        if (image.getColor() == null) {
+            throw new BusinessException(ErrorCode.IMAGE_NOT_FOUND, HttpStatus.BAD_REQUEST,
+                "Không thể đổi thứ tự ảnh thẻ chính");
+        }
+
+        image.setSortOrder(newSortOrder);
         return ProductImageResponse.from(imageRepository.save(image));
     }
 
@@ -98,17 +157,40 @@ public class ProductImageServiceImpl implements ProductImageService {
 
     // ============ Private helpers ============
 
+    private void validateFile(MultipartFile file) {
+        if (file == null || file.isEmpty()) {
+            throw new BusinessException(ErrorCode.INVALID_FILE_TYPE, HttpStatus.BAD_REQUEST, "File ảnh không được để trống");
+        }
+        if (file.getSize() > MAX_FILE_SIZE) {
+            throw new BusinessException(ErrorCode.FILE_TOO_LARGE, HttpStatus.BAD_REQUEST,
+                "File ảnh tối đa 5MB, file hiện tại: " + (file.getSize() / 1024 / 1024) + "MB");
+        }
+        String contentType = file.getContentType();
+        if (contentType == null || !ALLOWED_TYPES.contains(contentType)) {
+            throw new BusinessException(ErrorCode.INVALID_FILE_TYPE, HttpStatus.BAD_REQUEST,
+                "Chỉ chấp nhận ảnh JPEG, PNG hoặc WebP. Loại file hiện tại: " + contentType);
+        }
+    }
+
     private Product findProductOrThrow(Long id) {
         return productRepository.findById(id)
             .orElseThrow(() -> new BusinessException(ErrorCode.PRODUCT_NOT_FOUND, HttpStatus.NOT_FOUND));
     }
 
+    private ProductColor findColorOrThrow(Long colorId, Long productId) {
+        ProductColor color = colorRepository.findById(colorId)
+            .orElseThrow(() -> new BusinessException(ErrorCode.COLOR_NOT_FOUND, HttpStatus.NOT_FOUND));
+        if (!color.getProduct().getId().equals(productId)) {
+            throw new BusinessException(ErrorCode.COLOR_NOT_BELONG, HttpStatus.BAD_REQUEST);
+        }
+        return color;
+    }
+
     private ProductImage findImageOrThrow(Long imageId, Long productId) {
         ProductImage image = imageRepository.findById(imageId)
-            .orElseThrow(() -> new BusinessException(ErrorCode.PRODUCT_NOT_FOUND, HttpStatus.NOT_FOUND,
-                "Không tìm thấy ảnh"));
+            .orElseThrow(() -> new BusinessException(ErrorCode.IMAGE_NOT_FOUND, HttpStatus.NOT_FOUND));
         if (!image.getProduct().getId().equals(productId)) {
-            throw new BusinessException(ErrorCode.PRODUCT_NOT_FOUND, HttpStatus.NOT_FOUND,
+            throw new BusinessException(ErrorCode.IMAGE_NOT_FOUND, HttpStatus.NOT_FOUND,
                 "Ảnh không thuộc sản phẩm này");
         }
         return image;

@@ -5,8 +5,9 @@ import lombok.*;
 
 /**
  * Ảnh sản phẩm — lưu trên Cloudinary.
- * variantId = NULL → ảnh chung sản phẩm.
- * Chỉ 1 ảnh isPrimary = true trên mỗi product.
+ * color = NULL, isPrimary = TRUE → ảnh chung sản phẩm (listing, chatbot).
+ * color != NULL, isPrimary = FALSE → ảnh theo màu (gallery detail).
+ * Hai loại row này tách biệt hoàn toàn.
  */
 @Entity
 @Table(name = "product_images")
@@ -25,9 +26,10 @@ public class ProductImage {
     @JoinColumn(name = "product_id", nullable = false)
     private Product product;
 
-    /** NULL = ảnh chung sản phẩm, có giá trị = ảnh riêng variant. */
-    @Column(name = "variant_id")
-    private Long variantId;
+    /** NULL = ảnh chung sản phẩm, có giá trị = ảnh riêng cho màu đó. */
+    @ManyToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = "color_id")
+    private ProductColor color;
 
     @Column(name = "image_url", nullable = false, length = 500)
     private String imageUrl;

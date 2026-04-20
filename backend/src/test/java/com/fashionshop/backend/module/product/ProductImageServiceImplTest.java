@@ -3,7 +3,9 @@ package com.fashionshop.backend.module.product;
 import com.fashionshop.backend.common.enums.Gender;
 import com.fashionshop.backend.common.enums.ProductStatus;
 import com.fashionshop.backend.domain.Product;
+import com.fashionshop.backend.domain.ProductColor;
 import com.fashionshop.backend.domain.ProductImage;
+import com.fashionshop.backend.domain.repository.ProductColorRepository;
 import com.fashionshop.backend.domain.repository.ProductImageRepository;
 import com.fashionshop.backend.domain.repository.ProductRepository;
 import com.fashionshop.backend.exception.BusinessException;
@@ -36,11 +38,13 @@ class ProductImageServiceImplTest {
 
     @Mock private ProductImageRepository imageRepository;
     @Mock private ProductRepository productRepository;
+    @Mock private ProductColorRepository colorRepository;
     @Mock private StorageService storageService;
     @InjectMocks private ProductImageServiceImpl imageService;
 
     private Product mockProduct;
-    private ProductImage image1;
+    private ProductColor mockColor;
+    private ProductImage primaryImage;
     private MultipartFile mockFile;
 
     @BeforeEach
@@ -52,73 +56,91 @@ class ProductImageServiceImplTest {
             .variants(new ArrayList<>()).images(new ArrayList<>())
             .build();
 
-        image1 = ProductImage.builder()
+        mockColor = ProductColor.builder()
+            .id(10L).product(mockProduct)
+            .colorName("Đen").colorCode("#000000")
+            .build();
+
+        primaryImage = ProductImage.builder()
             .id(1L).product(mockProduct)
-            .imageUrl("https://cdn.test.com/img1.jpg")
-            .publicId("fashion-shop/products/uuid-1")
+            .imageUrl("https://cdn.test.com/old-primary.jpg")
+            .publicId("fashion-shop/products/uuid-old-primary")
             .isPrimary(true).sortOrder(0)
             .build();
 
         mockFile = mock(MultipartFile.class);
     }
 
+    /** Stub mockFile trả content-type và size hợp lệ — bắt buộc gọi trong mọi test có upload. */
+    private void stubValidFile() {
+        when(mockFile.getContentType()).thenReturn("image/jpeg");
+        when(mockFile.getSize()).thenReturn(1024L);
+        when(mockFile.isEmpty()).thenReturn(false);
+    }
+
     // ================================================================
-    // upload
+    // uploadPrimary
     // ================================================================
 
     @Test
-    void upload_savesImage_withValidFile() {
-        UploadResult uploadResult = new UploadResult("https://cdn.test.com/new.jpg", "fashion-shop/products/uuid-new");
+    void uploadPrimary_savesNewImage_whenNoPreviousPrimary() {
+        stubValidFile();
+        UploadResult uploadResult = new UploadResult("https://cdn.test.com/primary.jpg", "uuid-primary");
         when(productRepository.findById(1L)).thenReturn(Optional.of(mockProduct));
         when(storageService.uploadImage(eq(mockFile), eq("fashion-shop/products"))).thenReturn(uploadResult);
+        when(imageRepository.findAllPrimaryByProductId(1L)).thenReturn(List.of());
         when(imageRepository.save(any(ProductImage.class))).thenAnswer(inv -> inv.getArgument(0));
 
-        ProductImageResponse result = imageService.upload(1L, mockFile, null, false);
+        ProductImageResponse result = imageService.uploadPrimary(1L, mockFile);
 
-        ArgumentCaptor<ProductImage> captor = ArgumentCaptor.forClass(ProductImage.class);
-        verify(imageRepository).save(captor.capture());
-
-        ProductImage saved = captor.getValue();
-        assertThat(saved.getImageUrl()).isEqualTo("https://cdn.test.com/new.jpg");
-        assertThat(saved.getPublicId()).isEqualTo("fashion-shop/products/uuid-new");
-        assertThat(saved.getIsPrimary()).isFalse();
+        assertThat(result.getIsPrimary()).isTrue();
+        assertThat(result.getImageUrl()).isEqualTo("https://cdn.test.com/primary.jpg");
+        verify(storageService, never()).deleteImage(anyString()); // không có ảnh cũ để xóa
     }
 
     @Test
-    void upload_clearsPrimary_whenIsPrimaryTrue() {
-        UploadResult uploadResult = new UploadResult("https://cdn.test.com/primary.jpg", "uuid-p");
+    void uploadPrimary_replacesOldImage_whenAlreadyExists() {
+        stubValidFile();
+        UploadResult uploadResult = new UploadResult("https://cdn.test.com/new-primary.jpg", "uuid-new");
         when(productRepository.findById(1L)).thenReturn(Optional.of(mockProduct));
         when(storageService.uploadImage(any(), any())).thenReturn(uploadResult);
+        when(imageRepository.findAllPrimaryByProductId(1L)).thenReturn(List.of(primaryImage));
         when(imageRepository.save(any(ProductImage.class))).thenAnswer(inv -> inv.getArgument(0));
 
-        imageService.upload(1L, mockFile, null, true);
+        imageService.uploadPrimary(1L, mockFile);
 
-        verify(imageRepository).clearPrimaryByProductId(1L);
-
+        // Verify ảnh cũ bị xóa trên Cloudinary
+        verify(storageService).deleteImage("fashion-shop/products/uuid-old-primary");
+        // Verify record cũ bị xóa trong DB
+        verify(imageRepository).delete(primaryImage);
+        // Verify record mới được save
         ArgumentCaptor<ProductImage> captor = ArgumentCaptor.forClass(ProductImage.class);
         verify(imageRepository).save(captor.capture());
         assertThat(captor.getValue().getIsPrimary()).isTrue();
+        assertThat(captor.getValue().getSortOrder()).isEqualTo(0);
+        assertThat(captor.getValue().getColor()).isNull();
     }
 
     @Test
-    void upload_deletesCloudinary_whenDbSaveFails() {
+    void uploadPrimary_cleansUpCloudinary_whenDbSaveFails() {
+        stubValidFile();
         UploadResult uploadResult = new UploadResult("https://cdn.test.com/fail.jpg", "uuid-fail");
         when(productRepository.findById(1L)).thenReturn(Optional.of(mockProduct));
         when(storageService.uploadImage(any(), any())).thenReturn(uploadResult);
+        when(imageRepository.findAllPrimaryByProductId(1L)).thenReturn(List.of());
         when(imageRepository.save(any(ProductImage.class))).thenThrow(new RuntimeException("DB error"));
 
-        assertThatThrownBy(() -> imageService.upload(1L, mockFile, null, false))
+        assertThatThrownBy(() -> imageService.uploadPrimary(1L, mockFile))
             .isInstanceOf(RuntimeException.class);
 
-        // Verify cleanup: Cloudinary image phải được xóa khi DB save fail
         verify(storageService).deleteImage("uuid-fail");
     }
 
     @Test
-    void upload_throwsNotFound_whenProductNotExists() {
+    void uploadPrimary_throwsNotFound_whenProductNotExists() {
         when(productRepository.findById(99L)).thenReturn(Optional.empty());
 
-        assertThatThrownBy(() -> imageService.upload(99L, mockFile, null, false))
+        assertThatThrownBy(() -> imageService.uploadPrimary(99L, mockFile))
             .isInstanceOf(BusinessException.class)
             .hasFieldOrPropertyWithValue("errorCode", ErrorCode.PRODUCT_NOT_FOUND);
 
@@ -126,34 +148,114 @@ class ProductImageServiceImplTest {
     }
 
     // ================================================================
-    // setPrimary
+    // uploadColorImage
     // ================================================================
 
     @Test
-    void setPrimary_setsFlag_correctly() {
-        ProductImage nonPrimary = ProductImage.builder()
-            .id(2L).product(mockProduct)
-            .imageUrl("https://cdn.test.com/img2.jpg").publicId("uuid-2")
-            .isPrimary(false).sortOrder(1)
-            .build();
+    void uploadColorImage_savesImage_withAutoSortOrder() {
+        stubValidFile();
+        UploadResult uploadResult = new UploadResult("https://cdn.test.com/color.jpg", "uuid-color");
+        when(productRepository.findById(1L)).thenReturn(Optional.of(mockProduct));
+        when(colorRepository.findById(10L)).thenReturn(Optional.of(mockColor));
+        when(imageRepository.countByColorId(10L)).thenReturn(2L);
+        when(imageRepository.findMaxSortOrderByColorId(10L)).thenReturn(2);
+        when(storageService.uploadImage(eq(mockFile), eq("fashion-shop/products"))).thenReturn(uploadResult);
+        when(imageRepository.save(any(ProductImage.class))).thenAnswer(inv -> inv.getArgument(0));
 
-        when(imageRepository.findById(2L)).thenReturn(Optional.of(nonPrimary));
-        when(imageRepository.save(any())).thenAnswer(inv -> inv.getArgument(0));
+        ProductImageResponse result = imageService.uploadColorImage(1L, 10L, mockFile);
 
-        imageService.setPrimary(1L, 2L);
+        ArgumentCaptor<ProductImage> captor = ArgumentCaptor.forClass(ProductImage.class);
+        verify(imageRepository).save(captor.capture());
 
-        verify(imageRepository).clearPrimaryByProductId(1L);
-        assertThat(nonPrimary.getIsPrimary()).isTrue();
+        ProductImage saved = captor.getValue();
+        assertThat(saved.getColor()).isEqualTo(mockColor);
+        assertThat(saved.getIsPrimary()).isFalse();
+        assertThat(saved.getSortOrder()).isEqualTo(3); // MAX(2) + 1
     }
 
     @Test
-    void setPrimary_throwsNotFound_whenImageNotBelongToProduct() {
-        // image1 thuộc product 1, nhưng request gửi productId=99
-        when(imageRepository.findById(1L)).thenReturn(Optional.of(image1));
+    void uploadColorImage_throwsLimitExceeded_whenColorHas5Images() {
+        stubValidFile();
+        when(productRepository.findById(1L)).thenReturn(Optional.of(mockProduct));
+        when(colorRepository.findById(10L)).thenReturn(Optional.of(mockColor));
+        when(imageRepository.countByColorId(10L)).thenReturn(5L);
 
-        assertThatThrownBy(() -> imageService.setPrimary(99L, 1L))
+        assertThatThrownBy(() -> imageService.uploadColorImage(1L, 10L, mockFile))
             .isInstanceOf(BusinessException.class)
-            .hasFieldOrPropertyWithValue("errorCode", ErrorCode.PRODUCT_NOT_FOUND);
+            .hasFieldOrPropertyWithValue("errorCode", ErrorCode.IMAGE_LIMIT_EXCEEDED);
+
+        verify(storageService, never()).uploadImage(any(), any());
+    }
+
+    @Test
+    void uploadColorImage_throwsColorNotFound_whenColorNotExists() {
+        stubValidFile();
+        when(productRepository.findById(1L)).thenReturn(Optional.of(mockProduct));
+        when(colorRepository.findById(99L)).thenReturn(Optional.empty());
+
+        assertThatThrownBy(() -> imageService.uploadColorImage(1L, 99L, mockFile))
+            .isInstanceOf(BusinessException.class)
+            .hasFieldOrPropertyWithValue("errorCode", ErrorCode.COLOR_NOT_FOUND);
+    }
+
+    @Test
+    void uploadColorImage_throwsColorNotBelong_whenColorOfDifferentProduct() {
+        stubValidFile();
+        Product otherProduct = Product.builder().id(2L).name("Khác").build();
+        ProductColor otherColor = ProductColor.builder().id(20L).product(otherProduct).colorName("Xanh").build();
+        when(productRepository.findById(1L)).thenReturn(Optional.of(mockProduct));
+        when(colorRepository.findById(20L)).thenReturn(Optional.of(otherColor));
+
+        assertThatThrownBy(() -> imageService.uploadColorImage(1L, 20L, mockFile))
+            .isInstanceOf(BusinessException.class)
+            .hasFieldOrPropertyWithValue("errorCode", ErrorCode.COLOR_NOT_BELONG);
+    }
+
+    @Test
+    void uploadColorImage_cleansUpCloudinary_whenDbSaveFails() {
+        stubValidFile();
+        UploadResult uploadResult = new UploadResult("https://cdn.test.com/fail.jpg", "uuid-fail");
+        when(productRepository.findById(1L)).thenReturn(Optional.of(mockProduct));
+        when(colorRepository.findById(10L)).thenReturn(Optional.of(mockColor));
+        when(imageRepository.countByColorId(10L)).thenReturn(0L);
+        when(imageRepository.findMaxSortOrderByColorId(10L)).thenReturn(0);
+        when(storageService.uploadImage(any(), any())).thenReturn(uploadResult);
+        when(imageRepository.save(any(ProductImage.class))).thenThrow(new RuntimeException("DB error"));
+
+        assertThatThrownBy(() -> imageService.uploadColorImage(1L, 10L, mockFile))
+            .isInstanceOf(RuntimeException.class);
+
+        verify(storageService).deleteImage("uuid-fail");
+    }
+
+    // ================================================================
+    // reorder
+    // ================================================================
+
+    @Test
+    void reorder_updatesSortOrder() {
+        ProductImage colorImage = ProductImage.builder()
+            .id(5L).product(mockProduct).color(mockColor)
+            .imageUrl("https://cdn.test.com/c1.jpg").publicId("uuid-c1")
+            .isPrimary(false).sortOrder(1)
+            .build();
+
+        when(imageRepository.findById(5L)).thenReturn(Optional.of(colorImage));
+        when(imageRepository.save(any())).thenAnswer(inv -> inv.getArgument(0));
+
+        ProductImageResponse result = imageService.reorder(1L, 5L, 3);
+
+        assertThat(result.getSortOrder()).isEqualTo(3);
+    }
+
+    @Test
+    void reorder_throwsError_whenImageIsPrimary() {
+        // Primary images (color=null) cannot be reordered
+        when(imageRepository.findById(1L)).thenReturn(Optional.of(primaryImage));
+
+        assertThatThrownBy(() -> imageService.reorder(1L, 1L, 2))
+            .isInstanceOf(BusinessException.class)
+            .hasFieldOrPropertyWithValue("errorCode", ErrorCode.IMAGE_NOT_FOUND);
     }
 
     // ================================================================
@@ -162,21 +264,30 @@ class ProductImageServiceImplTest {
 
     @Test
     void delete_removesDbAndCloudinary() {
-        when(imageRepository.findById(1L)).thenReturn(Optional.of(image1));
+        when(imageRepository.findById(1L)).thenReturn(Optional.of(primaryImage));
 
         imageService.delete(1L, 1L);
 
-        verify(imageRepository).delete(image1);
-        verify(storageService).deleteImage("fashion-shop/products/uuid-1");
+        verify(imageRepository).delete(primaryImage);
+        verify(storageService).deleteImage("fashion-shop/products/uuid-old-primary");
     }
 
     @Test
-    void delete_throwsNotFound_whenImageNotExists() {
+    void delete_throwsImageNotFound_whenImageNotExists() {
         when(imageRepository.findById(99L)).thenReturn(Optional.empty());
 
         assertThatThrownBy(() -> imageService.delete(1L, 99L))
             .isInstanceOf(BusinessException.class)
-            .hasFieldOrPropertyWithValue("errorCode", ErrorCode.PRODUCT_NOT_FOUND);
+            .hasFieldOrPropertyWithValue("errorCode", ErrorCode.IMAGE_NOT_FOUND);
+    }
+
+    @Test
+    void delete_throwsImageNotFound_whenImageNotBelongToProduct() {
+        when(imageRepository.findById(1L)).thenReturn(Optional.of(primaryImage));
+
+        assertThatThrownBy(() -> imageService.delete(99L, 1L))
+            .isInstanceOf(BusinessException.class)
+            .hasFieldOrPropertyWithValue("errorCode", ErrorCode.IMAGE_NOT_FOUND);
     }
 
     // ================================================================
@@ -185,12 +296,12 @@ class ProductImageServiceImplTest {
 
     @Test
     void getByProductId_returnsList() {
-        when(imageRepository.findByProductIdOrderBySortOrderAsc(1L)).thenReturn(List.of(image1));
+        when(imageRepository.findByProductIdOrderBySortOrderAsc(1L)).thenReturn(List.of(primaryImage));
 
         List<ProductImageResponse> result = imageService.getByProductId(1L);
 
         assertThat(result).hasSize(1);
-        assertThat(result.get(0).getImageUrl()).isEqualTo("https://cdn.test.com/img1.jpg");
+        assertThat(result.get(0).getImageUrl()).isEqualTo("https://cdn.test.com/old-primary.jpg");
         assertThat(result.get(0).getIsPrimary()).isTrue();
     }
 }
