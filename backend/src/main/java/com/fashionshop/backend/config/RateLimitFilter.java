@@ -18,6 +18,15 @@ import java.time.Instant;
 import java.util.HashMap;
 import java.util.Map;
 
+/**
+ * Rate limit filter cho các auth endpoint nhạy cảm.
+ *
+ * Bảo vệ:
+ * - /api/auth/login          — chống brute-force
+ * - /api/auth/register       — chống tạo account rác hàng loạt
+ * - /api/auth/forgot-password — chống spam email
+ * - /api/auth/reset-password  — chống brute-force reset token
+ */
 @Component
 @RequiredArgsConstructor
 public class RateLimitFilter extends OncePerRequestFilter {
@@ -30,6 +39,12 @@ public class RateLimitFilter extends OncePerRequestFilter {
 
     @Value("${security.rate-limit.login.window-seconds:60}")
     private int loginWindowSeconds;
+
+    @Value("${security.rate-limit.register.max-requests:5}")
+    private int registerMaxRequests;
+
+    @Value("${security.rate-limit.register.window-seconds:60}")
+    private int registerWindowSeconds;
 
     @Value("${security.rate-limit.forgot-password.max-requests:5}")
     private int forgotPasswordMaxRequests;
@@ -54,6 +69,11 @@ public class RateLimitFilter extends OncePerRequestFilter {
         if ("POST".equalsIgnoreCase(method)) {
             if ("/api/auth/login".equals(path)) {
                 if (!allow("login", clientIp, loginMaxRequests, loginWindowSeconds)) {
+                    writeRateLimitResponse(response);
+                    return;
+                }
+            } else if ("/api/auth/register".equals(path)) {
+                if (!allow("register", clientIp, registerMaxRequests, registerWindowSeconds)) {
                     writeRateLimitResponse(response);
                     return;
                 }

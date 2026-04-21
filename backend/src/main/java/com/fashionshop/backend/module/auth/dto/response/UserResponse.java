@@ -1,4 +1,4 @@
-package com.fashionshop.backend.module.auth.dto;
+package com.fashionshop.backend.module.auth.dto.response;
 
 import com.fashionshop.backend.common.enums.Role;
 import com.fashionshop.backend.common.enums.UserStatus;

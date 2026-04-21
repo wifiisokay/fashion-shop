@@ -1,4 +1,4 @@
-package com.fashionshop.backend.module.auth.dto;
+package com.fashionshop.backend.module.auth.dto.request;
 
 import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.Size;
@@ -7,10 +7,10 @@ import lombok.Setter;
 
 @Getter
 @Setter
-public class ResetPasswordRequest {
+public class ChangePasswordRequest {
 
-    @NotBlank(message = "Reset token không được để trống")
-    private String token;
+    @NotBlank(message = "Mật khẩu hiện tại không được để trống")
+    private String oldPassword;
 
     @NotBlank(message = "Mật khẩu mới không được để trống")
     @Size(min = 8, message = "Mật khẩu mới tối thiểu 8 ký tự")

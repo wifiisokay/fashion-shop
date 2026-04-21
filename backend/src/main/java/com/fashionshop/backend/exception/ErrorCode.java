@@ -20,6 +20,10 @@ public enum ErrorCode {
 
     // CATEGORY
     CATEGORY_NOT_FOUND("CATEGORY_001", "Danh mục không tồn tại"),
+    CATEGORY_SLUG_EXISTS("CATEGORY_002", "Slug danh mục đã tồn tại"),
+    CATEGORY_INVALID_PARENT("CATEGORY_003", "Danh mục cha không hợp lệ"),
+    CATEGORY_HAS_ACTIVE_PRODUCTS("CATEGORY_004", "Danh mục đang có sản phẩm đang hoạt động"),
+    CATEGORY_HAS_CHILDREN("CATEGORY_005", "Danh mục đang có danh mục con"),
 
     // ORDER
     ORDER_NOT_FOUND("ORDER_001", "Đơn hàng không tồn tại"),
