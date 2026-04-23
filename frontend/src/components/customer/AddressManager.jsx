@@ -5,7 +5,7 @@ import { z } from 'zod';
 import { MapPin, Plus, Loader2 } from 'lucide-react';
 import Button from '../ui/Button';
 import Spinner from '../ui/Spinner';
-import axios from 'axios';
+import { ghnApi } from '../../api/ghnApi';
 import { useAddresses } from '../../hooks/useAddresses';
 
 /**
@@ -13,7 +13,8 @@ import { useAddresses } from '../../hooks/useAddresses';
  *  fullName, phone, province, provinceCode (number), district, districtCode (number),
  *  ward, wardCode (String!), street, isDefault
  *
- * wardCode là String theo GHN format (vd: "1A0807"), provinceCode và districtCode là số.
+ * Tất cả mã tỉnh/quận/phường giờ lấy từ GHN master-data (thống nhất với shipping).
+ * provinceCode = GHN ProvinceID, districtCode = GHN DistrictID, wardCode = GHN WardCode (String).
  */
 const addressSchema = z.object({
   fullName: z.string().min(2, 'Tên người nhận phải có ít nhất 2 ký tự').max(100),
@@ -44,10 +45,11 @@ const AddressManager = () => {
   const [isEditing, setIsEditing] = useState(false);
   const [currentAddress, setCurrentAddress] = useState(null);
 
-  // Danh sách tỉnh/huyện/xã từ provinces.open-api.vn
+  // Danh sách tỉnh/huyện/xã từ GHN (thống nhất với shipping)
   const [provinces, setProvinces] = useState([]);
   const [districts, setDistricts] = useState([]);
   const [wards, setWards] = useState([]);
+  const [loadingProvinces, setLoadingProvinces] = useState(false);
   const [loadingDistricts, setLoadingDistricts] = useState(false);
   const [loadingWards, setLoadingWards] = useState(false);
 
@@ -66,21 +68,23 @@ const AddressManager = () => {
   const selectedProvinceCode = watch('provinceCode');
   const selectedDistrictCode = watch('districtCode');
 
-  // Fetch provinces một lần
+  // Fetch provinces một lần từ GHN
   useEffect(() => {
-    axios
-      .get('https://provinces.open-api.vn/api/p/')
-      .then((res) => setProvinces(res.data))
-      .catch((err) => console.error('Không tải được danh sách tỉnh:', err));
+    setLoadingProvinces(true);
+    ghnApi
+      .getProvinces()
+      .then((res) => setProvinces(res.data.data || []))
+      .catch((err) => console.error('Không tải được danh sách tỉnh GHN:', err))
+      .finally(() => setLoadingProvinces(false));
   }, []);
 
-  // Fetch districts khi chọn tỉnh
+  // Fetch districts khi chọn tỉnh (dùng GHN)
   useEffect(() => {
     if (selectedProvinceCode) {
       setLoadingDistricts(true);
-      axios
-        .get(`https://provinces.open-api.vn/api/p/${selectedProvinceCode}?depth=2`)
-        .then((res) => setDistricts(res.data.districts || []))
+      ghnApi
+        .getDistricts(selectedProvinceCode)
+        .then((res) => setDistricts(res.data.data || []))
         .catch((err) => console.error(err))
         .finally(() => setLoadingDistricts(false));
     } else {
@@ -88,13 +92,13 @@ const AddressManager = () => {
     }
   }, [selectedProvinceCode]);
 
-  // Fetch wards khi chọn huyện
+  // Fetch wards khi chọn huyện (dùng GHN)
   useEffect(() => {
     if (selectedDistrictCode) {
       setLoadingWards(true);
-      axios
-        .get(`https://provinces.open-api.vn/api/d/${selectedDistrictCode}?depth=2`)
-        .then((res) => setWards(res.data.wards || []))
+      ghnApi
+        .getWards(selectedDistrictCode)
+        .then((res) => setWards(res.data.data || []))
         .catch((err) => console.error(err))
         .finally(() => setLoadingWards(false));
     } else {
@@ -222,7 +226,7 @@ const AddressManager = () => {
               </div>
             </div>
 
-            {/* Tỉnh / Huyện / Xã */}
+            {/* Tỉnh / Huyện / Xã — GHN master data */}
             <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
               {/* Tỉnh/Thành */}
               <div>
@@ -244,12 +248,15 @@ const AddressManager = () => {
                     setDistricts([]);
                     setWards([]);
                   }}
-                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-black"
+                  disabled={loadingProvinces}
+                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-black disabled:bg-gray-100"
                 >
-                  <option value="">Chọn Tỉnh/Thành</option>
+                  <option value="">
+                    {loadingProvinces ? 'Đang tải...' : 'Chọn Tỉnh/Thành'}
+                  </option>
                   {provinces.map((p) => (
-                    <option key={p.code} value={p.code}>
-                      {p.name}
+                    <option key={p.ProvinceID} value={p.ProvinceID}>
+                      {p.ProvinceName}
                     </option>
                   ))}
                 </select>
@@ -281,8 +288,8 @@ const AddressManager = () => {
                     {loadingDistricts ? 'Đang tải...' : 'Chọn Quận/Huyện'}
                   </option>
                   {districts.map((d) => (
-                    <option key={d.code} value={d.code}>
-                      {d.name}
+                    <option key={d.DistrictID} value={d.DistrictID}>
+                      {d.DistrictName}
                     </option>
                   ))}
                 </select>
@@ -297,11 +304,12 @@ const AddressManager = () => {
                   Phường/Xã
                 </label>
                 <select
-                  {...register('wardCode')}
+                  value={watch('wardCode') || ''}
                   onChange={(e) => {
-                    register('wardCode').onChange(e);
+                    const code = e.target.value;
                     const name = e.target.options[e.target.selectedIndex].text;
-                    setValue('ward', e.target.value ? name : '', { shouldValidate: true });
+                    setValue('wardCode', code, { shouldValidate: true });
+                    setValue('ward', code ? name : '', { shouldValidate: true });
                   }}
                   disabled={!selectedDistrictCode || loadingWards}
                   className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-black disabled:bg-gray-100"
@@ -310,8 +318,8 @@ const AddressManager = () => {
                     {loadingWards ? 'Đang tải...' : 'Chọn Phường/Xã'}
                   </option>
                   {wards.map((w) => (
-                    <option key={w.code} value={String(w.code)}>
-                      {w.name}
+                    <option key={w.WardCode} value={String(w.WardCode)}>
+                      {w.WardName}
                     </option>
                   ))}
                 </select>
@@ -382,9 +390,8 @@ const AddressManager = () => {
             addresses.map((address) => (
               <div
                 key={address.id}
-                className={`p-4 rounded-xl border transition-colors ${
-                  address.isDefault ? 'border-black bg-gray-50' : 'border-gray-200'
-                } flex flex-col sm:flex-row justify-between gap-4`}
+                className={`p-4 rounded-xl border transition-colors ${address.isDefault ? 'border-black bg-gray-50' : 'border-gray-200'
+                  } flex flex-col sm:flex-row justify-between gap-4`}
               >
                 <div className="space-y-1">
                   <div className="flex items-center gap-2 flex-wrap">

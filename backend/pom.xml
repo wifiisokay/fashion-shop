@@ -104,6 +104,12 @@
             <version>2.0.0</version>
         </dependency>
 
+        <!-- Caffeine Cache (shipping fee cache) -->
+        <dependency>
+            <groupId>com.github.ben-manes.caffeine</groupId>
+            <artifactId>caffeine</artifactId>
+        </dependency>
+
         <!-- Test -->
         <dependency>
             <groupId>org.springframework.boot</groupId>

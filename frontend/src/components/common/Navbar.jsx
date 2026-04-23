@@ -31,6 +31,7 @@ const Navbar = () => {
     { label: 'Người dùng', path: ROUTES.ADMIN_USERS },
     { label: 'Đơn hàng', path: ROUTES.STAFF_ORDERS },
     { label: 'Đổi/Trả', path: ROUTES.STAFF_RETURNS },
+    { label: 'Cài đặt', path: ROUTES.ADMIN_SETTINGS },
   ];
 
   const menu =

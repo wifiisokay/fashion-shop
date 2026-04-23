@@ -101,7 +101,12 @@ const ProductDetailPage = () => {
 
   const hasActiveSale = product.isSale && product.salePrice &&
     (product.saleStartDate ? isSaleActive(product.saleStartDate, product.saleEndDate) : true);
-  const displayPrice = hasActiveSale ? product.salePrice : (product.basePrice || product.price);
+    
+  const selectedVariant = availableSizes.find((s) => s.size === selectedSize);
+  const adjustment = selectedVariant?.priceAdjustment || 0;
+
+  const originalPrice = (product.basePrice || product.price) + adjustment;
+  const displayPrice = hasActiveSale ? (product.salePrice + adjustment) : originalPrice;
 
   return (
     <div className="space-y-12">
@@ -177,8 +182,8 @@ const ProductDetailPage = () => {
           <div className="flex items-baseline gap-4">
             {hasActiveSale ? (
               <>
-                <p className="text-3xl font-bold text-red-600">{formatPrice(product.salePrice)}</p>
-                <p className="text-xl text-gray-400 line-through">{formatPrice(product.basePrice || product.price)}</p>
+                <p className="text-3xl font-bold text-red-600">{formatPrice(displayPrice)}</p>
+                <p className="text-xl text-gray-400 line-through">{formatPrice(originalPrice)}</p>
                 <span className="bg-red-100 text-red-800 text-xs font-semibold px-2.5 py-0.5 rounded">Sale</span>
               </>
             ) : (

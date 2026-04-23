@@ -28,4 +28,5 @@ export const QUERY_KEYS = {
   adminProducts:     (params = {})  => ['admin', 'products', params],
   adminProduct:      (id)           => ['admin', 'products', String(id)],
   users:             (params = {})  => ['admin', 'users', params],
+  shopConfig:        ()             => ['admin', 'shopConfig'],
 };

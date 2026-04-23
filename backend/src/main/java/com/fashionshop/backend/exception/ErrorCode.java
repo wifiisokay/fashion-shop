@@ -64,6 +64,10 @@ public enum ErrorCode {
     // ADDRESS
     ADDRESS_NOT_FOUND("ADDRESS_001", "Địa chỉ không tồn tại"),
 
+    // SHIPPING
+    SHIPPING_SERVICE_UNAVAILABLE("SHIPPING_001", "Không có dịch vụ vận chuyển khả dụng cho tuyến này"),
+    ADDRESS_NOT_BELONG_TO_USER  ("SHIPPING_002", "Địa chỉ không thuộc về người dùng"),
+
     // RETURN / REVIEW
     RETURN_NOT_FOUND("RETURN_001", "Yêu cầu trả hàng không tồn tại"),
     REVIEW_NOT_FOUND("REVIEW_001", "Đánh giá không tồn tại"),

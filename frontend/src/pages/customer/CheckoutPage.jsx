@@ -4,6 +4,7 @@ import { z } from 'zod';
 import { useNavigate, Link } from 'react-router-dom';
 import { useCart } from '../../hooks/useCart';
 import { useAddresses } from '../../hooks/useAddresses';
+import { useShippingFee } from '../../hooks/useShippingFee';
 import { ROUTES } from '../../constants/routes';
 import Button from '../../components/ui/Button';
 import Spinner from '../../components/ui/Spinner';
@@ -37,7 +38,15 @@ const CheckoutPage = () => {
 
   const cartItems = cartData?.items || [];
   const subtotal = cartData?.totalPrice || 0;
-  const shippingFee = 30000;
+  
+  // GHN Shipping API
+  const { 
+    data: shippingData, 
+    isLoading: shippingLoading, 
+    isError: shippingError 
+  } = useShippingFee(selectedAddressId, subtotal);
+
+  const shippingFee = shippingData?.fee || 0;
   const total = subtotal + shippingFee;
 
   const onSubmit = async (data) => {
@@ -182,9 +191,27 @@ const CheckoutPage = () => {
               <span>Tạm tính</span>
               <span className="font-medium text-gray-900">{formatPrice(subtotal)}</span>
             </div>
-            <div className="flex justify-between">
-              <span>Phí vận chuyển</span>
-              <span className="font-medium text-gray-900">{formatPrice(shippingFee)}</span>
+            <div className="flex justify-between items-start">
+              <div className="flex flex-col">
+                <span>Phí vận chuyển</span>
+                {shippingData?.estimatedDateText && (
+                  <span className="text-xs text-green-600 mt-0.5">{shippingData.estimatedDateText}</span>
+                )}
+                {shippingData?.fallback && (
+                  <span className="text-xs text-amber-600 mt-0.5">Phí ước tính (GHN đang bảo trì)</span>
+                )}
+              </div>
+              <div className="font-medium text-gray-900 text-right mt-0.5">
+                {shippingLoading ? (
+                  <div className="w-16 h-5 bg-gray-200 animate-pulse rounded"></div>
+                ) : !selectedAddressId ? (
+                  <span className="text-gray-400 text-sm font-normal">Chưa chọn địa chỉ</span>
+                ) : shippingError ? (
+                  <span className="text-red-500 text-sm font-normal">Lỗi tính phí</span>
+                ) : (
+                  formatPrice(shippingFee)
+                )}
+              </div>
             </div>
             <div className="border-t border-gray-200 pt-3 flex justify-between text-lg font-bold text-gray-900">
               <span>Tổng cộng</span>
@@ -192,7 +219,13 @@ const CheckoutPage = () => {
             </div>
           </div>
 
-          <Button type="submit" className="w-full" size="lg" loading={isSubmitting} disabled={cartData?.hasUnavailableItems}>
+          <Button 
+            type="submit" 
+            className="w-full" 
+            size="lg" 
+            loading={isSubmitting} 
+            disabled={cartData?.hasUnavailableItems || shippingLoading || (!shippingData && !!selectedAddressId)}
+          >
             {cartData?.hasUnavailableItems ? 'Vui lòng cập nhật giỏ hàng' : 'Đặt hàng'}
           </Button>
         </div>

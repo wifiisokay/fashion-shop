@@ -26,6 +26,7 @@ import ProductManagePage from '../pages/admin/ProductManagePage';
 import ProductFormPage from '../pages/admin/ProductFormPage';
 import CategoryManagePage from '../pages/admin/CategoryManagePage';
 import UserManagePage from '../pages/admin/UserManagePage';
+import ShopSettingsPage from '../pages/admin/ShopSettingsPage';
 
 const AppRouter = () => {
   return (
@@ -79,6 +80,7 @@ const AppRouter = () => {
           <Route path="products/form" element={<ProductFormPage />} />
           <Route path="categories" element={<CategoryManagePage />} />
           <Route path="users" element={<UserManagePage />} />
+          <Route path="settings" element={<ShopSettingsPage />} />
         </Route>
       </Route>
     </Routes>
