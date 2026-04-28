@@ -6,6 +6,8 @@ import java.util.List;
 import com.fashionshop.backend.common.enums.Gender;
 
 import jakarta.validation.constraints.DecimalMin;
+import jakarta.validation.constraints.Max;
+import jakarta.validation.constraints.Min;
 import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.NotNull;
 import jakarta.validation.constraints.Size;
@@ -38,6 +40,11 @@ public class ProductRequest {
     private Gender gender;
 
     private String material;
+
+    /** Cân nặng ước tính (gram) — dùng tính phí ship. Default 300g */
+    @Min(value = 50, message = "Cân nặng tối thiểu 50g")
+    @Max(value = 50000, message = "Cân nặng tối đa 50kg")
+    private Integer estimatedWeight;
 
     private String colorFamily;
 

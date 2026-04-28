@@ -12,6 +12,7 @@ import com.fashionshop.backend.domain.repository.ProductVariantRepository;
 import com.fashionshop.backend.exception.BusinessException;
 import com.fashionshop.backend.exception.ErrorCode;
 import com.fashionshop.backend.module.product.dto.request.ProductVariantRequest;
+import com.fashionshop.backend.module.product.dto.request.StockUpdateRequest;
 import com.fashionshop.backend.module.product.dto.response.ProductVariantResponse;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -227,6 +228,57 @@ class ProductVariantServiceImplTest {
     }
 
     // ================================================================
+    // updateStock
+    // ================================================================
+
+    @Test
+    void updateStock_updatesOnlyStockQuantity() {
+        // variant1: color=Trắng, size=M, stock=10, priceAdjustment=null
+        when(variantRepository.findById(1L)).thenReturn(Optional.of(variant1));
+        when(variantRepository.save(any())).thenAnswer(inv -> inv.getArgument(0));
+
+        StockUpdateRequest request = new StockUpdateRequest();
+        request.setStockQuantity(99);
+
+        ProductVariantResponse result = variantService.updateStock(1L, 1L, request);
+
+        // Stock updated
+        assertThat(variant1.getStockQuantity()).isEqualTo(99);
+        // Other fields unchanged
+        assertThat(variant1.getColor().getColorName()).isEqualTo("Trắng");
+        assertThat(variant1.getSize()).isEqualTo("M");
+        assertThat(variant1.getPriceAdjustment()).isNull();
+        verify(variantRepository).save(variant1);
+    }
+
+    @Test
+    void updateStock_throwsNotFound_whenVariantNotBelongToProduct() {
+        when(variantRepository.findById(1L)).thenReturn(Optional.of(variant1));
+
+        StockUpdateRequest request = new StockUpdateRequest();
+        request.setStockQuantity(50);
+
+        // variant1 belongs to product 1, but we pass product 99
+        assertThatThrownBy(() -> variantService.updateStock(99L, 1L, request))
+            .isInstanceOf(BusinessException.class)
+            .hasFieldOrPropertyWithValue("errorCode", ErrorCode.VARIANT_NOT_FOUND);
+
+        verify(variantRepository, never()).save(any());
+    }
+
+    @Test
+    void updateStock_throwsNotFound_whenVariantNotExists() {
+        when(variantRepository.findById(999L)).thenReturn(Optional.empty());
+
+        StockUpdateRequest request = new StockUpdateRequest();
+        request.setStockQuantity(10);
+
+        assertThatThrownBy(() -> variantService.updateStock(1L, 999L, request))
+            .isInstanceOf(BusinessException.class)
+            .hasFieldOrPropertyWithValue("errorCode", ErrorCode.VARIANT_NOT_FOUND);
+    }
+
+    // ================================================================
     // Fixtures
     // ================================================================
 
@@ -240,3 +292,4 @@ class ProductVariantServiceImplTest {
         return r;
     }
 }
+

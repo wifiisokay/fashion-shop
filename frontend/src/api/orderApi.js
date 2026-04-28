@@ -2,13 +2,16 @@ import axiosInstance from './axiosInstance';
 
 export const orderApi = {
   // Customer
-  getMyOrders:   (params) => axiosInstance.get('/api/orders/my', { params }),
-  getMyOrderById:(id)     => axiosInstance.get(`/api/orders/my/${id}`),
-  cancelOrder:   (id, reason) => axiosInstance.patch(`/api/orders/${id}/cancel`, { reason }),
-  requestReturn: (id, data)   => axiosInstance.post(`/api/orders/${id}/return`, data),
+  createOrder:    (data)       => axiosInstance.post('/api/orders', data),
+  getMyOrders:    (params)     => axiosInstance.get('/api/orders', { params }),
+  getMyOrderById: (id)         => axiosInstance.get(`/api/orders/${id}`),
+  cancelOrder:      (id, reason) => axiosInstance.post(`/api/orders/${id}/cancel`, { reason }),
+  confirmReceived:  (id)         => axiosInstance.post(`/api/orders/${id}/confirm-received`),
 
   // Staff + Admin
-  getAllOrders:  (params) => axiosInstance.get('/api/staff/orders', { params }),
-  getOrderById:  (id)     => axiosInstance.get(`/api/staff/orders/${id}`),
-  updateStatus:  (id, status) => axiosInstance.patch(`/api/staff/orders/${id}/status`, { status }),
+  getAllOrders:    (params)     => axiosInstance.get('/api/staff/orders', { params }),
+  getOrderById:   (id)         => axiosInstance.get(`/api/staff/orders/${id}`),
+  updateStatus:   (id, data)   => axiosInstance.patch(`/api/staff/orders/${id}/status`, data),
+  confirmPacking: (id, data)   => axiosInstance.patch(`/api/staff/orders/${id}/packing`, data),
+  staffCancel:    (id, reason) => axiosInstance.post(`/api/staff/orders/${id}/cancel`, { reason }),
 };

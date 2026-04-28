@@ -6,12 +6,13 @@ import { QUERY_KEYS } from '../constants/queryKeys';
  * Hook tính phí vận chuyển GHN
  * @param {number|null} addressId ID của địa chỉ giao hàng, null nếu chưa chọn
  * @param {number} orderValue Tổng giá trị đơn hàng (dùng tính bảo hiểm, mặc định 0)
+ * @param {number|null} totalWeight Tổng cân nặng ước tính (gram), null → dùng default
  */
-export const useShippingFee = (addressId, orderValue = 0) => {
+export const useShippingFee = (addressId, orderValue = 0, totalWeight = null) => {
   return useQuery({
-    queryKey: QUERY_KEYS.shippingFee({ addressId, orderValue }),
+    queryKey: QUERY_KEYS.shippingFee({ addressId, orderValue, totalWeight }),
     queryFn: async () => {
-      const { data } = await shippingApi.calculateFee({ addressId, orderValue });
+      const { data } = await shippingApi.calculateFee({ addressId, orderValue, totalWeight });
       return data?.data ?? null; // Trả về ShippingFeeResponse
     },
     // Chỉ chạy query nếu user đã chọn địa chỉ hợp lệ

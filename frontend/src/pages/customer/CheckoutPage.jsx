@@ -5,20 +5,25 @@ import { useNavigate, Link } from 'react-router-dom';
 import { useCart } from '../../hooks/useCart';
 import { useAddresses } from '../../hooks/useAddresses';
 import { useShippingFee } from '../../hooks/useShippingFee';
+import { useCreateOrder } from '../../hooks/useCreateOrder';
 import { ROUTES } from '../../constants/routes';
 import Button from '../../components/ui/Button';
 import Spinner from '../../components/ui/Spinner';
 import { formatPrice } from '../../utils/format';
+import { useState } from 'react';
 
 const checkoutSchema = z.object({
-  addressId: z.number({ required_error: 'Vui lòng chọn địa chỉ giao hàng' }),
+  addressId: z.coerce.number({ required_error: 'Vui lòng chọn địa chỉ giao hàng' }).min(1, 'Vui lòng chọn địa chỉ giao hàng'),
   paymentMethod: z.enum(['COD', 'VNPAY']),
+  note: z.string().optional(),
 });
 
 const CheckoutPage = () => {
   const navigate = useNavigate();
   const { data: cartData, isLoading: cartLoading } = useCart();
   const { data: addresses = [], isLoading: addressLoading } = useAddresses();
+  const createOrder = useCreateOrder();
+  const [error, setError] = useState(null);
 
   const defaultAddressId = addresses.find((a) => a.isDefault)?.id;
 
@@ -27,10 +32,12 @@ const CheckoutPage = () => {
     defaultValues: {
       paymentMethod: 'COD',
       addressId: defaultAddressId,
+      note: '',
     },
     values: {
       paymentMethod: 'COD',
       addressId: defaultAddressId,
+      note: '',
     },
   });
 
@@ -38,31 +45,42 @@ const CheckoutPage = () => {
 
   const cartItems = cartData?.items || [];
   const subtotal = cartData?.totalPrice || 0;
+
+  // Tính tổng cân nặng ước tính từ giỏ hàng (gram)
+  const totalWeight = cartItems.reduce((sum, item) => 
+    sum + (item.estimatedWeight || 300) * item.quantity, 0) || null;
   
   // GHN Shipping API
   const { 
     data: shippingData, 
     isLoading: shippingLoading, 
     isError: shippingError 
-  } = useShippingFee(selectedAddressId, subtotal);
+  } = useShippingFee(selectedAddressId, subtotal, totalWeight);
 
   const shippingFee = shippingData?.fee || 0;
   const total = subtotal + shippingFee;
 
-  const onSubmit = async (data) => {
+  const onSubmit = async (formData) => {
+    setError(null);
     try {
-      // Mock API call to create order
-      await new Promise(resolve => setTimeout(resolve, 1500));
-      console.log('Order created:', { ...data, items: cartItems, total });
+      const res = await createOrder.mutateAsync({
+        addressId: formData.addressId,
+        paymentMethod: formData.paymentMethod,
+        shippingFee: shippingFee,
+        note: formData.note || null,
+        estimatedDays: shippingData?.estimatedDays || null,
+      });
 
-      if (data.paymentMethod === 'VNPAY') {
-        // Mock redirect to VNPAY
-        navigate(`${ROUTES.PAYMENT_RESULT}?status=success&orderId=ORD-${Date.now()}`);
+      const result = res?.data?.data;
+
+      if (formData.paymentMethod === 'VNPAY' && result?.paymentUrl) {
+        window.location.href = result.paymentUrl;
       } else {
-        navigate(`${ROUTES.PAYMENT_RESULT}?status=success&orderId=ORD-${Date.now()}`);
+        navigate(`${ROUTES.PAYMENT_RESULT}?status=success&orderId=${result?.orderId}`);
       }
-    } catch (error) {
-      console.error('Checkout failed', error);
+    } catch (err) {
+      const msg = err?.response?.data?.message || 'Đặt hàng thất bại. Vui lòng thử lại.';
+      setError(msg);
     }
   };
 
@@ -80,6 +98,12 @@ const CheckoutPage = () => {
   return (
     <div className="space-y-8">
       <h1 className="text-3xl font-bold text-gray-900">Thanh toán</h1>
+
+      {error && (
+        <div className="bg-red-50 border border-red-200 text-red-700 px-4 py-3 rounded-xl text-sm">
+          {error}
+        </div>
+      )}
 
       <form onSubmit={handleSubmit(onSubmit)} className="grid lg:grid-cols-3 gap-8">
         <div className="lg:col-span-2 space-y-6">
@@ -162,6 +186,17 @@ const CheckoutPage = () => {
               </label>
             </div>
           </div>
+
+          {/* Ghi chú */}
+          <div className="bg-white p-6 rounded-2xl border border-gray-200 shadow-sm space-y-4">
+            <h2 className="text-xl font-bold text-gray-900">Ghi chú</h2>
+            <textarea
+              {...register('note')}
+              placeholder="Ghi chú cho đơn hàng (không bắt buộc)..."
+              rows={3}
+              className="w-full border border-gray-300 rounded-xl p-3 text-sm focus:ring-black focus:border-black resize-none"
+            />
+          </div>
         </div>
 
         <div className="bg-white p-6 rounded-2xl border border-gray-200 shadow-sm h-fit sticky top-24">
@@ -223,7 +258,7 @@ const CheckoutPage = () => {
             type="submit" 
             className="w-full" 
             size="lg" 
-            loading={isSubmitting} 
+            loading={isSubmitting || createOrder.isPending} 
             disabled={cartData?.hasUnavailableItems || shippingLoading || (!shippingData && !!selectedAddressId)}
           >
             {cartData?.hasUnavailableItems ? 'Vui lòng cập nhật giỏ hàng' : 'Đặt hàng'}

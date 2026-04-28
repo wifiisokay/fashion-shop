@@ -101,7 +101,9 @@ public class ShippingServiceImpl implements ShippingService {
             .fromWardCode(shopConfig.getWardCode())
                 .toDistrictId(address.getDistrictCode())
                 .toWardCode(address.getWardCode())
-                .weight(props.getDefaults().getWeight())
+                .weight(request.getTotalWeight() != null && request.getTotalWeight() > 0
+                        ? request.getTotalWeight()
+                        : props.getDefaults().getWeight())
                 .length(props.getDefaults().getLength())
                 .width(props.getDefaults().getWidth())
                 .height(props.getDefaults().getHeight())

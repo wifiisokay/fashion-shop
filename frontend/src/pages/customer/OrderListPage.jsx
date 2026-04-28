@@ -5,29 +5,56 @@ import OrderStatusBadge from '../../components/order/OrderStatusBadge';
 import { formatPrice, formatDate } from '../../utils/format';
 import { Link } from 'react-router-dom';
 import Button from '../../components/ui/Button';
+import { ROUTES } from '../../constants/routes';
+import { clsx } from 'clsx';
+
+const STATUS_TABS = [
+  { key: '', label: 'Tất cả' },
+  { key: 'AWAITING_PAYMENT', label: 'Chờ thanh toán' },
+  { key: 'PENDING', label: 'Chờ xác nhận' },
+  { key: 'CONFIRMED', label: 'Đã xác nhận' },
+  { key: 'SHIPPING', label: 'Đang giao' },
+  { key: 'DELIVERED', label: 'Đã giao' },
+  { key: 'COMPLETED', label: 'Hoàn thành' },
+  { key: 'CANCELLED', label: 'Đã hủy' },
+];
 
 const OrderListPage = () => {
-  const [filters, setFilters] = useState({});
-  const { data, isLoading, isError } = useMyOrders(filters);
+  const [activeStatus, setActiveStatus] = useState('');
+  const params = activeStatus ? { status: activeStatus } : {};
+  const { data, isLoading, isError } = useMyOrders(params);
 
   if (isLoading) return <div className="flex justify-center py-20"><Spinner size="lg" /></div>;
   if (isError) return <div className="text-center py-20 text-red-500">Lỗi tải danh sách đơn hàng</div>;
 
-  // Fallback mock data
-  const orders = data?.content?.length ? data.content : [
-    { id: 'ORD-12345', createdAt: new Date().toISOString(), status: 'DELIVERED', totalAmount: 1250000 },
-    { id: 'ORD-12346', createdAt: new Date(Date.now() - 86400000).toISOString(), status: 'SHIPPING', totalAmount: 450000 },
-    { id: 'ORD-12347', createdAt: new Date(Date.now() - 86400000 * 3).toISOString(), status: 'PENDING', totalAmount: 850000 },
-  ];
+  const orders = data?.content || [];
 
   return (
     <div className="space-y-8">
       <h1 className="text-3xl font-bold text-gray-900">Đơn hàng của tôi</h1>
+
+      {/* Status tabs */}
+      <div className="flex flex-wrap gap-2">
+        {STATUS_TABS.map(tab => (
+          <button
+            key={tab.key}
+            onClick={() => setActiveStatus(tab.key)}
+            className={clsx(
+              'px-4 py-2 text-sm font-medium rounded-full border transition-colors',
+              activeStatus === tab.key
+                ? 'bg-black text-white border-black'
+                : 'bg-white text-gray-600 border-gray-200 hover:bg-gray-50'
+            )}
+          >
+            {tab.label}
+          </button>
+        ))}
+      </div>
       
       {orders.length === 0 ? (
         <div className="text-center py-20 text-gray-500 bg-white rounded-2xl border border-gray-100 shadow-sm">
           <p className="mb-4">Bạn chưa có đơn hàng nào.</p>
-          <Link to="/products"><Button>Mua sắm ngay</Button></Link>
+          <Link to={ROUTES.PRODUCTS}><Button>Mua sắm ngay</Button></Link>
         </div>
       ) : (
         <div className="space-y-4">
@@ -45,7 +72,7 @@ const OrderListPage = () => {
                   <p className="text-sm text-gray-500 mb-1">Tổng tiền</p>
                   <p className="text-lg font-bold text-gray-900">{formatPrice(order.totalAmount)}</p>
                 </div>
-                <Link to={`/my-orders/${order.id}`}>
+                <Link to={`${ROUTES.MY_ORDERS}/${order.id}`}>
                   <Button variant="secondary" size="sm">Xem chi tiết</Button>
                 </Link>
               </div>

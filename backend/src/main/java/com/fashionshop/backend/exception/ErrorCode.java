@@ -68,6 +68,18 @@ public enum ErrorCode {
     SHIPPING_SERVICE_UNAVAILABLE("SHIPPING_001", "Không có dịch vụ vận chuyển khả dụng cho tuyến này"),
     ADDRESS_NOT_BELONG_TO_USER  ("SHIPPING_002", "Địa chỉ không thuộc về người dùng"),
 
+    // ORDER (bổ sung)
+    ORDER_NOT_BELONG_TO_USER("ORDER_004", "Đơn hàng không thuộc về bạn"),
+    ORDER_CANCEL_REASON_REQUIRED("ORDER_005", "Vui lòng nhập lý do hủy đơn"),
+    INVALID_STATUS_TRANSITION("ORDER_006", "Không thể chuyển trạng thái đơn hàng"),
+    ORDER_ITEMS_EMPTY("ORDER_007", "Đơn hàng phải có ít nhất 1 sản phẩm"),
+    INVALID_SHIPPING_FEE("ORDER_008", "Phí vận chuyển không hợp lệ"),
+    PACKING_NOT_CONFIRMED("ORDER_009", "Vui lòng xác nhận đóng gói trước khi chuyển sang giao hàng"),
+    PACKING_INVALID_STATUS("ORDER_010", "Chỉ có thể đóng gói khi đơn đã được xác nhận"),
+    MAX_ITEMS_EXCEEDED("ORDER_011", "Vượt quá số lượng sản phẩm tối đa cho mỗi đơn hàng"),
+    MAX_QUANTITY_EXCEEDED("ORDER_012", "Vượt quá số lượng tối đa cho mỗi sản phẩm"),
+    DUPLICATE_ORDER("ORDER_013", "Vui lòng đợi trước khi đặt đơn tiếp"),
+
     // RETURN / REVIEW
     RETURN_NOT_FOUND("RETURN_001", "Yêu cầu trả hàng không tồn tại"),
     REVIEW_NOT_FOUND("REVIEW_001", "Đánh giá không tồn tại"),

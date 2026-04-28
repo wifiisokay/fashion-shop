@@ -4,7 +4,7 @@ import { QUERY_KEYS } from '../constants/queryKeys';
 
 export const useStaffOrders = (filters = {}) => {
   return useQuery({
-    queryKey: ['staff_orders', filters],
+    queryKey: QUERY_KEYS.staffOrders(filters),
     queryFn: async () => {
       const { data } = await orderApi.getAllOrders(filters);
       return data?.data ?? null;

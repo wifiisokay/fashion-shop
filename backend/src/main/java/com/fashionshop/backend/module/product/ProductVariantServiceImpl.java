@@ -10,6 +10,7 @@ import com.fashionshop.backend.domain.repository.ProductVariantRepository;
 import com.fashionshop.backend.exception.BusinessException;
 import com.fashionshop.backend.exception.ErrorCode;
 import com.fashionshop.backend.module.product.dto.request.ProductVariantRequest;
+import com.fashionshop.backend.module.product.dto.request.StockUpdateRequest;
 import com.fashionshop.backend.module.product.dto.response.ProductVariantResponse;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.HttpStatus;
@@ -87,6 +88,14 @@ public class ProductVariantServiceImpl implements ProductVariantService {
                 "Biến thể đang có trong giỏ hàng, không thể xóa");
         }
         variantRepository.delete(variant);
+    }
+
+    @Override
+    @Transactional
+    public ProductVariantResponse updateStock(Long productId, Long variantId, StockUpdateRequest request) {
+        ProductVariant variant = findVariantOrThrow(variantId, productId);
+        variant.setStockQuantity(request.getStockQuantity());
+        return ProductVariantResponse.from(variantRepository.save(variant));
     }
 
     // ============ Private helpers ============

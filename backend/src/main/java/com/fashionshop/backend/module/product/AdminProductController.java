@@ -31,13 +31,13 @@ import lombok.RequiredArgsConstructor;
 @RestController
 @RequestMapping("/api/admin/products")
 @RequiredArgsConstructor
-@PreAuthorize("hasAnyRole('EMPLOYEE', 'ADMIN')")
 @Tag(name = "Admin Products", description = "CRUD sản phẩm cho Admin/Employee")
 public class AdminProductController {
 
     private final ProductService productService;
 
     @PostMapping
+    @PreAuthorize("hasRole('ADMIN')")
     @Operation(summary = "Tạo sản phẩm mới", security = @SecurityRequirement(name = "cookieAuth"))
     public ResponseEntity<ApiResponse<ProductDetailResponse>> create(
         @Valid @RequestBody ProductRequest request,
@@ -49,6 +49,7 @@ public class AdminProductController {
     }
 
     @PutMapping("/{id}")
+    @PreAuthorize("hasRole('ADMIN')")
     @Operation(summary = "Cập nhật sản phẩm", security = @SecurityRequirement(name = "cookieAuth"))
     public ResponseEntity<ApiResponse<ProductDetailResponse>> update(
         @PathVariable Long id,
@@ -59,6 +60,7 @@ public class AdminProductController {
     }
 
     @PatchMapping("/{id}/status")
+    @PreAuthorize("hasRole('ADMIN')")
     @Operation(summary = "Đổi trạng thái sản phẩm (ACTIVE/INACTIVE)", security = @SecurityRequirement(name = "cookieAuth"))
     public ResponseEntity<ApiResponse<ProductDetailResponse>> updateStatus(
         @PathVariable Long id,
@@ -69,6 +71,7 @@ public class AdminProductController {
     }
 
     @GetMapping
+    @PreAuthorize("hasAnyRole('EMPLOYEE', 'ADMIN')")
     @Operation(summary = "Danh sách sản phẩm (Admin)", description = "Hiển thị cả ACTIVE và INACTIVE.",
                security = @SecurityRequirement(name = "cookieAuth"))
     public ResponseEntity<ApiResponse<PageResponse<ProductSummaryResponse>>> list(
@@ -84,6 +87,7 @@ public class AdminProductController {
     }
 
     @GetMapping("/{id}")
+    @PreAuthorize("hasAnyRole('EMPLOYEE', 'ADMIN')")
     @Operation(summary = "Chi tiết sản phẩm (Admin)", security = @SecurityRequirement(name = "cookieAuth"))
     public ResponseEntity<ApiResponse<ProductDetailResponse>> getById(@PathVariable Long id) {
         return ResponseEntity.ok(ApiResponse.success(productService.getByIdAdmin(id)));

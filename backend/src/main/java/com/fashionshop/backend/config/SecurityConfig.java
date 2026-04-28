@@ -72,6 +72,7 @@ public class SecurityConfig {
 
                 // EMPLOYEE hoặc ADMIN
                 .requestMatchers("/api/admin/**").hasAnyRole("EMPLOYEE", "ADMIN")
+                .requestMatchers("/api/staff/**").hasAnyRole("EMPLOYEE", "ADMIN")
 
                 // Tất cả còn lại — cần đăng nhập
                 .anyRequest().authenticated()

@@ -19,4 +19,7 @@ public class ShippingFeeRequest {
 
     /** Tổng giá trị đơn hàng (VND) — dùng tính bảo hiểm GHN. Mặc định 0 */
     private Long orderValue;
+
+    /** Tổng cân nặng ước tính (gram) — tính từ giỏ hàng. Null → dùng default */
+    private Integer totalWeight;
 }

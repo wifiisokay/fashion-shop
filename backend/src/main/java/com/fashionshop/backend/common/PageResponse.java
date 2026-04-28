@@ -38,4 +38,18 @@ public class PageResponse<T> {
             page.isLast()
         );
     }
+
+    /**
+     * Factory cho trường hợp content đã được map sang DTO khác kiểu entity gốc.
+     */
+    public static <T> PageResponse<T> from(List<T> content, Page<?> page) {
+        return new PageResponse<>(
+            content,
+            page.getNumber(),
+            page.getSize(),
+            page.getTotalElements(),
+            page.getTotalPages(),
+            page.isLast()
+        );
+    }
 }

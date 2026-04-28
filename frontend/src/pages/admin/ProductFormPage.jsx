@@ -65,7 +65,7 @@ const ProductFormPage = () => {
   // Form state
   const [form, setForm] = useState({
     name: '', description: '', basePrice: '', salePrice: '',
-    isSale: false, gender: 'MALE', material: '', colorFamily: '',
+    isSale: false, gender: 'MALE', material: '', estimatedWeight: '300', colorFamily: '',
     categoryId: '', styleTags: '', occasionTags: '',
     fitType: '', season: '',
   });
@@ -106,6 +106,7 @@ const ProductFormPage = () => {
         isSale: product.isSale || false,
         gender: product.gender || 'MALE',
         material: product.material || '',
+        estimatedWeight: product.estimatedWeight?.toString() || '300',
         colorFamily: product.colorFamily || '',
         categoryId: product.category?.id?.toString() || '',
         styleTags: (product.styleTags || []).join(', '),
@@ -132,6 +133,7 @@ const ProductFormPage = () => {
       isSale: form.isSale,
       gender: form.gender,
       material: form.material.trim() || null,
+      estimatedWeight: form.estimatedWeight ? parseInt(form.estimatedWeight) : 300,
       colorFamily: form.colorFamily.trim() || null,
       categoryId: parseInt(form.categoryId),
       styleTags: form.styleTags ? form.styleTags.split(',').map((t) => t.trim()).filter(Boolean) : [],
@@ -402,6 +404,13 @@ const ProductFormPage = () => {
                 <Label>Chất liệu</Label>
                 <Input value={form.material}
                   onChange={(e) => setForm({ ...form, material: e.target.value })} placeholder="VD: Cotton, Polyester" />
+              </div>
+              <div className="space-y-2">
+                <Label>Cân nặng ước tính (gram)</Label>
+                <Input type="number" value={form.estimatedWeight}
+                  onChange={(e) => setForm({ ...form, estimatedWeight: e.target.value })}
+                  placeholder="300" min="50" max="50000" />
+                <p className="text-xs text-gray-400">Dùng tính phí ship. Mặc định 300g cho quần áo.</p>
               </div>
               <div className="space-y-2">
                 <Label>Nhóm màu</Label>

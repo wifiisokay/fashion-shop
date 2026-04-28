@@ -39,6 +39,9 @@ public class CartItemResponse {
     /** false nếu variant đã hết hàng sau khi user thêm vào giỏ */
     private boolean available;
 
+    /** Cân nặng ước tính per item (gram) — dùng tính phí ship */
+    private Integer estimatedWeight;
+
     // ============ Static factory ============
 
     public static CartItemResponse from(CartItem item, String primaryImageUrl) {
@@ -60,6 +63,7 @@ public class CartItemResponse {
             .subtotal(unitPrice.multiply(BigDecimal.valueOf(item.getQuantity())))
             .stockQuantity(variant.getStockQuantity())
             .available(available)
+            .estimatedWeight(product.getEstimatedWeight())
             .build();
     }
 

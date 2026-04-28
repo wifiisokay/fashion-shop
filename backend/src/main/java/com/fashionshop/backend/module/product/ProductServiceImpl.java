@@ -57,6 +57,7 @@ public class ProductServiceImpl implements ProductService {
             .isSale(request.getIsSale())
             .gender(request.getGender())
             .material(request.getMaterial())
+            .estimatedWeight(request.getEstimatedWeight() != null ? request.getEstimatedWeight() : 300)
             .colorFamily(request.getColorFamily())
             .fitType(request.getFitType())
             .season(request.getSeason())
@@ -83,6 +84,7 @@ public class ProductServiceImpl implements ProductService {
         product.setIsSale(request.getIsSale());
         product.setGender(request.getGender());
         product.setMaterial(request.getMaterial());
+        product.setEstimatedWeight(request.getEstimatedWeight() != null ? request.getEstimatedWeight() : product.getEstimatedWeight());
         product.setColorFamily(request.getColorFamily());
         product.setFitType(request.getFitType());
         product.setSeason(request.getSeason());

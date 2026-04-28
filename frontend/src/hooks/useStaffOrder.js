@@ -1,11 +1,12 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
+import { QUERY_KEYS } from '../constants/queryKeys';
 import { orderApi } from '../api/orderApi';
 
 export const useStaffOrder = (id) => {
   const queryClient = useQueryClient();
 
   const query = useQuery({
-    queryKey: ['staff_order', id],
+    queryKey: QUERY_KEYS.staffOrder(id),
     queryFn: async () => {
       const { data } = await orderApi.getOrderById(id);
       return data?.data ?? null;
@@ -15,10 +16,10 @@ export const useStaffOrder = (id) => {
   });
 
   const updateStatusMutation = useMutation({
-    mutationFn: (status) => orderApi.updateStatus(id, status),
+    mutationFn: (data) => orderApi.updateStatus(id, data),
     onSuccess: () => {
-      queryClient.invalidateQueries(['staff_order', id]);
-      queryClient.invalidateQueries(['staff_orders']);
+      queryClient.invalidateQueries({ queryKey: QUERY_KEYS.staffOrder(id) });
+      queryClient.invalidateQueries({ queryKey: ['staff', 'orders'] });
     },
   });
 

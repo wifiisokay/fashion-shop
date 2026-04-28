@@ -1,63 +1,98 @@
 import { useState } from 'react';
-import { useParams, Link, useNavigate } from 'react-router-dom';
+import { useParams, useNavigate } from 'react-router-dom';
 import { useStaffOrder } from '../../hooks/useStaffOrder';
+import { useConfirmPacking } from '../../hooks/useConfirmPacking';
 import Spinner from '../../components/ui/Spinner';
 import Button from '../../components/ui/Button';
 import { formatPrice, formatDate, formatOrderStatus } from '../../utils/format';
-import { ArrowLeft, Package, Truck, CheckCircle, XCircle, Clock } from 'lucide-react';
+import { ArrowLeft, Package, Truck, CheckCircle, XCircle, Clock, AlertTriangle, Ruler } from 'lucide-react';
 import { clsx } from 'clsx';
-
-const MOCK_ORDER = {
-  id: 101,
-  customerName: 'Nguyễn Văn A',
-  customerPhone: '0901234567',
-  shippingAddress: '123 Đường Lê Lợi, Phường Bến Thành, Quận 1, TP.HCM',
-  status: 'PENDING',
-  totalAmount: 1250000,
-  paymentMethod: 'COD',
-  paymentStatus: 'UNPAID',
-  createdAt: '2026-03-30T10:00:00Z',
-  items: [
-    { id: 1, productId: 1, productName: 'Áo Thun Basic Nam', price: 250000, quantity: 2, imageUrl: 'https://picsum.photos/seed/1/100/100', size: 'M', color: 'Trắng' },
-    { id: 2, productId: 2, productName: 'Quần Jean Ống Rộng', price: 750000, quantity: 1, imageUrl: 'https://picsum.photos/seed/2/100/100', size: 'L', color: 'Xanh' },
-  ]
-};
-
-const STATUS_STEPS = ['PENDING', 'PROCESSING', 'SHIPPED', 'DELIVERED'];
 
 const StaffOrderDetailPage = () => {
   const { id } = useParams();
   const navigate = useNavigate();
-  const { data, isLoading, isError, updateStatus, isUpdating } = useStaffOrder(id);
-  const [localStatus, setLocalStatus] = useState('');
+  const { data: order, isLoading, isError, updateStatus, isUpdating, refetch } = useStaffOrder(id);
+  const confirmPacking = useConfirmPacking();
+
+  // Cancel dialog
+  const [showCancelDialog, setShowCancelDialog] = useState(false);
+  const [cancelReason, setCancelReason] = useState('');
+
+  // Packing form
+  const [packing, setPacking] = useState({ length: '', width: '', height: '', actualWeight: '', packingNote: '' });
 
   if (isLoading) return <div className="flex justify-center py-20"><Spinner size="lg" /></div>;
-  if (isError && !data) return <div className="text-center py-20 text-red-500">Lỗi tải chi tiết đơn hàng</div>;
+  if (isError || !order) return <div className="text-center py-20 text-red-500">Lỗi tải chi tiết đơn hàng</div>;
 
-  const order = data || { ...MOCK_ORDER, id: parseInt(id) || MOCK_ORDER.id };
-  const currentStatus = localStatus || order.status;
+  const address = order.addressSnapshot || {};
 
   const handleUpdateStatus = async (newStatus) => {
     try {
-      // In a real app, this would await the mutation
-      // await updateStatus(newStatus);
-      setLocalStatus(newStatus);
-      alert(`Đã cập nhật trạng thái thành: ${formatOrderStatus(newStatus).label}`);
+      if (newStatus === 'CANCELLED') {
+        setShowCancelDialog(true);
+        return;
+      }
+      await updateStatus({ status: newStatus });
+      refetch?.();
     } catch (error) {
-      console.error('Failed to update status', error);
-      alert('Lỗi khi cập nhật trạng thái');
+      alert(error?.response?.data?.message || 'Lỗi khi cập nhật trạng thái');
+    }
+  };
+
+  const handleCancel = async () => {
+    if (!cancelReason.trim()) {
+      alert('Vui lòng nhập lý do hủy đơn');
+      return;
+    }
+    try {
+      await updateStatus({ status: 'CANCELLED', cancelReason: cancelReason.trim() });
+      setShowCancelDialog(false);
+      refetch?.();
+    } catch (error) {
+      alert(error?.response?.data?.message || 'Lỗi khi hủy đơn');
+    }
+  };
+
+  const handleConfirmPacking = async () => {
+    const { length, width, height, actualWeight, packingNote } = packing;
+    if (!length || !width || !height || !actualWeight) {
+      alert('Vui lòng nhập đầy đủ kích thước và cân nặng');
+      return;
+    }
+    try {
+      await confirmPacking.mutateAsync({
+        orderId: id,
+        data: {
+          length: Number(length),
+          width: Number(width),
+          height: Number(height),
+          actualWeight: Number(actualWeight),
+          packingNote: packingNote || null,
+        },
+      });
+      refetch?.();
+    } catch (error) {
+      alert(error?.response?.data?.message || 'Lỗi khi xác nhận đóng gói');
     }
   };
 
   const getStatusIcon = (status) => {
     switch (status) {
-      case 'PENDING': return <Clock className="w-5 h-5" />;
-      case 'PROCESSING': return <Package className="w-5 h-5" />;
-      case 'SHIPPED': return <Truck className="w-5 h-5" />;
-      case 'DELIVERED': return <CheckCircle className="w-5 h-5" />;
+      case 'PENDING': case 'AWAITING_PAYMENT': return <Clock className="w-5 h-5" />;
+      case 'CONFIRMED': return <Package className="w-5 h-5" />;
+      case 'SHIPPING':  return <Truck className="w-5 h-5" />;
+      case 'DELIVERED': case 'COMPLETED': return <CheckCircle className="w-5 h-5" />;
       case 'CANCELLED': return <XCircle className="w-5 h-5" />;
       default: return <Clock className="w-5 h-5" />;
     }
+  };
+
+  const statusColor = (s) => {
+    if (s === 'PENDING' || s === 'AWAITING_PAYMENT') return 'bg-yellow-100 text-yellow-800';
+    if (s === 'CONFIRMED') return 'bg-blue-100 text-blue-800';
+    if (s === 'SHIPPING') return 'bg-indigo-100 text-indigo-800';
+    if (s === 'DELIVERED' || s === 'COMPLETED') return 'bg-green-100 text-green-800';
+    return 'bg-red-100 text-red-800';
   };
 
   return (
@@ -68,16 +103,9 @@ const StaffOrderDetailPage = () => {
         </Button>
         <h1 className="text-2xl font-bold text-gray-900">Chi tiết đơn hàng #{order.id}</h1>
         <div className="ml-auto">
-          <span className={clsx(
-            'px-3 py-1 rounded-full text-sm font-medium flex items-center gap-2',
-            currentStatus === 'PENDING' ? 'bg-yellow-100 text-yellow-800' :
-            currentStatus === 'PROCESSING' ? 'bg-blue-100 text-blue-800' :
-            currentStatus === 'SHIPPED' ? 'bg-indigo-100 text-indigo-800' :
-            currentStatus === 'DELIVERED' ? 'bg-green-100 text-green-800' :
-            'bg-red-100 text-red-800'
-          )}>
-            {getStatusIcon(currentStatus)}
-            {formatOrderStatus(currentStatus).label}
+          <span className={clsx('px-3 py-1 rounded-full text-sm font-medium flex items-center gap-2', statusColor(order.status))}>
+            {getStatusIcon(order.status)}
+            {formatOrderStatus(order.status).label}
           </span>
         </div>
       </div>
@@ -88,63 +116,182 @@ const StaffOrderDetailPage = () => {
           {/* Items */}
           <div className="bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden">
             <div className="p-4 border-b border-gray-200 bg-gray-50">
-              <h2 className="font-semibold text-gray-900">Sản phẩm ({order.items.length})</h2>
+              <h2 className="font-semibold text-gray-900">Sản phẩm ({(order.items || []).length})</h2>
             </div>
             <div className="divide-y divide-gray-100">
-              {order.items.map((item) => (
+              {(order.items || []).map((item) => (
                 <div key={item.id} className="p-4 flex gap-4">
-                  <img src={item.imageUrl} alt={item.productName} className="w-20 h-20 object-cover rounded-lg bg-gray-100" />
+                  <img src={item.imageUrl} alt={item.productName} className="w-20 h-20 object-cover rounded-lg bg-gray-100" referrerPolicy="no-referrer" />
                   <div className="flex-1">
                     <h3 className="font-medium text-gray-900">{item.productName}</h3>
-                    <p className="text-sm text-gray-500 mt-1">Phân loại: {item.color}, Size {item.size}</p>
+                    <p className="text-sm text-gray-500 mt-1">Phân loại: {item.colorName}, Size {item.size}</p>
                     <div className="flex justify-between items-center mt-2">
                       <span className="text-sm text-gray-600">SL: {item.quantity}</span>
-                      <span className="font-medium text-gray-900">{formatPrice(item.price * item.quantity)}</span>
+                      <span className="font-medium text-gray-900">{formatPrice(item.subtotal)}</span>
                     </div>
                   </div>
                 </div>
               ))}
             </div>
-            <div className="p-4 bg-gray-50 border-t border-gray-200 flex justify-between items-center">
-              <span className="font-medium text-gray-700">Tổng cộng:</span>
-              <span className="text-xl font-bold text-red-600">{formatPrice(order.totalAmount)}</span>
+            <div className="p-4 bg-gray-50 border-t border-gray-200">
+              <div className="space-y-2 text-sm text-gray-600">
+                <div className="flex justify-between">
+                  <span>Tạm tính</span>
+                  <span className="font-medium text-gray-900">{formatPrice(order.subtotal)}</span>
+                </div>
+                <div className="flex justify-between">
+                  <span>Phí ship</span>
+                  <span className="font-medium text-gray-900">{formatPrice(order.shippingFee)}</span>
+                </div>
+                <div className="flex justify-between text-base font-bold text-gray-900 pt-2 border-t border-gray-200">
+                  <span>Tổng cộng</span>
+                  <span className="text-red-600">{formatPrice(order.totalAmount)}</span>
+                </div>
+              </div>
             </div>
           </div>
+
+          {/* Packing Section — chỉ hiện khi CONFIRMED */}
+          {order.status === 'CONFIRMED' && !order.packingConfirmed && (
+            <div className="bg-white rounded-xl shadow-sm border border-blue-200 p-6">
+              <h2 className="font-semibold text-gray-900 mb-4 flex items-center gap-2">
+                <Ruler className="w-5 h-5 text-blue-600" />
+                Đóng gói kiện hàng
+              </h2>
+              <p className="text-sm text-gray-500 mb-4">
+                Bắt buộc khai báo kích thước và cân nặng trước khi chuyển sang giao hàng.
+              </p>
+              <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 mb-4">
+                <div>
+                  <label className="block text-xs text-gray-500 mb-1">Dài (cm)</label>
+                  <input type="number" min="1" max="200" value={packing.length} onChange={e => setPacking(p => ({...p, length: e.target.value}))}
+                    className="w-full border border-gray-300 rounded-lg p-2 text-sm focus:ring-blue-500 focus:border-blue-500" placeholder="cm" />
+                </div>
+                <div>
+                  <label className="block text-xs text-gray-500 mb-1">Rộng (cm)</label>
+                  <input type="number" min="1" max="200" value={packing.width} onChange={e => setPacking(p => ({...p, width: e.target.value}))}
+                    className="w-full border border-gray-300 rounded-lg p-2 text-sm focus:ring-blue-500 focus:border-blue-500" placeholder="cm" />
+                </div>
+                <div>
+                  <label className="block text-xs text-gray-500 mb-1">Cao (cm)</label>
+                  <input type="number" min="1" max="200" value={packing.height} onChange={e => setPacking(p => ({...p, height: e.target.value}))}
+                    className="w-full border border-gray-300 rounded-lg p-2 text-sm focus:ring-blue-500 focus:border-blue-500" placeholder="cm" />
+                </div>
+                <div>
+                  <label className="block text-xs text-gray-500 mb-1">Cân nặng (g)</label>
+                  <input type="number" min="1" max="50000" value={packing.actualWeight} onChange={e => setPacking(p => ({...p, actualWeight: e.target.value}))}
+                    className="w-full border border-gray-300 rounded-lg p-2 text-sm focus:ring-blue-500 focus:border-blue-500" placeholder="gram" />
+                </div>
+              </div>
+              <div className="mb-4">
+                <label className="block text-xs text-gray-500 mb-1">Ghi chú đóng gói (không bắt buộc)</label>
+                <input type="text" value={packing.packingNote} onChange={e => setPacking(p => ({...p, packingNote: e.target.value}))}
+                  className="w-full border border-gray-300 rounded-lg p-2 text-sm focus:ring-blue-500 focus:border-blue-500" placeholder="VD: Bọc thêm bubble wrap..." />
+              </div>
+              <Button onClick={handleConfirmPacking} loading={confirmPacking.isPending} className="bg-blue-600 hover:bg-blue-700">
+                <Package className="w-4 h-4 mr-2" /> Xác nhận đóng gói
+              </Button>
+            </div>
+          )}
+
+          {/* Packing confirmed info */}
+          {order.packingConfirmed && (
+            <div className="bg-white rounded-xl shadow-sm border border-green-200 p-6">
+              <h2 className="font-semibold text-gray-900 mb-3 flex items-center gap-2">
+                <CheckCircle className="w-5 h-5 text-green-600" />
+                Đã đóng gói
+              </h2>
+              <div className="grid grid-cols-2 sm:grid-cols-4 gap-4 text-sm">
+                <div><span className="text-gray-500 block">Kích thước</span><span className="font-medium">{order.packageLength}×{order.packageWidth}×{order.packageHeight} cm</span></div>
+                <div><span className="text-gray-500 block">Cân thực</span><span className="font-medium">{order.actualWeight}g</span></div>
+                <div><span className="text-gray-500 block">KL quy đổi</span><span className="font-medium">{order.volumetricWeight}g</span></div>
+                <div><span className="text-gray-500 block">Tính cước</span><span className="font-bold text-blue-700">{order.chargeableWeight}g</span></div>
+              </div>
+              {/* Warnings */}
+              {order.packingWarnings?.length > 0 && (
+                <div className="mt-3 space-y-1">
+                  {order.packingWarnings.map((w, i) => (
+                    <div key={i} className="flex items-start gap-2 text-sm text-amber-700 bg-amber-50 p-2 rounded-lg">
+                      <AlertTriangle className="w-4 h-4 mt-0.5 shrink-0" />
+                      <span>{w}</span>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+          )}
 
           {/* Status Update Actions */}
           <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-6">
             <h2 className="font-semibold text-gray-900 mb-4">Cập nhật trạng thái</h2>
-            {currentStatus === 'CANCELLED' || currentStatus === 'RETURNED' ? (
-              <p className="text-gray-500">Đơn hàng đã bị hủy hoặc hoàn trả, không thể cập nhật trạng thái.</p>
-            ) : currentStatus === 'DELIVERED' ? (
+            {order.status === 'CANCELLED' || order.status === 'COMPLETED' || order.status === 'RETURNED' ? (
+              <p className="text-gray-500">Đơn hàng đã kết thúc, không thể cập nhật trạng thái.</p>
+            ) : order.status === 'DELIVERED' ? (
               <p className="text-green-600 font-medium flex items-center gap-2">
-                <CheckCircle className="w-5 h-5" /> Đơn hàng đã giao thành công.
+                <CheckCircle className="w-5 h-5" /> Đơn hàng đã giao. Hệ thống sẽ tự động hoàn thành sau 7 ngày.
               </p>
             ) : (
               <div className="flex flex-wrap gap-3">
-                {currentStatus === 'PENDING' && (
+                {order.status === 'AWAITING_PAYMENT' && (
+                  <Button variant="outline" onClick={() => handleUpdateStatus('CANCELLED')} className="text-red-600 border-red-200 hover:bg-red-50">
+                    Hủy đơn
+                  </Button>
+                )}
+                {order.status === 'PENDING' && (
                   <>
-                    <Button onClick={() => handleUpdateStatus('PROCESSING')} className="bg-blue-600 hover:bg-blue-700">
-                      Xác nhận & Chuẩn bị hàng
+                    <Button onClick={() => handleUpdateStatus('CONFIRMED')} loading={isUpdating} className="bg-blue-600 hover:bg-blue-700">
+                      Xác nhận đơn hàng
                     </Button>
                     <Button variant="outline" onClick={() => handleUpdateStatus('CANCELLED')} className="text-red-600 border-red-200 hover:bg-red-50">
                       Hủy đơn
                     </Button>
                   </>
                 )}
-                {currentStatus === 'PROCESSING' && (
-                  <Button onClick={() => handleUpdateStatus('SHIPPED')} className="bg-indigo-600 hover:bg-indigo-700">
-                    Bắt đầu giao hàng
-                  </Button>
+                {order.status === 'CONFIRMED' && (
+                  <>
+                    <Button
+                      onClick={() => handleUpdateStatus('SHIPPING')}
+                      loading={isUpdating}
+                      disabled={!order.packingConfirmed}
+                      className="bg-indigo-600 hover:bg-indigo-700 disabled:opacity-50"
+                    >
+                      <Truck className="w-4 h-4 mr-2" />
+                      {order.packingConfirmed ? 'Bắt đầu giao hàng' : 'Cần đóng gói trước'}
+                    </Button>
+                    <Button variant="outline" onClick={() => handleUpdateStatus('CANCELLED')} className="text-red-600 border-red-200 hover:bg-red-50">
+                      Hủy đơn
+                    </Button>
+                  </>
                 )}
-                {currentStatus === 'SHIPPED' && (
-                  <Button onClick={() => handleUpdateStatus('DELIVERED')} className="bg-green-600 hover:bg-green-700">
-                    Đã giao thành công
+                {order.status === 'SHIPPING' && (
+                  <Button onClick={() => handleUpdateStatus('DELIVERED')} loading={isUpdating} className="bg-green-600 hover:bg-green-700">
+                    <CheckCircle className="w-4 h-4 mr-2" /> Đã giao thành công
                   </Button>
                 )}
               </div>
             )}
           </div>
+
+          {/* Cancel dialog */}
+          {showCancelDialog && (
+            <div className="bg-white rounded-xl shadow-sm border border-red-200 p-6 space-y-4">
+              <h3 className="font-bold text-red-800">Hủy đơn hàng #{order.id}</h3>
+              <p className="text-sm text-gray-600">Staff/Admin bắt buộc phải nhập lý do hủy đơn.</p>
+              <textarea
+                value={cancelReason}
+                onChange={(e) => setCancelReason(e.target.value)}
+                placeholder="Lý do hủy đơn (bắt buộc)..."
+                rows={3}
+                className="w-full border border-gray-300 rounded-xl p-3 text-sm focus:ring-red-500 focus:border-red-500 resize-none"
+              />
+              <div className="flex gap-3 justify-end">
+                <Button variant="secondary" size="sm" onClick={() => setShowCancelDialog(false)}>Đóng</Button>
+                <Button variant="danger" size="sm" loading={isUpdating} onClick={handleCancel} disabled={!cancelReason.trim()}>
+                  Xác nhận hủy
+                </Button>
+              </div>
+            </div>
+          )}
         </div>
 
         {/* Sidebar */}
@@ -155,15 +302,17 @@ const StaffOrderDetailPage = () => {
             <div className="space-y-3 text-sm">
               <div>
                 <span className="text-gray-500 block mb-1">Họ tên</span>
-                <span className="font-medium text-gray-900">{order.customerName}</span>
+                <span className="font-medium text-gray-900">{address.fullName}</span>
               </div>
               <div>
                 <span className="text-gray-500 block mb-1">Số điện thoại</span>
-                <span className="font-medium text-gray-900">{order.customerPhone}</span>
+                <span className="font-medium text-gray-900">{address.phone}</span>
               </div>
               <div>
                 <span className="text-gray-500 block mb-1">Địa chỉ giao hàng</span>
-                <span className="font-medium text-gray-900 leading-relaxed">{order.shippingAddress}</span>
+                <span className="font-medium text-gray-900 leading-relaxed">
+                  {address.fullAddress || `${address.street}, ${address.ward}, ${address.district}, ${address.province}`}
+                </span>
               </div>
             </div>
           </div>
@@ -174,23 +323,42 @@ const StaffOrderDetailPage = () => {
             <div className="space-y-3 text-sm">
               <div className="flex justify-between">
                 <span className="text-gray-500">Phương thức</span>
-                <span className="font-medium text-gray-900">{order.paymentMethod}</span>
-              </div>
-              <div className="flex justify-between">
-                <span className="text-gray-500">Trạng thái</span>
-                <span className={clsx(
-                  'font-medium',
-                  order.paymentStatus === 'PAID' ? 'text-green-600' : 'text-yellow-600'
-                )}>
-                  {order.paymentStatus === 'PAID' ? 'Đã thanh toán' : 'Chưa thanh toán'}
-                </span>
+                <span className="font-medium text-gray-900">{order.paymentMethod === 'COD' ? 'COD' : 'VNPAY'}</span>
               </div>
               <div className="flex justify-between">
                 <span className="text-gray-500">Ngày đặt</span>
                 <span className="font-medium text-gray-900">{formatDate(order.createdAt)}</span>
               </div>
+              {order.expectedDeliveryDate && (
+                <div className="flex justify-between">
+                  <span className="text-gray-500">Dự kiến giao</span>
+                  <span className="font-medium text-gray-900">{new Date(order.expectedDeliveryDate).toLocaleDateString('vi-VN')}</span>
+                </div>
+              )}
+              {order.deliveredAt && (
+                <div className="flex justify-between">
+                  <span className="text-gray-500">Đã giao</span>
+                  <span className="font-medium text-green-700">{formatDate(order.deliveredAt)}</span>
+                </div>
+              )}
             </div>
           </div>
+
+          {/* Cancel reason if cancelled */}
+          {order.status === 'CANCELLED' && order.cancelReason && (
+            <div className="bg-red-50 rounded-xl shadow-sm border border-red-200 p-6">
+              <h2 className="font-semibold text-red-800 mb-2">Lý do hủy</h2>
+              <p className="text-sm text-red-700">{order.cancelReason}</p>
+            </div>
+          )}
+
+          {/* Note */}
+          {order.note && (
+            <div className="bg-yellow-50 rounded-xl shadow-sm border border-yellow-200 p-6">
+              <h2 className="font-semibold text-yellow-800 mb-2">Ghi chú</h2>
+              <p className="text-sm text-yellow-700 whitespace-pre-line">{order.note}</p>
+            </div>
+          )}
         </div>
       </div>
     </div>

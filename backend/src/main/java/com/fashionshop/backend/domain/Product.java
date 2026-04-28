@@ -53,6 +53,10 @@ public class Product {
 
     private String material;
 
+    @Column(name = "estimated_weight", nullable = false)
+    @Builder.Default
+    private Integer estimatedWeight = 300; // gram
+
     @Column(name = "color_family")
     private String colorFamily;
 

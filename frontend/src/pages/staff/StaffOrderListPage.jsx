@@ -8,46 +8,39 @@ import { formatPrice, formatDate, formatOrderStatus } from '../../utils/format';
 import { clsx } from 'clsx';
 import { Eye } from 'lucide-react';
 
-const MOCK_ORDERS = [
-  { id: 101, customerName: 'Nguyễn Văn A', totalAmount: 1250000, status: 'PENDING', createdAt: '2026-03-30T10:00:00Z', paymentMethod: 'COD' },
-  { id: 102, customerName: 'Trần Thị B', totalAmount: 850000, status: 'PROCESSING', createdAt: '2026-03-29T14:30:00Z', paymentMethod: 'VNPAY' },
-  { id: 103, customerName: 'Lê Văn C', totalAmount: 2100000, status: 'SHIPPED', createdAt: '2026-03-28T09:15:00Z', paymentMethod: 'COD' },
-  { id: 104, customerName: 'Phạm Thị D', totalAmount: 450000, status: 'DELIVERED', createdAt: '2026-03-27T16:45:00Z', paymentMethod: 'MOMO' },
-  { id: 105, customerName: 'Hoàng Văn E', totalAmount: 3200000, status: 'CANCELLED', createdAt: '2026-03-26T11:20:00Z', paymentMethod: 'COD' },
-];
+const STATUS_COLOR_MAP = {
+  gold:    'bg-yellow-100 text-yellow-800',
+  blue:    'bg-blue-100 text-blue-800',
+  cyan:    'bg-cyan-100 text-cyan-800',
+  green:   'bg-green-100 text-green-800',
+  red:     'bg-red-100 text-red-800',
+  orange:  'bg-orange-100 text-orange-800',
+  purple:  'bg-purple-100 text-purple-800',
+  default: 'bg-gray-100 text-gray-800',
+};
 
 const StaffOrderListPage = () => {
-  const [filters, setFilters] = useState({ status: '', search: '' });
-  const { data, isLoading, isError } = useStaffOrders(filters);
+  const [filters, setFilters] = useState({ status: '', keyword: '' });
+  const { data, isLoading } = useStaffOrders(filters);
 
   const handleFilterChange = (e) => {
     const { name, value } = e.target;
     setFilters((prev) => ({ ...prev, [name]: value }));
   };
 
-  const orders = data?.content?.length ? data.content : MOCK_ORDERS.filter(o => {
-    if (filters.status && o.status !== filters.status) return false;
-    if (filters.search && !o.customerName.toLowerCase().includes(filters.search.toLowerCase()) && !o.id.toString().includes(filters.search)) return false;
-    return true;
-  });
+  const orders = data?.content || [];
 
   const columns = [
     { title: 'Mã đơn', dataIndex: 'id', key: 'id', render: (val) => <span className="font-medium">#{val}</span> },
-    { title: 'Khách hàng', dataIndex: 'customerName', key: 'customerName' },
     { title: 'Tổng tiền', dataIndex: 'totalAmount', key: 'totalAmount', render: (val) => <span className="font-medium text-gray-900">{formatPrice(val)}</span> },
-    { title: 'Thanh toán', dataIndex: 'paymentMethod', key: 'paymentMethod' },
+    { title: 'Thanh toán', dataIndex: 'paymentMethod', key: 'paymentMethod', render: (val) => val === 'COD' ? 'COD' : 'VNPAY' },
     { 
       title: 'Trạng thái', 
       dataIndex: 'status', 
       key: 'status',
       render: (val) => {
         const { label, color } = formatOrderStatus(val);
-        const colorClass = color === 'yellow' ? 'bg-yellow-100 text-yellow-800' : 
-                           color === 'blue' ? 'bg-blue-100 text-blue-800' :
-                           color === 'indigo' ? 'bg-indigo-100 text-indigo-800' :
-                           color === 'green' ? 'bg-green-100 text-green-800' :
-                           color === 'red' ? 'bg-red-100 text-red-800' : 'bg-gray-100 text-gray-800';
-        return <span className={clsx('px-2.5 py-0.5 rounded-full text-xs font-medium', colorClass)}>{label}</span>;
+        return <span className={clsx('px-2.5 py-0.5 rounded-full text-xs font-medium', STATUS_COLOR_MAP[color] || STATUS_COLOR_MAP.default)}>{label}</span>;
       }
     },
     { title: 'Ngày tạo', dataIndex: 'createdAt', key: 'createdAt', render: (val) => formatDate(val) },
@@ -75,9 +68,9 @@ const StaffOrderListPage = () => {
         <div className="flex flex-col sm:flex-row gap-3">
           <input 
             type="text"
-            name="search"
-            placeholder="Tìm mã đơn, tên KH..."
-            value={filters.search}
+            name="keyword"
+            placeholder="Tìm mã đơn..."
+            value={filters.keyword}
             onChange={handleFilterChange}
             className="border-gray-300 rounded-lg text-sm focus:ring-black focus:border-black p-2 border min-w-[200px]"
           />
@@ -88,12 +81,14 @@ const StaffOrderListPage = () => {
             className="border-gray-300 rounded-lg text-sm focus:ring-black focus:border-black p-2 border"
           >
             <option value="">Tất cả trạng thái</option>
-            <option value="PENDING">Chờ xử lý</option>
-            <option value="PROCESSING">Đang chuẩn bị</option>
-            <option value="SHIPPED">Đang giao</option>
+            <option value="AWAITING_PAYMENT">Chờ thanh toán</option>
+            <option value="PENDING">Chờ xác nhận</option>
+            <option value="CONFIRMED">Đã xác nhận</option>
+            <option value="SHIPPING">Đang giao</option>
             <option value="DELIVERED">Đã giao</option>
+            <option value="COMPLETED">Hoàn thành</option>
             <option value="CANCELLED">Đã hủy</option>
-            <option value="RETURNED">Đã hoàn trả</option>
+            <option value="RETURN_REQUESTED">Yêu cầu trả hàng</option>
           </select>
         </div>
       </div>
