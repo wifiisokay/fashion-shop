@@ -325,6 +325,20 @@ const StaffOrderDetailPage = () => {
                 <span className="text-gray-500">Phương thức</span>
                 <span className="font-medium text-gray-900">{order.paymentMethod === 'COD' ? 'COD' : 'VNPAY'}</span>
               </div>
+              <div className="flex justify-between items-center">
+                <span className="text-gray-500">Trạng thái TT</span>
+                <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium ${
+                  order.paymentStatus === 'SUCCESS' ? 'bg-green-100 text-green-700' :
+                  order.paymentStatus === 'REFUNDED' ? 'bg-gray-100 text-gray-600' :
+                  order.paymentStatus === 'FAILED' ? 'bg-red-100 text-red-700' :
+                  'bg-yellow-100 text-yellow-700'
+                }`}>
+                  {order.paymentStatus === 'SUCCESS' ? 'Đã thanh toán' :
+                   order.paymentStatus === 'REFUNDED' ? 'Đã hoàn tiền' :
+                   order.paymentStatus === 'FAILED' ? 'Thất bại' :
+                   'Chưa thanh toán'}
+                </span>
+              </div>
               <div className="flex justify-between">
                 <span className="text-gray-500">Ngày đặt</span>
                 <span className="font-medium text-gray-900">{formatDate(order.createdAt)}</span>

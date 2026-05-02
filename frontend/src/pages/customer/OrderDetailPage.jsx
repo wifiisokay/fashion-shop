@@ -69,7 +69,23 @@ const OrderDetailPage = () => {
           <div>
             <h3 className="text-sm font-bold text-gray-900 uppercase tracking-wider mb-3">Thanh toán</h3>
             <div className="text-sm text-gray-600 space-y-1">
-              <p>Phương thức: <span className="font-medium text-gray-900">{order.paymentMethod === 'COD' ? 'Thanh toán khi nhận hàng' : 'VNPAY'}</span></p>
+              <p>Phương thức: <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium ${order.paymentMethod === 'VNPAY' ? 'bg-purple-100 text-purple-700' : 'bg-green-100 text-green-700'}`}>
+                {order.paymentMethod === 'COD' ? 'COD — Thanh toán khi nhận hàng' : 'VNPay'}
+              </span></p>
+              <p>Trạng thái: <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium ${
+                order.paymentStatus === 'SUCCESS' ? 'bg-green-100 text-green-700' :
+                order.paymentStatus === 'REFUNDED' ? 'bg-gray-100 text-gray-600' :
+                order.paymentStatus === 'FAILED' ? 'bg-red-100 text-red-700' :
+                'bg-yellow-100 text-yellow-700'
+              }`}>
+                {order.paymentStatus === 'SUCCESS' ? 'Đã thanh toán' :
+                 order.paymentStatus === 'REFUNDED' ? 'Đã hoàn tiền' :
+                 order.paymentStatus === 'FAILED' ? 'Thất bại' :
+                 'Chưa thanh toán'}
+              </span></p>
+              {order.paidAt && (
+                <p>Thanh toán lúc: <span className="font-medium text-gray-900">{formatDate(order.paidAt)}</span></p>
+              )}
               {order.expectedDeliveryDate && (
                 <p>Dự kiến giao: <span className="font-medium text-gray-900">{new Date(order.expectedDeliveryDate).toLocaleDateString('vi-VN')}</span></p>
               )}

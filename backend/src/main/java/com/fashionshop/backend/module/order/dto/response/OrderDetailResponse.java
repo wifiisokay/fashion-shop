@@ -31,6 +31,10 @@ public class OrderDetailResponse {
     private LocalDateTime updatedAt;
     private LocalDate expectedDeliveryDate;
 
+    // Payment
+    private String paymentStatus;
+    private LocalDateTime paidAt;
+
     // Packing
     private Integer packageLength;
     private Integer packageWidth;
@@ -74,6 +78,9 @@ public class OrderDetailResponse {
             .chargeableWeight(order.getChargeableWeight())
             .packingConfirmed(order.getPackingConfirmed())
             .packingWarnings(warnings)
+            // Payment info
+            .paymentStatus(order.getPayment() != null ? order.getPayment().getStatus().name() : null)
+            .paidAt(order.getPayment() != null ? order.getPayment().getPaidAt() : null)
             .build();
     }
 

@@ -13,7 +13,7 @@ import com.fashionshop.backend.module.order.dto.response.OrderSummaryResponse;
 public interface OrderService {
 
     // ====== Customer ======
-    CreateOrderResponse createOrder(Long userId, CreateOrderRequest request);
+    CreateOrderResponse createOrder(Long userId, CreateOrderRequest request, String ipAddress);
     PageResponse<OrderSummaryResponse> getMyOrders(Long userId, OrderStatus status, int page, int size);
     OrderDetailResponse getMyOrderById(Long userId, Long orderId);
     void cancelOrder(Long userId, Long orderId, CancelOrderRequest request);

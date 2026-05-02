@@ -49,7 +49,7 @@ const AppRouter = () => {
           <PrivateRoute><RoleRoute allowedRoles={['CUSTOMER']}><CheckoutPage /></RoleRoute></PrivateRoute>
         } />
         <Route path={ROUTES.PAYMENT_RESULT} element={
-          <PrivateRoute><RoleRoute allowedRoles={['CUSTOMER']}><PaymentResultPage /></RoleRoute></PrivateRoute>
+          <PaymentResultPage />
         } />
         <Route path={ROUTES.MY_ORDERS} element={
           <PrivateRoute><RoleRoute allowedRoles={['CUSTOMER']}><OrderListPage /></RoleRoute></PrivateRoute>

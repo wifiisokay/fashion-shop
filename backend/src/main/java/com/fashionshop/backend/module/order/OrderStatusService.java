@@ -22,7 +22,7 @@ public class OrderStatusService {
         AWAITING_PAYMENT, Set.of(PENDING, CANCELLED),
         PENDING,          Set.of(CONFIRMED, CANCELLED),
         CONFIRMED,        Set.of(SHIPPING, CANCELLED),
-        SHIPPING,         Set.of(DELIVERED),
+        SHIPPING,         Set.of(DELIVERED, CANCELLED),
         DELIVERED,        Set.of(COMPLETED, RETURN_REQUESTED)
     );
 

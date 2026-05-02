@@ -14,6 +14,7 @@ import com.fashionshop.backend.module.order.dto.request.ConfirmPackingRequest;
 import com.fashionshop.backend.module.order.dto.request.CreateOrderRequest;
 import com.fashionshop.backend.module.order.dto.request.UpdateOrderStatusRequest;
 import com.fashionshop.backend.module.order.dto.response.*;
+import com.fashionshop.backend.module.payment.PaymentService;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.data.domain.Page;
@@ -43,6 +44,7 @@ public class OrderServiceImpl implements OrderService {
     private final UserRepository userRepository;
     private final CartService cartService;
     private final OrderStatusService statusService;
+    private final PaymentService paymentService;
 
     // ================================================================
     // Customer — Tạo đơn hàng
@@ -50,7 +52,7 @@ public class OrderServiceImpl implements OrderService {
 
     @Override
     @Transactional
-    public CreateOrderResponse createOrder(Long userId, CreateOrderRequest request) {
+    public CreateOrderResponse createOrder(Long userId, CreateOrderRequest request, String ipAddress) {
         // 0. Duplicate order guard
         orderRepository.findFirstByUserIdAndCreatedAtAfterOrderByCreatedAtDesc(
             userId, LocalDateTime.now().minusSeconds(DUPLICATE_GUARD_SECONDS))
@@ -170,11 +172,17 @@ public class OrderServiceImpl implements OrderService {
         log.info("Order #{} created by user {} — status={}, total={}",
             savedOrder.getId(), userId, initialStatus, savedOrder.getTotalAmount());
 
+        // 7. Tạo VNPay payment URL nếu phương thức là VNPAY
+        String paymentUrl = null;
+        if (request.getPaymentMethod() == PaymentMethod.VNPAY && ipAddress != null) {
+            paymentUrl = paymentService.createVnPayPaymentUrl(savedOrder.getId(), ipAddress);
+        }
+
         return CreateOrderResponse.builder()
             .orderId(savedOrder.getId())
             .status(savedOrder.getStatus())
             .totalAmount(savedOrder.getTotalAmount())
-            .paymentUrl(null) // VNPay URL sẽ được tạo bởi Payment module
+            .paymentUrl(paymentUrl)
             .build();
     }
 
@@ -242,6 +250,18 @@ public class OrderServiceImpl implements OrderService {
         }
 
         order.setStatus(OrderStatus.COMPLETED);
+
+        // COD: khách xác nhận nhận hàng = đã thanh toán cho shipper → payment SUCCESS
+        paymentRepository.findByOrderId(orderId).ifPresent(payment -> {
+            if (payment.getMethod() == PaymentMethod.COD
+                    && payment.getStatus() == PaymentStatus.PENDING) {
+                payment.setStatus(PaymentStatus.SUCCESS);
+                payment.setPaidAt(LocalDateTime.now());
+                paymentRepository.save(payment);
+                log.info("COD payment #{} confirmed for order #{}", payment.getId(), orderId);
+            }
+        });
+
         orderRepository.save(order);
         log.info("Order #{} confirmed received by customer {}", orderId, userId);
     }
@@ -342,6 +362,19 @@ public class OrderServiceImpl implements OrderService {
         order.setStatus(OrderStatus.CANCELLED);
         order.setCancelReason(request.getReason());
         orderRepository.save(order);
+
+        // Auto-refund VNPay nếu đã thanh toán
+        paymentRepository.findByOrderId(orderId).ifPresent(payment -> {
+            if (payment.getMethod() == PaymentMethod.VNPAY
+                    && payment.getStatus() == PaymentStatus.SUCCESS) {
+                paymentService.processRefund(payment.getId(),
+                    "Đơn hàng bị hủy: " + request.getReason());
+                log.info("Auto-refund triggered for order #{}", orderId);
+            } else if (payment.getStatus() == PaymentStatus.PENDING) {
+                payment.setStatus(PaymentStatus.FAILED);
+                paymentRepository.save(payment);
+            }
+        });
 
         log.info("Order #{} cancelled by staff. Reason: {}", orderId, request.getReason());
     }

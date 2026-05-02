@@ -134,7 +134,7 @@ class OrderServiceImplTest {
             });
             when(paymentRepository.save(any(Payment.class))).thenAnswer(inv -> inv.getArgument(0));
 
-            CreateOrderResponse result = sut.createOrder(1L, codRequest());
+            CreateOrderResponse result = sut.createOrder(1L, codRequest(), null);
 
             assertEquals(OrderStatus.PENDING, result.getStatus());
             assertNotNull(result.getOrderId());
@@ -162,7 +162,7 @@ class OrderServiceImplTest {
             });
             when(paymentRepository.save(any())).thenAnswer(inv -> inv.getArgument(0));
 
-            CreateOrderResponse result = sut.createOrder(1L, req);
+            CreateOrderResponse result = sut.createOrder(1L, req, null);
 
             assertEquals(OrderStatus.AWAITING_PAYMENT, result.getStatus());
         }
@@ -173,7 +173,7 @@ class OrderServiceImplTest {
             when(cartService.getCartItems(1L)).thenReturn(List.of());
 
             BusinessException ex = assertThrows(BusinessException.class,
-                () -> sut.createOrder(1L, codRequest()));
+                () -> sut.createOrder(1L, codRequest(), null));
             assertEquals("CART_003", ex.getErrorCode().getCode());
         }
 
@@ -187,7 +187,7 @@ class OrderServiceImplTest {
             when(userRepository.getReferenceById(1L)).thenReturn(mockUser());
 
             BusinessException ex = assertThrows(BusinessException.class,
-                () -> sut.createOrder(1L, codRequest()));
+                () -> sut.createOrder(1L, codRequest(), null));
             assertEquals("CART_002", ex.getErrorCode().getCode());
         }
 
@@ -198,7 +198,7 @@ class OrderServiceImplTest {
             when(addressRepository.findByIdAndUser_Id(10L, 1L)).thenReturn(Optional.empty());
 
             BusinessException ex = assertThrows(BusinessException.class,
-                () -> sut.createOrder(1L, codRequest()));
+                () -> sut.createOrder(1L, codRequest(), null));
             assertEquals("SHIPPING_002", ex.getErrorCode().getCode());
         }
     }

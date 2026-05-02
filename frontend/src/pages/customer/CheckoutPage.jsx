@@ -10,7 +10,7 @@ import { ROUTES } from '../../constants/routes';
 import Button from '../../components/ui/Button';
 import Spinner from '../../components/ui/Spinner';
 import { formatPrice } from '../../utils/format';
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 
 const checkoutSchema = z.object({
   addressId: z.coerce.number({ required_error: 'Vui lòng chọn địa chỉ giao hàng' }).min(1, 'Vui lòng chọn địa chỉ giao hàng'),
@@ -25,23 +25,24 @@ const CheckoutPage = () => {
   const createOrder = useCreateOrder();
   const [error, setError] = useState(null);
 
-  const defaultAddressId = addresses.find((a) => a.isDefault)?.id;
-
-  const { register, handleSubmit, watch, formState: { errors, isSubmitting } } = useForm({
+  const { register, handleSubmit, watch, setValue, formState: { errors, isSubmitting } } = useForm({
     resolver: zodResolver(checkoutSchema),
     defaultValues: {
       paymentMethod: 'COD',
-      addressId: defaultAddressId,
-      note: '',
-    },
-    values: {
-      paymentMethod: 'COD',
-      addressId: defaultAddressId,
       note: '',
     },
   });
 
   const selectedAddressId = watch('addressId');
+
+  useEffect(() => {
+    if (addresses.length > 0 && !selectedAddressId) {
+      const defaultAddr = addresses.find((a) => a.isDefault) || addresses[0];
+      if (defaultAddr) {
+        setValue('addressId', defaultAddr.id, { shouldValidate: true });
+      }
+    }
+  }, [addresses, selectedAddressId, setValue]);
 
   const cartItems = cartData?.items || [];
   const subtotal = cartData?.totalPrice || 0;
@@ -76,7 +77,8 @@ const CheckoutPage = () => {
       if (formData.paymentMethod === 'VNPAY' && result?.paymentUrl) {
         window.location.href = result.paymentUrl;
       } else {
-        navigate(`${ROUTES.PAYMENT_RESULT}?status=success&orderId=${result?.orderId}`);
+        // COD → chuyển về trang chi tiết đơn hàng (không dùng PaymentResult vì COD chưa thanh toán)
+        navigate(`${ROUTES.MY_ORDERS}/${result?.orderId}`);
       }
     } catch (err) {
       const msg = err?.response?.data?.message || 'Đặt hàng thất bại. Vui lòng thử lại.';

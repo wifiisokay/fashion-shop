@@ -54,8 +54,12 @@ public class SecurityConfig {
                 .requestMatchers(HttpMethod.GET, "/api/categories/**").permitAll()
                 .requestMatchers(HttpMethod.GET, "/api/products/*/reviews").permitAll()
 
-                // Public — VNPay callback (POST từ server VNPay)
-                .requestMatchers("/api/payment/vnpay/return").permitAll()
+                // Public — VNPay callback (VNPay server + browser redirect)
+                .requestMatchers(
+                    "/api/payment/vnpay-return",
+                    "/api/payment/vnpay-ipn",
+                    "/api/payment/status/**"   // PaymentResultPage poll (JWT có thể mất sau redirect)
+                ).permitAll()
 
                 // Public — GHN master data (province/district/ward cho form address)
                 .requestMatchers(HttpMethod.GET, "/api/ghn/**").permitAll()
@@ -105,10 +109,22 @@ public class SecurityConfig {
     @Bean
     public CorsConfigurationSource corsConfigurationSource() {
         var config = new CorsConfiguration();
-        config.setAllowedOrigins(List.of(
-            "http://localhost:5173",   // Vite dev server
-            "http://localhost:3000"    // Fallback
+
+        // Build allowed origins — đọc từ env var để hỗ trợ ngrok/pinggy khi test
+        List<String> origins = new java.util.ArrayList<>(List.of(
+            "http://localhost:5173",    // Vite dev (HTTP)
+            "https://localhost:5173",   // Vite dev (HTTPS — sau khi bật basic-ssl)
+            "http://localhost:3000",    // Fallback
+            "https://localhost:3000"
         ));
+
+        // Nếu có biến môi trường FRONTEND_URL (ngrok/pinggy url) → thêm vào
+        String frontendUrl = System.getenv("FRONTEND_URL");
+        if (frontendUrl != null && !frontendUrl.isBlank()) {
+            origins.add(frontendUrl);
+        }
+
+        config.setAllowedOrigins(origins);
         config.setAllowedMethods(List.of("GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"));
         config.setAllowedHeaders(List.of("*"));
         config.setAllowCredentials(true);  // Bắt buộc để cookie hoạt động cross-origin

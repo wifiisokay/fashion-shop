@@ -41,6 +41,13 @@ public enum ErrorCode {
     // PAYMENT
     PAYMENT_VERIFY_FAILED("PAYMENT_001", "Xác thực thanh toán thất bại"),
     PAYMENT_REFUND_FAILED("PAYMENT_002", "Hoàn tiền thất bại"),
+    PAYMENT_NOT_FOUND("PAYMENT_003", "Không tìm thấy giao dịch thanh toán"),
+    PAYMENT_INVALID_SIGNATURE("PAYMENT_004", "Chữ ký VNPay không hợp lệ"),
+    PAYMENT_ALREADY_PROCESSED("PAYMENT_005", "Giao dịch đã được xử lý"),
+    PAYMENT_INVALID_AMOUNT("PAYMENT_006", "Số tiền thanh toán không khớp"),
+    PAYMENT_ORDER_NOT_FOUND("PAYMENT_007", "Không tìm thấy đơn hàng cho giao dịch này"),
+    REFUND_NOT_ELIGIBLE("PAYMENT_008", "Không đủ điều kiện hoàn tiền"),
+    PAYMENT_CREATION_FAILED("PAYMENT_009", "Không thể tạo giao dịch thanh toán"),
 
     // FILE
     INVALID_FILE_TYPE("FILE_001", "Loại file không hợp lệ"),

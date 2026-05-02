@@ -31,9 +31,11 @@ public class OrderController {
     @Operation(summary = "Tạo đơn hàng từ giỏ hàng", security = @SecurityRequirement(name = "cookieAuth"))
     public ResponseEntity<ApiResponse<CreateOrderResponse>> create(
         @AuthenticationPrincipal User user,
-        @Valid @RequestBody CreateOrderRequest request
+        @Valid @RequestBody CreateOrderRequest request,
+        jakarta.servlet.http.HttpServletRequest httpRequest
     ) {
-        CreateOrderResponse response = orderService.createOrder(user.getId(), request);
+        String ipAddress = httpRequest.getRemoteAddr();
+        CreateOrderResponse response = orderService.createOrder(user.getId(), request, ipAddress);
         return ResponseEntity.status(HttpStatus.CREATED)
             .body(ApiResponse.success("Đặt hàng thành công", response));
     }
