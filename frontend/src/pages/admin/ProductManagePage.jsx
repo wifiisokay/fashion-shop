@@ -88,6 +88,29 @@ const ProductManagePage = () => {
         </Link>
       </div>
 
+      {/* Summary Cards */}
+      <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+        <div className="bg-white p-4 rounded-xl shadow-sm border border-gray-200">
+          <p className="text-sm font-medium text-gray-500">Tổng số Sản phẩm</p>
+          <h3 className="text-2xl font-bold text-gray-900">{data?.totalElements || 0}</h3>
+          <p className="text-xs text-gray-400 mt-1">
+            {filters.categoryId ? `Trong danh mục đang chọn` : 'Trên toàn hệ thống'}
+          </p>
+        </div>
+        <div className="bg-white p-4 rounded-xl shadow-sm border border-green-100">
+          <p className="text-sm font-medium text-green-600">Đang kinh doanh</p>
+          <h3 className="text-2xl font-bold text-gray-900">
+            {data?.content?.filter(p => p.status === 'ACTIVE').length || 0} <span className="text-sm font-normal text-gray-500">/ trang này</span>
+          </h3>
+        </div>
+        <div className="bg-white p-4 rounded-xl shadow-sm border border-red-100">
+          <p className="text-sm font-medium text-red-600">Ngừng kinh doanh</p>
+          <h3 className="text-2xl font-bold text-gray-900">
+            {data?.content?.filter(p => p.status === 'INACTIVE').length || 0} <span className="text-sm font-normal text-gray-500">/ trang này</span>
+          </h3>
+        </div>
+      </div>
+
       {/* Filters */}
       <div className="bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden">
         <div className="p-4 border-b border-gray-200 flex flex-wrap gap-3">

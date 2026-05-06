@@ -8,6 +8,7 @@ import { formatPrice, isSaleActive } from '../../utils/format';
 import { ShoppingCart, ChevronLeft, ChevronRight } from 'lucide-react';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
+import ReviewSection from '../../components/review/ReviewSection';
 
 const ProductDetailPage = () => {
   const { id } = useParams();
@@ -273,6 +274,11 @@ const ProductDetailPage = () => {
           </ReactMarkdown>
         </div>
       </div>
+    </div>
+
+    {/* === BOTTOM: Reviews === */}
+    <div className="max-w-3xl mx-auto">
+      <ReviewSection productId={product.id} />
     </div>
   </div>
   );

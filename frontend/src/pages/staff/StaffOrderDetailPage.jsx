@@ -2,15 +2,22 @@ import { useState } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { useStaffOrder } from '../../hooks/useStaffOrder';
 import { useConfirmPacking } from '../../hooks/useConfirmPacking';
+import { useMutation, useQueryClient } from '@tanstack/react-query';
+import { returnApi } from '../../api/returnApi';
+import { useAuth } from '../../contexts/AuthContext';
 import Spinner from '../../components/ui/Spinner';
 import Button from '../../components/ui/Button';
+import OrderStatusTimeline from '../../components/order/OrderStatusTimeline';
 import { formatPrice, formatDate, formatOrderStatus } from '../../utils/format';
-import { ArrowLeft, Package, Truck, CheckCircle, XCircle, Clock, AlertTriangle, Ruler } from 'lucide-react';
+import { ArrowLeft, Package, Truck, CheckCircle, XCircle, Clock, AlertTriangle, Ruler, RotateCcw } from 'lucide-react';
 import { clsx } from 'clsx';
+import { toast } from 'sonner';
 
 const StaffOrderDetailPage = () => {
   const { id } = useParams();
   const navigate = useNavigate();
+  const { user: authUser } = useAuth();
+  const queryClient = useQueryClient();
   const { data: order, isLoading, isError, updateStatus, isUpdating, refetch } = useStaffOrder(id);
   const confirmPacking = useConfirmPacking();
 
@@ -20,6 +27,33 @@ const StaffOrderDetailPage = () => {
 
   // Packing form
   const [packing, setPacking] = useState({ length: '', width: '', height: '', actualWeight: '', packingNote: '' });
+
+  // Return actions
+  const [rejectNote, setRejectNote] = useState('');
+  const [showRejectDialog, setShowRejectDialog] = useState(false);
+  const [refundAmount, setRefundAmount] = useState('');
+  const [showCompleteDialog, setShowCompleteDialog] = useState(false);
+
+  const approveMutation = useMutation({
+    mutationFn: () => returnApi.approveReturn(order?.returnId, { note: '' }),
+    onSuccess: () => { toast.success('Đã duyệt yêu cầu trả hàng'); refetch?.(); queryClient.invalidateQueries({ queryKey: ['staffOrders'] }); },
+    onError: (err) => toast.error(err.response?.data?.message || 'Lỗi'),
+  });
+  const rejectMutation = useMutation({
+    mutationFn: (note) => returnApi.rejectReturn(order?.returnId, { note }),
+    onSuccess: () => { toast.success('Đã từ chối yêu cầu'); setShowRejectDialog(false); refetch?.(); queryClient.invalidateQueries({ queryKey: ['staffOrders'] }); },
+    onError: (err) => toast.error(err.response?.data?.message || 'Lỗi'),
+  });
+  const receiveMutation = useMutation({
+    mutationFn: () => returnApi.receiveReturn(order?.returnId),
+    onSuccess: () => { toast.success('Đã xác nhận nhận hàng'); refetch?.(); },
+    onError: (err) => toast.error(err.response?.data?.message || 'Lỗi'),
+  });
+  const completeMutation = useMutation({
+    mutationFn: (amt) => returnApi.completeReturn(order?.returnId, { refundAmount: amt || null }),
+    onSuccess: () => { toast.success('Đã hoàn tất trả hàng'); setShowCompleteDialog(false); refetch?.(); },
+    onError: (err) => toast.error(err.response?.data?.message || 'Lỗi'),
+  });
 
   if (isLoading) return <div className="flex justify-center py-20"><Spinner size="lg" /></div>;
   if (isError || !order) return <div className="text-center py-20 text-red-500">Lỗi tải chi tiết đơn hàng</div>;
@@ -83,6 +117,7 @@ const StaffOrderDetailPage = () => {
       case 'SHIPPING':  return <Truck className="w-5 h-5" />;
       case 'DELIVERED': case 'COMPLETED': return <CheckCircle className="w-5 h-5" />;
       case 'CANCELLED': return <XCircle className="w-5 h-5" />;
+      case 'RETURN_REQUESTED': case 'RETURNING': case 'RETURNED': return <RotateCcw className="w-5 h-5" />;
       default: return <Clock className="w-5 h-5" />;
     }
   };
@@ -92,6 +127,8 @@ const StaffOrderDetailPage = () => {
     if (s === 'CONFIRMED') return 'bg-blue-100 text-blue-800';
     if (s === 'SHIPPING') return 'bg-indigo-100 text-indigo-800';
     if (s === 'DELIVERED' || s === 'COMPLETED') return 'bg-green-100 text-green-800';
+    if (s === 'RETURN_REQUESTED' || s === 'RETURNING') return 'bg-orange-100 text-orange-800';
+    if (s === 'RETURNED') return 'bg-purple-100 text-purple-800';
     return 'bg-red-100 text-red-800';
   };
 
@@ -109,6 +146,9 @@ const StaffOrderDetailPage = () => {
           </span>
         </div>
       </div>
+
+      {/* Order Status Timeline */}
+      <OrderStatusTimeline status={order.status} />
 
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
         {/* Main Content */}
@@ -226,6 +266,12 @@ const StaffOrderDetailPage = () => {
             <h2 className="font-semibold text-gray-900 mb-4">Cập nhật trạng thái</h2>
             {order.status === 'CANCELLED' || order.status === 'COMPLETED' || order.status === 'RETURNED' ? (
               <p className="text-gray-500">Đơn hàng đã kết thúc, không thể cập nhật trạng thái.</p>
+            ) : order.status === 'RETURN_REQUESTED' || order.status === 'RETURNING' ? (
+              <div className="space-y-3">
+                <p className="text-orange-600 font-medium flex items-center gap-2">
+                  <AlertTriangle className="w-5 h-5" /> Đơn hàng đang trong quá trình xử lý Trả hàng.
+                </p>
+              </div>
             ) : order.status === 'DELIVERED' ? (
               <p className="text-green-600 font-medium flex items-center gap-2">
                 <CheckCircle className="w-5 h-5" /> Đơn hàng đã giao. Hệ thống sẽ tự động hoàn thành sau 7 ngày.
@@ -289,6 +335,67 @@ const StaffOrderDetailPage = () => {
                 <Button variant="danger" size="sm" loading={isUpdating} onClick={handleCancel} disabled={!cancelReason.trim()}>
                   Xác nhận hủy
                 </Button>
+              </div>
+            </div>
+          )}
+          {/* Return Info Card */}
+          {order.returnId && (
+            <div className="bg-orange-50 rounded-xl shadow-sm border border-orange-200 p-6 space-y-4">
+              <h2 className="font-semibold text-orange-800 flex items-center gap-2">
+                <RotateCcw className="w-5 h-5" /> Yêu cầu trả hàng #{order.returnId}
+              </h2>
+              <div className="grid grid-cols-2 gap-3 text-sm">
+                <div><span className="text-gray-500">Trạng thái:</span> <span className="font-semibold">{order.returnStatusLabel || order.returnStatus}</span></div>
+                {order.returnRefundAmount && (
+                  <div><span className="text-gray-500">Số tiền hoàn:</span> <span className="font-medium text-green-600">{formatPrice(order.returnRefundAmount)}</span></div>
+                )}
+              </div>
+              {order.returnReason && (
+                <div>
+                  <h3 className="text-sm font-bold text-gray-900 mb-1">Lý do trả hàng</h3>
+                  <p className="text-sm text-gray-700 bg-white rounded-lg p-3 whitespace-pre-line">{order.returnReason}</p>
+                </div>
+              )}
+              {order.returnAdminNote && (
+                <div>
+                  <h3 className="text-sm font-bold text-gray-900 mb-1">Ghi chú xử lý</h3>
+                  <p className="text-sm text-gray-700 bg-yellow-100 rounded-lg p-3 whitespace-pre-line">{order.returnAdminNote}</p>
+                </div>
+              )}
+              {order.returnEvidenceImages?.length > 0 && (
+                <div>
+                  <h3 className="text-sm font-bold text-gray-900 mb-2">Ảnh minh chứng</h3>
+                  <div className="grid grid-cols-4 gap-2">
+                    {order.returnEvidenceImages.map((url, i) => (
+                      <a key={i} href={url} target="_blank" rel="noopener noreferrer" className="aspect-square rounded-lg overflow-hidden border border-gray-200">
+                        <img src={url} alt="" className="w-full h-full object-cover" referrerPolicy="no-referrer" />
+                      </a>
+                    ))}
+                  </div>
+                </div>
+              )}
+              {/* Return Actions */}
+              <div className="flex flex-wrap gap-2 pt-2 border-t border-orange-200">
+                {order.returnStatus === 'PENDING' && (
+                  <>
+                    <Button onClick={() => { if (window.confirm('Duyệt yêu cầu trả hàng?')) approveMutation.mutate(); }} loading={approveMutation.isPending} className="bg-blue-600 hover:bg-blue-700">
+                      <CheckCircle className="w-4 h-4 mr-1" /> Duyệt
+                    </Button>
+                    <Button variant="danger" onClick={() => setShowRejectDialog(true)}>
+                      <XCircle className="w-4 h-4 mr-1" /> Từ chối
+                    </Button>
+                  </>
+                )}
+                {order.returnStatus === 'APPROVED' && authUser?.role === 'ADMIN' && (
+                  <Button onClick={() => { if (window.confirm('Xác nhận đã nhận hàng trả lại?')) receiveMutation.mutate(); }} loading={receiveMutation.isPending} className="bg-purple-600 hover:bg-purple-700">
+                    <Package className="w-4 h-4 mr-1" /> Xác nhận nhận hàng
+                  </Button>
+                )}
+                {order.returnStatus === 'RECEIVED' && authUser?.role === 'ADMIN' && (
+                  <Button onClick={() => setShowCompleteDialog(true)} className="bg-green-600 hover:bg-green-700">
+                    <CheckCircle className="w-4 h-4 mr-1" /> Hoàn tất
+                  </Button>
+                )}
               </div>
             </div>
           )}
@@ -375,8 +482,56 @@ const StaffOrderDetailPage = () => {
           )}
         </div>
       </div>
+
+      {/* Reject Return Dialog */}
+      {showRejectDialog && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4">
+          <div className="bg-white rounded-2xl shadow-xl max-w-md w-full p-6 space-y-4">
+            <h3 className="text-lg font-bold text-gray-900">Từ chối yêu cầu trả hàng</h3>
+            <textarea
+              value={rejectNote}
+              onChange={(e) => setRejectNote(e.target.value)}
+              placeholder="Lý do từ chối (bắt buộc)..."
+              rows={3}
+              className="w-full border border-gray-300 rounded-xl p-3 text-sm focus:ring-black focus:border-black resize-none"
+            />
+            <div className="flex gap-3 justify-end">
+              <Button variant="secondary" onClick={() => { setShowRejectDialog(false); setRejectNote(''); }}>Hủy</Button>
+              <Button variant="danger" loading={rejectMutation.isPending} onClick={() => {
+                if (!rejectNote.trim()) { toast.error('Vui lòng nhập lý do'); return; }
+                rejectMutation.mutate(rejectNote.trim());
+              }}>Từ chối</Button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Complete Return Dialog */}
+      {showCompleteDialog && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4">
+          <div className="bg-white rounded-2xl shadow-xl max-w-md w-full p-6 space-y-4">
+            <h3 className="text-lg font-bold text-gray-900">Hoàn tất trả hàng</h3>
+            <p className="text-sm text-gray-600">Nhập số tiền hoàn (chỉ áp dụng cho đơn VNPAY). Để trống nếu là COD.</p>
+            <input
+              type="number"
+              value={refundAmount}
+              onChange={(e) => setRefundAmount(e.target.value)}
+              placeholder="Số tiền hoàn (VNĐ)"
+              className="w-full border border-gray-300 rounded-xl p-3 text-sm focus:ring-black focus:border-black"
+            />
+            <div className="flex gap-3 justify-end">
+              <Button variant="secondary" onClick={() => { setShowCompleteDialog(false); setRefundAmount(''); }}>Hủy</Button>
+              <Button loading={completeMutation.isPending} onClick={() => {
+                if (!window.confirm('Xác nhận hoàn tất trả hàng?')) return;
+                completeMutation.mutate(refundAmount ? parseFloat(refundAmount) : null);
+              }}>Hoàn tất + Hoàn tiền</Button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 };
 
 export default StaffOrderDetailPage;
+

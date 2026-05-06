@@ -18,12 +18,15 @@ import static com.fashionshop.backend.common.enums.OrderStatus.*;
 @Service
 public class OrderStatusService {
 
-    private static final Map<OrderStatus, Set<OrderStatus>> ALLOWED_TRANSITIONS = Map.of(
-        AWAITING_PAYMENT, Set.of(PENDING, CANCELLED),
-        PENDING,          Set.of(CONFIRMED, CANCELLED),
-        CONFIRMED,        Set.of(SHIPPING, CANCELLED),
-        SHIPPING,         Set.of(DELIVERED, CANCELLED),
-        DELIVERED,        Set.of(COMPLETED, RETURN_REQUESTED)
+    private static final Map<OrderStatus, Set<OrderStatus>> ALLOWED_TRANSITIONS = Map.ofEntries(
+        Map.entry(AWAITING_PAYMENT, Set.of(PENDING, CANCELLED)),
+        Map.entry(PENDING,          Set.of(CONFIRMED, CANCELLED)),
+        Map.entry(CONFIRMED,        Set.of(SHIPPING, CANCELLED)),
+        Map.entry(SHIPPING,         Set.of(DELIVERED, CANCELLED)),
+        Map.entry(DELIVERED,        Set.of(COMPLETED, RETURN_REQUESTED)),
+        Map.entry(COMPLETED,        Set.of(RETURN_REQUESTED)),
+        Map.entry(RETURN_REQUESTED, Set.of(RETURNING)),
+        Map.entry(RETURNING,        Set.of(RETURNED))
     );
 
     private static final Map<OrderStatus, String> STATUS_LABELS = Map.ofEntries(

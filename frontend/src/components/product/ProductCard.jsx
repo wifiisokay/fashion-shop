@@ -20,9 +20,16 @@ const ProductCard = ({ product }) => {
         )}
       </Link>
       <div className="p-4 flex flex-col flex-grow">
-        <Link to={`/products/${product.id}`} className="text-sm font-medium text-gray-900 hover:text-gray-600 line-clamp-2 mb-2">
+        <Link to={`/products/${product.id}`} className="text-sm font-medium text-gray-900 hover:text-gray-600 line-clamp-2 mb-1">
           {product.name}
         </Link>
+        {product.reviewCount > 0 && (
+          <div className="flex items-center gap-1 mb-2 text-xs text-gray-500">
+            <span className="text-amber-500">★</span>
+            <span className="font-medium text-gray-700">{product.avgRating}</span>
+            <span>({product.reviewCount})</span>
+          </div>
+        )}
         <div className="mt-auto flex items-center justify-between">
           <div className="flex flex-col">
             {hasActiveSale ? (

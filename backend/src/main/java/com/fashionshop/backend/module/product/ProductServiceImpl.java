@@ -3,6 +3,8 @@ package com.fashionshop.backend.module.product;
 import java.math.BigDecimal;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Map;
+import java.util.stream.Collectors;
 
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.PageRequest;
@@ -22,6 +24,7 @@ import com.fashionshop.backend.domain.ProductVariant;
 import com.fashionshop.backend.domain.User;
 import com.fashionshop.backend.domain.repository.CategoryRepository;
 import com.fashionshop.backend.domain.repository.ProductRepository;
+import com.fashionshop.backend.domain.repository.ReviewRepository;
 import com.fashionshop.backend.exception.BusinessException;
 import com.fashionshop.backend.exception.ErrorCode;
 import com.fashionshop.backend.module.product.dto.request.ProductRequest;
@@ -40,6 +43,7 @@ public class ProductServiceImpl implements ProductService {
 
     private final ProductRepository productRepository;
     private final CategoryRepository categoryRepository;
+    private final ReviewRepository reviewRepository;
 
     // ===================== ADMIN =====================
 
@@ -123,7 +127,7 @@ public class ProductServiceImpl implements ProductService {
         Page<Product> products = productRepository.findAll(spec,
             PageRequest.of(page, size, Sort.by(Sort.Direction.DESC, "createdAt")));
 
-        return PageResponse.from(products.map(ProductSummaryResponse::from));
+        return enrichWithReviewStats(products);
     }
 
     // ===================== PUBLIC =====================
@@ -139,7 +143,34 @@ public class ProductServiceImpl implements ProductService {
         Sort sortOrder = resolveSort(sort);
         Page<Product> products = productRepository.findAll(spec, PageRequest.of(page, size, sortOrder));
 
-        return PageResponse.from(products.map(ProductSummaryResponse::from));
+        return enrichWithReviewStats(products);
+    }
+
+    /** Batch fill avgRating + reviewCount cho listing page. */
+    private PageResponse<ProductSummaryResponse> enrichWithReviewStats(Page<Product> products) {
+        List<ProductSummaryResponse> summaries = products.getContent().stream()
+            .map(ProductSummaryResponse::from).collect(Collectors.toList());
+
+        List<Long> productIds = summaries.stream().map(ProductSummaryResponse::getId).toList();
+        if (!productIds.isEmpty()) {
+            Map<Long, double[]> statsMap = reviewRepository.getBatchStatsByProductIds(productIds).stream()
+                .collect(Collectors.toMap(
+                    row -> ((Number) row[0]).longValue(),
+                    row -> new double[]{
+                        ((Number) row[1]).doubleValue(),
+                        ((Number) row[2]).doubleValue()
+                    }
+                ));
+            summaries.forEach(s -> {
+                double[] stat = statsMap.get(s.getId());
+                if (stat != null) {
+                    s.setAvgRating(Math.round(stat[0] * 10.0) / 10.0);
+                    s.setReviewCount((int) stat[1]);
+                }
+            });
+        }
+
+        return PageResponse.from(summaries, products);
     }
 
     @Override

@@ -53,6 +53,7 @@ public class SecurityConfig {
                 .requestMatchers(HttpMethod.GET, "/api/products/**").permitAll()
                 .requestMatchers(HttpMethod.GET, "/api/categories/**").permitAll()
                 .requestMatchers(HttpMethod.GET, "/api/products/*/reviews").permitAll()
+                .requestMatchers(HttpMethod.GET, "/api/products/*/review-stats").permitAll()
 
                 // Public — VNPay callback (VNPay server + browser redirect)
                 .requestMatchers(

@@ -1,34 +1,48 @@
 import { useState } from 'react';
-import { Search, Shield, ShieldAlert, User } from 'lucide-react';
+import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
+import { Search, Shield, ShieldAlert, User, Users, CheckCircle, XCircle } from 'lucide-react';
 import DataTable from '../../components/admin/DataTable';
 import { formatDate } from '../../utils/format';
-
-const MOCK_USERS = [
-  { id: 1, name: 'Admin System', email: 'admin@fashionshop.com', role: 'ADMIN', status: 'ACTIVE', createdAt: '2026-01-01T00:00:00Z' },
-  { id: 2, name: 'Staff Support', email: 'staff@fashionshop.com', role: 'EMPLOYEE', status: 'ACTIVE', createdAt: '2026-02-15T10:30:00Z' },
-  { id: 3, name: 'Nguyễn Văn A', email: 'nguyenvana@gmail.com', role: 'CUSTOMER', status: 'ACTIVE', createdAt: '2026-03-10T08:45:00Z' },
-  { id: 4, name: 'Trần Thị B', email: 'tranthib@gmail.com', role: 'CUSTOMER', status: 'INACTIVE', createdAt: '2026-03-20T14:20:00Z' },
-  { id: 5, name: 'Lê Văn C', email: 'levanc@gmail.com', role: 'CUSTOMER', status: 'ACTIVE', createdAt: '2026-03-25T09:10:00Z' },
-  { id: 6, name: 'Phạm Thị D', email: 'phamthid@gmail.com', role: 'CUSTOMER', status: 'ACTIVE', createdAt: '2026-03-26T10:15:00Z' },
-  { id: 7, name: 'Hoàng Văn E', email: 'hoangvane@gmail.com', role: 'CUSTOMER', status: 'ACTIVE', createdAt: '2026-03-27T11:20:00Z' },
-  { id: 8, name: 'Vũ Thị F', email: 'vuthif@gmail.com', role: 'CUSTOMER', status: 'INACTIVE', createdAt: '2026-03-28T12:25:00Z' },
-  { id: 9, name: 'Đặng Văn G', email: 'dangvang@gmail.com', role: 'CUSTOMER', status: 'ACTIVE', createdAt: '2026-03-29T13:30:00Z' },
-  { id: 10, name: 'Bùi Thị H', email: 'buithih@gmail.com', role: 'CUSTOMER', status: 'ACTIVE', createdAt: '2026-03-30T14:35:00Z' },
-  { id: 11, name: 'Đỗ Văn I', email: 'dovani@gmail.com', role: 'CUSTOMER', status: 'ACTIVE', createdAt: '2026-03-31T15:40:00Z' },
-  { id: 12, name: 'Hồ Thị K', email: 'hothik@gmail.com', role: 'CUSTOMER', status: 'ACTIVE', createdAt: '2026-04-01T16:45:00Z' },
-  { id: 13, name: 'Ngô Văn L', email: 'ngovanl@gmail.com', role: 'CUSTOMER', status: 'INACTIVE', createdAt: '2026-04-02T17:50:00Z' },
-  { id: 14, name: 'Dương Thị M', email: 'duongthim@gmail.com', role: 'CUSTOMER', status: 'ACTIVE', createdAt: '2026-04-03T18:55:00Z' },
-  { id: 15, name: 'Lý Văn N', email: 'lyvann@gmail.com', role: 'CUSTOMER', status: 'ACTIVE', createdAt: '2026-04-04T20:00:00Z' },
-];
+import { userApi } from '../../api/userApi';
+import { toast } from 'sonner';
+import { useAuth } from '../../contexts/AuthContext';
 
 const UserManagePage = () => {
+  const queryClient = useQueryClient();
+  const { user: authUser } = useAuth();
   const [search, setSearch] = useState('');
   const [roleFilter, setRoleFilter] = useState('');
+  const [page, setPage] = useState(0);
 
-  const filteredUsers = MOCK_USERS.filter(u => {
-    const matchesSearch = u.name.toLowerCase().includes(search.toLowerCase()) || u.email.toLowerCase().includes(search.toLowerCase());
-    const matchesRole = roleFilter ? u.role === roleFilter : true;
-    return matchesSearch && matchesRole;
+  // Fetch Stats
+  const { data: statsData } = useQuery({
+    queryKey: ['admin-user-stats'],
+    queryFn: () => userApi.getUserStats().then(r => r.data?.data)
+  });
+
+  // Fetch Users
+  const { data: usersData, isLoading } = useQuery({
+    queryKey: ['admin-users', page, search, roleFilter],
+    queryFn: () => userApi.getAdminUsers({
+      page,
+      size: 10,
+      keyword: search || undefined,
+      role: roleFilter || undefined
+    }).then(r => r.data?.data),
+    keepPreviousData: true
+  });
+
+  // Toggle Status
+  const toggleMutation = useMutation({
+    mutationFn: ({ id, status }) => userApi.toggleUserStatus(id, status),
+    onSuccess: (res) => {
+      toast.success(res.data?.message || 'Cập nhật trạng thái thành công');
+      queryClient.invalidateQueries(['admin-users']);
+      queryClient.invalidateQueries(['admin-user-stats']);
+    },
+    onError: (err) => {
+      toast.error(err.response?.data?.message || 'Có lỗi xảy ra');
+    }
   });
 
   const columns = [
@@ -38,7 +52,7 @@ const UserManagePage = () => {
       key: 'user', 
       render: (_, record) => (
         <div>
-          <div className="font-medium text-gray-900">{record.name}</div>
+          <div className="font-medium text-gray-900">{record.fullName}</div>
           <div className="text-sm text-gray-500">{record.email}</div>
         </div>
       )
@@ -53,7 +67,7 @@ const UserManagePage = () => {
           EMPLOYEE: { icon: Shield, color: 'text-blue-600 bg-blue-50 border-blue-200' },
           CUSTOMER: { icon: User, color: 'text-gray-600 bg-gray-50 border-gray-200' },
         };
-        const config = roleConfig[val];
+        const config = roleConfig[val] || roleConfig.CUSTOMER;
         const Icon = config.icon;
         return (
           <span className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-md text-xs font-medium border ${config.color}`}>
@@ -80,16 +94,26 @@ const UserManagePage = () => {
       title: 'Hành động', 
       dataIndex: 'id', 
       key: 'action',
-      render: (id, record) => (
-        <select 
-          className="text-sm border-gray-300 rounded-md py-1 pl-2 pr-8 focus:ring-black focus:border-black"
-          defaultValue={record.status}
-          onChange={(e) => alert(`Đổi trạng thái user ${id} thành ${e.target.value}`)}
-        >
-          <option value="ACTIVE">Hoạt động</option>
-          <option value="INACTIVE">Khóa tài khoản</option>
-        </select>
-      )
+      render: (id, record) => {
+        const isCurrentUser = authUser?.userId === id;
+        
+        return (
+          <select 
+            className="text-sm border-gray-300 rounded-md py-1 pl-2 pr-8 focus:ring-black focus:border-black disabled:bg-gray-100 disabled:text-gray-400"
+            value={record.status}
+            onChange={(e) => {
+              if (window.confirm(`Bạn có chắc muốn ${e.target.value === 'LOCKED' ? 'khóa' : 'mở khóa'} tài khoản này?`)) {
+                toggleMutation.mutate({ id, status: e.target.value });
+              }
+            }}
+            disabled={toggleMutation.isLoading || isCurrentUser}
+            title={isCurrentUser ? "Bạn không thể khóa tài khoản của chính mình" : ""}
+          >
+            <option value="ACTIVE">Hoạt động</option>
+            <option value="LOCKED">Khóa tài khoản</option>
+          </select>
+        );
+      }
     },
   ];
 
@@ -97,6 +121,55 @@ const UserManagePage = () => {
     <div className="space-y-6">
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
         <h1 className="text-2xl font-bold text-gray-900">Quản lý Người dùng</h1>
+      </div>
+
+      {/* Summary Cards */}
+      <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+        <div className="bg-white p-4 rounded-xl shadow-sm border border-gray-200">
+          <div className="flex items-center justify-between">
+            <div>
+              <p className="text-sm font-medium text-gray-500">Tổng Người dùng</p>
+              <h3 className="text-2xl font-bold text-gray-900 mt-1">{statsData?.totalUsers || 0}</h3>
+            </div>
+            <div className="w-10 h-10 bg-indigo-50 rounded-full flex items-center justify-center">
+              <Users className="w-5 h-5 text-indigo-600" />
+            </div>
+          </div>
+        </div>
+        <div className="bg-white p-4 rounded-xl shadow-sm border border-gray-200">
+          <div className="flex items-center justify-between">
+            <div>
+              <p className="text-sm font-medium text-gray-500">Khách hàng</p>
+              <h3 className="text-2xl font-bold text-gray-900 mt-1">{statsData?.customerCount || 0}</h3>
+            </div>
+            <div className="w-10 h-10 bg-blue-50 rounded-full flex items-center justify-center">
+              <User className="w-5 h-5 text-blue-600" />
+            </div>
+          </div>
+        </div>
+        <div className="bg-white p-4 rounded-xl shadow-sm border border-gray-200">
+          <div className="flex items-center justify-between">
+            <div>
+              <p className="text-sm font-medium text-gray-500">Quản trị / Nhân viên</p>
+              <h3 className="text-2xl font-bold text-gray-900 mt-1">{(statsData?.adminCount || 0) + (statsData?.employeeCount || 0)}</h3>
+            </div>
+            <div className="w-10 h-10 bg-purple-50 rounded-full flex items-center justify-center">
+              <Shield className="w-5 h-5 text-purple-600" />
+            </div>
+          </div>
+        </div>
+        <div className="bg-white p-4 rounded-xl shadow-sm border border-gray-200">
+          <div className="flex flex-col gap-2">
+            <div className="flex justify-between items-center text-sm">
+              <span className="flex items-center text-green-600"><CheckCircle className="w-4 h-4 mr-1"/> Hoạt động</span>
+              <span className="font-semibold text-gray-900">{statsData?.activeUsers || 0}</span>
+            </div>
+            <div className="flex justify-between items-center text-sm">
+              <span className="flex items-center text-red-600"><XCircle className="w-4 h-4 mr-1"/> Đã khóa</span>
+              <span className="font-semibold text-gray-900">{statsData?.lockedUsers || 0}</span>
+            </div>
+          </div>
+        </div>
       </div>
 
       <div className="bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden">
@@ -109,13 +182,19 @@ const UserManagePage = () => {
               type="text"
               placeholder="Tìm kiếm tên, email..."
               value={search}
-              onChange={(e) => setSearch(e.target.value)}
+              onChange={(e) => {
+                setSearch(e.target.value);
+                setPage(0);
+              }}
               className="block w-full pl-10 pr-3 py-2 border border-gray-300 rounded-lg focus:ring-black focus:border-black sm:text-sm"
             />
           </div>
           <select
             value={roleFilter}
-            onChange={(e) => setRoleFilter(e.target.value)}
+            onChange={(e) => {
+              setRoleFilter(e.target.value);
+              setPage(0);
+            }}
             className="border-gray-300 rounded-lg text-sm focus:ring-black focus:border-black py-2 pl-3 pr-10 border"
           >
             <option value="">Tất cả vai trò</option>
@@ -126,10 +205,13 @@ const UserManagePage = () => {
         </div>
         <DataTable 
           columns={columns} 
-          data={filteredUsers} 
+          data={usersData?.content || []} 
+          isLoading={isLoading}
           emptyText="Không tìm thấy người dùng nào"
           pagination={true}
-          pageSize={5}
+          currentPage={page}
+          totalPages={usersData?.totalPages || 1}
+          onPageChange={setPage}
         />
       </div>
     </div>

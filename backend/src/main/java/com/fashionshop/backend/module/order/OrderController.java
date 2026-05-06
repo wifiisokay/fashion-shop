@@ -45,11 +45,12 @@ public class OrderController {
     public ResponseEntity<ApiResponse<PageResponse<OrderSummaryResponse>>> getMyOrders(
         @AuthenticationPrincipal User user,
         @RequestParam(required = false) OrderStatus status,
+        @RequestParam(required = false) String keyword,
         @RequestParam(defaultValue = "0") int page,
         @RequestParam(defaultValue = "10") int size
     ) {
         return ResponseEntity.ok(ApiResponse.success(
-            orderService.getMyOrders(user.getId(), status, page, size)));
+            orderService.getMyOrders(user.getId(), status, keyword, page, size)));
     }
 
     @GetMapping("/{id}")

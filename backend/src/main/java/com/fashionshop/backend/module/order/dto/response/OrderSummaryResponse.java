@@ -19,6 +19,7 @@ public class OrderSummaryResponse {
     private int itemCount;
     private String firstItemName;
     private String firstItemImageUrl;
+    private String customerName;
     private LocalDateTime createdAt;
 
     public static OrderSummaryResponse from(Order order, String statusLabel) {
@@ -32,6 +33,7 @@ public class OrderSummaryResponse {
             .itemCount(items != null ? items.size() : 0)
             .firstItemName(items != null && !items.isEmpty() ? items.get(0).getProductName() : null)
             .firstItemImageUrl(items != null && !items.isEmpty() ? items.get(0).getImageUrl() : null)
+            .customerName(order.getUser() != null ? order.getUser().getFullName() : null)
             .createdAt(order.getCreatedAt())
             .build();
     }

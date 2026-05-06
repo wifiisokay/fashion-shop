@@ -40,4 +40,14 @@ export const userApi = {
    * Response.data.data: UserProfileResponse với avatarUrl = null
    */
   removeAvatar: () => axiosInstance.delete('/api/user/profile/avatar'),
+
+  // ==========================================
+  // ADMIN API
+  // ==========================================
+
+  getAdminUsers: (params) => axiosInstance.get('/api/admin/users', { params }),
+  
+  getUserStats: () => axiosInstance.get('/api/admin/users/stats'),
+  
+  toggleUserStatus: (id, status) => axiosInstance.put(`/api/admin/users/${id}/status`, null, { params: { status } }),
 };

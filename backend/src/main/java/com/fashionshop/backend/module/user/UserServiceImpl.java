@@ -65,4 +65,68 @@ public class UserServiceImpl implements UserService {
         user.setAvatarUrl(null);
         return UserProfileResponse.fromEntity(userRepository.save(user));
     }
+
+    // ================================================================
+    // ADMIN METHODS
+    // ================================================================
+
+    @Override
+    @Transactional(readOnly = true)
+    public com.fashionshop.backend.common.PageResponse<com.fashionshop.backend.module.user.dto.response.AdminUserResponse> getAdminUsers(String keyword, com.fashionshop.backend.common.enums.Role role, int page, int size) {
+        org.springframework.data.jpa.domain.Specification<User> spec = (root, query, cb) -> {
+            java.util.List<jakarta.persistence.criteria.Predicate> predicates = new java.util.ArrayList<>();
+            
+            if (role != null) {
+                predicates.add(cb.equal(root.get("role"), role));
+            }
+            
+            if (keyword != null && !keyword.isBlank()) {
+                String pattern = "%" + keyword.trim().toLowerCase() + "%";
+                predicates.add(cb.or(
+                    cb.like(cb.lower(root.get("fullName")), pattern),
+                    cb.like(cb.lower(root.get("email")), pattern)
+                ));
+            }
+            
+            return cb.and(predicates.toArray(new jakarta.persistence.criteria.Predicate[0]));
+        };
+
+        org.springframework.data.domain.Page<User> users = userRepository.findAll(
+            spec, 
+            org.springframework.data.domain.PageRequest.of(page, size, org.springframework.data.domain.Sort.by(org.springframework.data.domain.Sort.Direction.DESC, "createdAt"))
+        );
+
+        java.util.List<com.fashionshop.backend.module.user.dto.response.AdminUserResponse> content = users.getContent().stream()
+            .map(com.fashionshop.backend.module.user.dto.response.AdminUserResponse::from)
+            .toList();
+
+        return com.fashionshop.backend.common.PageResponse.from(content, users);
+    }
+
+    @Override
+    @Transactional(readOnly = true)
+    public com.fashionshop.backend.module.user.dto.response.UserStatsResponse getUserStats() {
+        return com.fashionshop.backend.module.user.dto.response.UserStatsResponse.builder()
+            .totalUsers(userRepository.count())
+            .activeUsers(userRepository.countByStatus(com.fashionshop.backend.common.enums.UserStatus.ACTIVE))
+            .lockedUsers(userRepository.countByStatus(com.fashionshop.backend.common.enums.UserStatus.LOCKED))
+            .customerCount(userRepository.countByRole(com.fashionshop.backend.common.enums.Role.CUSTOMER))
+            .employeeCount(userRepository.countByRole(com.fashionshop.backend.common.enums.Role.EMPLOYEE))
+            .adminCount(userRepository.countByRole(com.fashionshop.backend.common.enums.Role.ADMIN))
+            .build();
+    }
+
+    @Override
+    @Transactional
+    public void toggleUserStatus(Long userId, com.fashionshop.backend.common.enums.UserStatus newStatus, User currentUser) {
+        if (currentUser.getId().equals(userId)) {
+            throw new BusinessException(ErrorCode.VALIDATION_ERROR, org.springframework.http.HttpStatus.BAD_REQUEST, "Bạn không thể tự khóa tài khoản của chính mình");
+        }
+        
+        User user = userRepository.findById(userId)
+            .orElseThrow(() -> new BusinessException(ErrorCode.USER_NOT_FOUND, org.springframework.http.HttpStatus.NOT_FOUND, "Không tìm thấy người dùng"));
+            
+        user.setStatus(newStatus);
+        userRepository.save(user);
+    }
 }

@@ -1,6 +1,8 @@
 package com.fashionshop.backend.module.order.dto.response;
 
+import com.fashionshop.backend.common.enums.OrderStatus;
 import com.fashionshop.backend.domain.Order;
+import com.fashionshop.backend.domain.Review;
 import lombok.Builder;
 import lombok.Getter;
 
@@ -46,9 +48,43 @@ public class OrderDetailResponse {
     @Builder.Default
     private List<String> packingWarnings = new ArrayList<>();
 
+    // Return
+    private Long returnId;
+    private String returnStatus;
+    private String returnStatusLabel;
+    private String returnReason;
+    private String returnAdminNote;
+    @Builder.Default
+    private List<String> returnEvidenceImages = new ArrayList<>();
+    private BigDecimal returnRefundAmount;
+
     public static OrderDetailResponse from(Order order, String statusLabel) {
+        return from(order, statusLabel, Map.of(), null, null, null, null, null, null, null);
+    }
+
+    public static OrderDetailResponse from(Order order, String statusLabel,
+                                           Map<Long, Review> itemIdToReview) {
+        return from(order, statusLabel, itemIdToReview, null, null, null, null, null, null, null);
+    }
+
+    public static OrderDetailResponse from(Order order, String statusLabel,
+                                           Map<Long, Review> itemIdToReview,
+                                           Long returnId, String returnStatus, String returnStatusLabel,
+                                           String returnReason, String returnAdminNote,
+                                           List<String> returnEvidenceImages, BigDecimal returnRefundAmount) {
+        boolean canReviewOrder = order.getStatus() == OrderStatus.DELIVERED
+            || order.getStatus() == OrderStatus.COMPLETED;
+
         List<OrderItemResponse> itemResponses = order.getItems().stream()
-            .map(OrderItemResponse::from)
+            .map(item -> {
+                Review review = itemIdToReview.get(item.getId());
+                boolean reviewed = review != null;
+                Boolean canReview = canReviewOrder && !reviewed ? true : null;
+                Long reviewId = reviewed ? review.getId() : null;
+                Integer reviewRating = reviewed ? review.getRating() : null;
+                String reviewComment = reviewed ? review.getComment() : null;
+                return OrderItemResponse.from(item, canReview, reviewId, reviewRating, reviewComment);
+            })
             .toList();
 
         List<String> warnings = buildPackingWarnings(order);
@@ -81,6 +117,14 @@ public class OrderDetailResponse {
             // Payment info
             .paymentStatus(order.getPayment() != null ? order.getPayment().getStatus().name() : null)
             .paidAt(order.getPayment() != null ? order.getPayment().getPaidAt() : null)
+            // Return info
+            .returnId(returnId)
+            .returnStatus(returnStatus)
+            .returnStatusLabel(returnStatusLabel)
+            .returnReason(returnReason)
+            .returnAdminNote(returnAdminNote)
+            .returnEvidenceImages(returnEvidenceImages != null ? returnEvidenceImages : new ArrayList<>())
+            .returnRefundAmount(returnRefundAmount)
             .build();
     }
 

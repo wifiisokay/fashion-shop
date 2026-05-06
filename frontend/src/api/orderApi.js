@@ -11,6 +11,7 @@ export const orderApi = {
   // Staff + Admin
   getAllOrders:    (params)     => axiosInstance.get('/api/staff/orders', { params }),
   getOrderById:   (id)         => axiosInstance.get(`/api/staff/orders/${id}`),
+  getOrderStats:  ()           => axiosInstance.get('/api/staff/orders/stats'),
   updateStatus:   (id, data)   => axiosInstance.patch(`/api/staff/orders/${id}/status`, data),
   confirmPacking: (id, data)   => axiosInstance.patch(`/api/staff/orders/${id}/packing`, data),
   staffCancel:    (id, reason) => axiosInstance.post(`/api/staff/orders/${id}/cancel`, { reason }),

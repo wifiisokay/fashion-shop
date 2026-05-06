@@ -414,7 +414,7 @@ class OrderServiceImplTest {
                 .thenReturn(new PageImpl<>(List.of(order)));
             when(statusService.getLabel(any())).thenReturn("Chờ xác nhận");
 
-            PageResponse<OrderSummaryResponse> result = sut.getMyOrders(1L, null, 0, 10);
+            PageResponse<OrderSummaryResponse> result = sut.getMyOrders(1L, null, null, 0, 10);
 
             assertEquals(1, result.getContent().size());
             assertEquals("PENDING", result.getContent().get(0).getStatus());

@@ -89,8 +89,20 @@ public enum ErrorCode {
 
     // RETURN / REVIEW
     RETURN_NOT_FOUND("RETURN_001", "Yêu cầu trả hàng không tồn tại"),
+    RETURN_NOT_ELIGIBLE("RETURN_002", "Đơn hàng chưa đủ điều kiện trả hàng"),
+    RETURN_WINDOW_EXPIRED("RETURN_003", "Đã quá 7 ngày kể từ khi giao hàng, không thể yêu cầu trả hàng"),
+    RETURN_ALREADY_EXISTS("RETURN_004", "Đã có yêu cầu trả hàng đang xử lý cho đơn này"),
+    RETURN_INVALID_STATUS("RETURN_005", "Không thể chuyển trạng thái yêu cầu trả hàng"),
+    RETURN_REJECT_NOTE_REQUIRED("RETURN_006", "Vui lòng nhập lý do từ chối"),
+    INVALID_REFUND_AMOUNT("RETURN_007", "Số tiền hoàn không hợp lệ"),
+
     REVIEW_NOT_FOUND("REVIEW_001", "Đánh giá không tồn tại"),
-    REVIEW_ALREADY_EXISTS("REVIEW_002", "Bạn đã đánh giá sản phẩm này");
+    REVIEW_ALREADY_EXISTS("REVIEW_002", "Bạn đã đánh giá sản phẩm này"),
+    REVIEW_NOT_ELIGIBLE("REVIEW_003", "Chỉ đánh giá được đơn đã giao"),
+    REVIEW_INVALID_RATING("REVIEW_004", "Số sao phải từ 1 đến 5"),
+    REVIEW_COMMENT_TOO_LONG("REVIEW_005", "Nội dung đánh giá tối đa 1000 ký tự"),
+    REVIEW_EDIT_EXPIRED("REVIEW_006", "Đã quá 7 ngày, không thể sửa/xóa đánh giá"),
+    ORDER_ITEM_NOT_FOUND("ORDER_014", "Sản phẩm trong đơn hàng không tồn tại");
 
     private final String code;
     private final String defaultMessage;

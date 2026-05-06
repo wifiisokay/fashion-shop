@@ -39,7 +39,7 @@ const CheckoutPage = () => {
     if (addresses.length > 0 && !selectedAddressId) {
       const defaultAddr = addresses.find((a) => a.isDefault) || addresses[0];
       if (defaultAddr) {
-        setValue('addressId', defaultAddr.id, { shouldValidate: true });
+        setValue('addressId', String(defaultAddr.id), { shouldValidate: true });
       }
     }
   }, [addresses, selectedAddressId, setValue]);
@@ -56,7 +56,7 @@ const CheckoutPage = () => {
     data: shippingData, 
     isLoading: shippingLoading, 
     isError: shippingError 
-  } = useShippingFee(selectedAddressId, subtotal, totalWeight);
+  } = useShippingFee(selectedAddressId ? Number(selectedAddressId) : null, subtotal, totalWeight);
 
   const shippingFee = shippingData?.fee || 0;
   const total = subtotal + shippingFee;
@@ -132,15 +132,15 @@ const CheckoutPage = () => {
                   <label
                     key={address.id}
                     className={`flex items-start p-4 border rounded-xl cursor-pointer transition-colors ${
-                      Number(selectedAddressId) === address.id
+                      String(selectedAddressId) === String(address.id)
                         ? 'border-black bg-gray-50'
                         : 'border-gray-200 hover:bg-gray-50'
                     }`}
                   >
                     <input
                       type="radio"
-                      value={address.id}
-                      {...register('addressId', { valueAsNumber: true })}
+                      value={String(address.id)}
+                      {...register('addressId')}
                       className="mt-1 w-4 h-4 text-black focus:ring-black border-gray-300"
                     />
                     <div className="ml-3 space-y-1 w-full">

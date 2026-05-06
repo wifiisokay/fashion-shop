@@ -5,6 +5,7 @@ import com.fashionshop.backend.domain.ProductImage;
 import com.fashionshop.backend.module.storage.CloudinaryUrlBuilder;
 import lombok.Builder;
 import lombok.Getter;
+import lombok.Setter;
 
 import java.math.BigDecimal;
 
@@ -13,6 +14,7 @@ import java.math.BigDecimal;
  * primaryImageUrl lấy từ ảnh có color=NULL + isPrimary=true, apply listing transform.
  */
 @Getter
+@Setter
 @Builder
 public class ProductSummaryResponse {
     private Long id;
@@ -27,6 +29,8 @@ public class ProductSummaryResponse {
     private String primaryImageUrl;
     private String categoryName;
     private String status;
+    private Double avgRating;
+    private Integer reviewCount;
 
     public static ProductSummaryResponse from(Product product) {
         // Ảnh chung: color IS NULL + isPrimary=true → dùng cho listing

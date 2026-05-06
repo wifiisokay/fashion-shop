@@ -31,11 +31,18 @@ public class StaffOrderController {
     public ResponseEntity<ApiResponse<PageResponse<OrderSummaryResponse>>> list(
         @RequestParam(required = false) OrderStatus status,
         @RequestParam(required = false) String keyword,
+        @RequestParam(required = false) Long categoryId,
         @RequestParam(defaultValue = "0") int page,
         @RequestParam(defaultValue = "20") int size
     ) {
         return ResponseEntity.ok(ApiResponse.success(
-            orderService.getAllOrders(status, keyword, page, size)));
+            orderService.getAllOrders(status, keyword, categoryId, page, size)));
+    }
+
+    @GetMapping("/stats")
+    @Operation(summary = "Thống kê số lượng đơn hàng theo trạng thái", security = @SecurityRequirement(name = "cookieAuth"))
+    public ResponseEntity<ApiResponse<com.fashionshop.backend.module.order.dto.response.OrderStatsResponse>> stats() {
+        return ResponseEntity.ok(ApiResponse.success(orderService.getOrderStats()));
     }
 
     @GetMapping("/{id}")

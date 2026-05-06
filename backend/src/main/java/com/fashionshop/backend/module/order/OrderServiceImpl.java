@@ -15,6 +15,7 @@ import com.fashionshop.backend.module.order.dto.request.CreateOrderRequest;
 import com.fashionshop.backend.module.order.dto.request.UpdateOrderStatusRequest;
 import com.fashionshop.backend.module.order.dto.response.*;
 import com.fashionshop.backend.module.payment.PaymentService;
+import com.fashionshop.backend.module.returnrequest.ReturnStatusService;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.data.domain.Page;
@@ -42,9 +43,12 @@ public class OrderServiceImpl implements OrderService {
     private final ProductImageRepository imageRepository;
     private final AddressRepository addressRepository;
     private final UserRepository userRepository;
+    private final ReviewRepository reviewRepository;
+    private final ReturnRequestRepository returnRequestRepository;
     private final CartService cartService;
     private final OrderStatusService statusService;
     private final PaymentService paymentService;
+    private final ReturnStatusService returnStatusService;
 
     // ================================================================
     // Customer — Tạo đơn hàng
@@ -192,12 +196,21 @@ public class OrderServiceImpl implements OrderService {
 
     @Override
     @Transactional(readOnly = true)
-    public PageResponse<OrderSummaryResponse> getMyOrders(Long userId, OrderStatus status,
+    public PageResponse<OrderSummaryResponse> getMyOrders(Long userId, OrderStatus status, String keyword,
                                                            int page, int size) {
         PageRequest pageable = PageRequest.of(page, size);
-        Page<Order> orders = (status != null)
-            ? orderRepository.findByUserIdAndStatusOrderByCreatedAtDesc(userId, status, pageable)
-            : orderRepository.findByUserIdOrderByCreatedAtDesc(userId, pageable);
+
+        // Chuẩn bị keyword (nếu có)
+        String kw = (keyword != null && !keyword.trim().isEmpty()) ? keyword.trim() : null;
+
+        Page<Order> orders;
+        if (kw != null) {
+            orders = orderRepository.findCustomerOrders(userId, status, kw, pageable);
+        } else {
+            orders = (status != null)
+                ? orderRepository.findByUserIdAndStatusOrderByCreatedAtDesc(userId, status, pageable)
+                : orderRepository.findByUserIdOrderByCreatedAtDesc(userId, pageable);
+        }
 
         return buildPageResponse(orders);
     }
@@ -208,7 +221,37 @@ public class OrderServiceImpl implements OrderService {
         Order order = orderRepository.findByIdAndUserId(orderId, userId)
             .orElseThrow(() -> new BusinessException(ErrorCode.ORDER_NOT_FOUND, HttpStatus.NOT_FOUND));
 
-        return OrderDetailResponse.from(order, statusService.getLabel(order.getStatus()));
+        // Batch query review info cho canReview flag và review details
+        List<Long> itemIds = order.getItems().stream().map(OrderItem::getId).toList();
+
+        // Map orderItemId -> Review
+        Map<Long, Review> itemIdToReview = new HashMap<>();
+        reviewRepository.findByOrderItemIdIn(itemIds)
+            .forEach(r -> itemIdToReview.put(r.getOrderItem().getId(), r));
+
+        // Query return status nếu có
+        Long returnId = null;
+        String returnStatus = null;
+        String returnStatusLabel = null;
+        String returnReason = null;
+        String returnAdminNote = null;
+        List<String> returnEvidenceImages = null;
+        java.math.BigDecimal returnRefundAmount = null;
+        var latestReturn = returnRequestRepository.findFirstByOrderIdOrderByCreatedAtDesc(orderId);
+        if (latestReturn.isPresent()) {
+            var ret = latestReturn.get();
+            returnId = ret.getId();
+            returnStatus = ret.getStatus().name();
+            returnStatusLabel = returnStatusService.getLabel(ret.getStatus());
+            returnReason = ret.getReason();
+            returnAdminNote = ret.getAdminNote();
+            returnEvidenceImages = ret.getEvidenceImages();
+            returnRefundAmount = ret.getRefundAmount();
+        }
+
+        return OrderDetailResponse.from(order, statusService.getLabel(order.getStatus()),
+            itemIdToReview, returnId, returnStatus, returnStatusLabel,
+            returnReason, returnAdminNote, returnEvidenceImages, returnRefundAmount);
     }
 
     // ================================================================
@@ -273,19 +316,29 @@ public class OrderServiceImpl implements OrderService {
     @Override
     @Transactional(readOnly = true)
     public PageResponse<OrderSummaryResponse> getAllOrders(OrderStatus status, String keyword,
-                                                            int page, int size) {
+                                                            Long categoryId, int page, int size) {
         PageRequest pageable = PageRequest.of(page, size);
-        Page<Order> orders;
-
-        if (status != null && keyword != null && !keyword.isBlank()) {
-            orders = orderRepository.searchByStatusAndKeyword(status, keyword.trim(), pageable);
-        } else if (status != null) {
-            orders = orderRepository.findByStatusOrderByCreatedAtDesc(status, pageable);
-        } else {
-            orders = orderRepository.findAllByOrderByCreatedAtDesc(pageable);
-        }
-
+        String kw = (keyword != null && !keyword.isBlank()) ? keyword.trim() : null;
+        Page<Order> orders = orderRepository.searchOrders(status, kw, categoryId, pageable);
         return buildPageResponse(orders);
+    }
+
+    @Override
+    @Transactional(readOnly = true)
+    public OrderStatsResponse getOrderStats() {
+        return OrderStatsResponse.builder()
+            .totalOrders(orderRepository.count())
+            .pendingCount(orderRepository.countByStatus(OrderStatus.PENDING))
+            .confirmedCount(orderRepository.countByStatus(OrderStatus.CONFIRMED))
+            .shippingCount(orderRepository.countByStatus(OrderStatus.SHIPPING))
+            .deliveredCount(orderRepository.countByStatus(OrderStatus.DELIVERED))
+            .completedCount(orderRepository.countByStatus(OrderStatus.COMPLETED))
+            .cancelledCount(orderRepository.countByStatus(OrderStatus.CANCELLED))
+            .returnCount(
+                orderRepository.countByStatus(OrderStatus.RETURN_REQUESTED)
+                + orderRepository.countByStatus(OrderStatus.RETURNING)
+                + orderRepository.countByStatus(OrderStatus.RETURNED))
+            .build();
     }
 
     @Override
@@ -294,7 +347,28 @@ public class OrderServiceImpl implements OrderService {
         Order order = orderRepository.findById(orderId)
             .orElseThrow(() -> new BusinessException(ErrorCode.ORDER_NOT_FOUND, HttpStatus.NOT_FOUND));
 
-        return OrderDetailResponse.from(order, statusService.getLabel(order.getStatus()));
+        Long returnId = null;
+        String returnStatus = null;
+        String returnStatusLabel = null;
+        String returnReason = null;
+        String returnAdminNote = null;
+        List<String> returnEvidenceImages = null;
+        java.math.BigDecimal returnRefundAmount = null;
+        var latestReturn = returnRequestRepository.findFirstByOrderIdOrderByCreatedAtDesc(orderId);
+        if (latestReturn.isPresent()) {
+            var ret = latestReturn.get();
+            returnId = ret.getId();
+            returnStatus = ret.getStatus().name();
+            returnStatusLabel = returnStatusService.getLabel(ret.getStatus());
+            returnReason = ret.getReason();
+            returnAdminNote = ret.getAdminNote();
+            returnEvidenceImages = ret.getEvidenceImages();
+            returnRefundAmount = ret.getRefundAmount();
+        }
+
+        return OrderDetailResponse.from(order, statusService.getLabel(order.getStatus()),
+            Map.of(), returnId, returnStatus, returnStatusLabel,
+            returnReason, returnAdminNote, returnEvidenceImages, returnRefundAmount);
     }
 
     // ================================================================

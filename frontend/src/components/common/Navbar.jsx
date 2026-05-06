@@ -29,6 +29,7 @@ const Navbar = () => {
     { label: 'Sản phẩm', path: ROUTES.ADMIN_PRODUCTS },
     { label: 'Danh mục', path: ROUTES.ADMIN_CATEGORIES },
     { label: 'Người dùng', path: ROUTES.ADMIN_USERS },
+    { label: 'Đánh giá', path: ROUTES.ADMIN_REVIEWS },
     { label: 'Đơn hàng', path: ROUTES.STAFF_ORDERS },
     { label: 'Đổi/Trả', path: ROUTES.STAFF_RETURNS },
     { label: 'Cài đặt', path: ROUTES.ADMIN_SETTINGS },
