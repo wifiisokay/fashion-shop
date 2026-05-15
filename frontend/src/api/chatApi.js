@@ -1,36 +1,31 @@
-import { GoogleGenAI } from '@google/genai';
+import axiosInstance from './axiosInstance';
 
-let aiClient = null;
-
-const getAiClient = () => {
-  if (aiClient) return aiClient;
-
-  const apiKey = import.meta.env.VITE_GEMINI_API_KEY;
-  if (!apiKey) {
-    const error = new Error('Thiếu VITE_GEMINI_API_KEY cho Chat AI');
-    error.code = 'MISSING_GEMINI_KEY';
-    throw error;
-  }
-
-  aiClient = new GoogleGenAI({ apiKey });
-  return aiClient;
-};
-
+/**
+ * Chat API — gọi Backend REST API (không còn gọi Gemini SDK trực tiếp).
+ * Bảo mật: API key chỉ ở backend, FE không chạm tới.
+ */
 export const chatApi = {
-  createSession: () => {
-    const ai = getAiClient();
-    return ai.chats.create({
-      model: 'gemini-3-flash-preview',
-      config: {
-        systemInstruction: `Bạn là chuyên gia tư vấn thời trang của Fashion Shop.
-        Nhiệm vụ của bạn:
-        - Tư vấn cách phối đồ (mix & match) cho khách hàng.
-        - Gợi ý trang phục casual theo mùa (xuân, hạ, thu, đông).
-        - Gợi ý trang phục đi làm, đi chơi, dự tiệc.
-        - Trả lời ngắn gọn, thân thiện, lịch sự và chuyên nghiệp.
-        - Nếu khách hàng hỏi những vấn đề không liên quan đến thời trang, hãy khéo léo từ chối và hướng họ về chủ đề thời trang.`,
-        temperature: 0.7,
-      },
-    });
-  },
+  /** Authenticated: gửi message → nhận AI response */
+  sendMessage: (content) =>
+    axiosInstance.post('/api/chat/message', { content }),
+
+  /** Guest: gửi message không cần đăng nhập (giới hạn intent) */
+  sendGuestMessage: (content, history = []) =>
+    axiosInstance.post('/api/chat/guest/message', { content, history }),
+
+  /** Lấy/tạo session hôm nay */
+  getTodaySession: () =>
+    axiosInstance.get('/api/chat/session/today'),
+
+  /** Lấy messages của session hôm nay */
+  getTodayMessages: () =>
+    axiosInstance.get('/api/chat/messages/today'),
+
+  /** Danh sách sessions phân trang */
+  getSessions: (page = 0, size = 10) =>
+    axiosInstance.get('/api/chat/sessions', { params: { page, size } }),
+
+  /** Messages của 1 session cụ thể */
+  getSessionMessages: (sessionId) =>
+    axiosInstance.get(`/api/chat/sessions/${sessionId}`),
 };

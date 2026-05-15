@@ -1,60 +1,114 @@
-import { useState, useRef, useEffect } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 import { chatApi } from '../api/chatApi';
+import { useAuth } from '../contexts/AuthContext';
 
+/**
+ * Custom hook quản lý chat messages.
+ * - Authenticated user: gọi /api/chat/message, load lịch sử từ DB
+ * - Guest: gọi /api/chat/guest/message, giữ history trong memory
+ */
 export const useChatMessages = () => {
+  const { user } = useAuth();
+  const isAuthenticated = !!user;
+
   const [messages, setMessages] = useState([
-    { 
-      role: 'model', 
-      text: 'Xin chào! Mình là trợ lý thời trang của Fashion Shop. Mình có thể giúp bạn phối đồ hay tìm kiếm trang phục phù hợp cho dịp nào không?' 
-    }
+    {
+      role: 'assistant',
+      text: 'Xin chào! Mình là trợ lý thời trang AI của Fashion Shop. 👋\nBạn cần mình tư vấn phối đồ, tìm sản phẩm, hay hỗ trợ đơn hàng?',
+      suggestedQuestions: ['Tìm áo thun nam', 'Gợi ý outfit đi chơi', 'Chính sách đổi trả'],
+    },
   ]);
   const [isLoading, setIsLoading] = useState(false);
-  const chatSessionRef = useRef(null);
+  const guestHistoryRef = useRef([]); // Track guest conversation for context
 
-  // Khởi tạo session chat một lần khi hook được mount
+  // Load today's messages khi user đã đăng nhập
   useEffect(() => {
-    if (!chatSessionRef.current) {
+    if (!isAuthenticated) return;
+
+    const loadHistory = async () => {
       try {
-        chatSessionRef.current = chatApi.createSession();
+        const { data } = await chatApi.getTodayMessages();
+        const history = data?.data;
+        if (history && history.length > 0) {
+          const mapped = history.map((msg) => ({
+            role: msg.role === 'user' ? 'user' : 'assistant',
+            text: msg.content,
+            products: msg.products || null,
+            suggestedQuestions: msg.suggestedQuestions || null,
+            intent: msg.intent || null,
+          }));
+          // Thêm welcome message ở đầu
+          setMessages([
+            {
+              role: 'assistant',
+              text: 'Xin chào! Mình là trợ lý thời trang AI của Fashion Shop. 👋\nBạn cần mình tư vấn phối đồ, tìm sản phẩm, hay hỗ trợ đơn hàng?',
+            },
+            ...mapped,
+          ]);
+        }
       } catch (error) {
-        console.warn('Không khởi tạo được phiên chat AI:', error);
+        console.warn('Không tải được lịch sử chat:', error);
       }
-    }
-  }, []);
+    };
 
-  const sendMessage = async (text) => {
-    if (!text.trim()) return;
+    loadHistory();
+  }, [isAuthenticated]);
 
-    // Thêm tin nhắn của user vào UI ngay lập tức
-    setMessages((prev) => [...prev, { role: 'user', text }]);
-    setIsLoading(true);
+  const sendMessage = useCallback(
+    async (text) => {
+      if (!text.trim()) return;
 
-    try {
-      if (!chatSessionRef.current) {
-        throw new Error('CHAT_UNAVAILABLE');
+      // Thêm user message vào UI ngay
+      setMessages((prev) => [...prev, { role: 'user', text }]);
+      setIsLoading(true);
+
+      try {
+        let response;
+
+        if (isAuthenticated) {
+          // Authenticated user → gọi backend có lưu session
+          const { data } = await chatApi.sendMessage(text);
+          response = data?.data;
+        } else {
+          // Guest → gọi guest endpoint với history context
+          const { data } = await chatApi.sendGuestMessage(text, guestHistoryRef.current);
+          response = data?.data;
+
+          // Update guest history cho context
+          guestHistoryRef.current = [
+            ...guestHistoryRef.current,
+            { role: 'user', text },
+            { role: 'model', text: response?.content || '' },
+          ].slice(-10); // Giữ tối đa 10 messages
+        }
+
+        if (response) {
+          setMessages((prev) => [
+            ...prev,
+            {
+              role: 'assistant',
+              text: response.content,
+              products: response.products || null,
+              suggestedQuestions: response.suggestedQuestions || null,
+              intent: response.intent || null,
+            },
+          ]);
+        }
+      } catch (error) {
+        console.error('Chat error:', error);
+        setMessages((prev) => [
+          ...prev,
+          {
+            role: 'assistant',
+            text: 'Xin lỗi, hệ thống AI đang bận. Vui lòng thử lại sau nhé! 🙏',
+          },
+        ]);
+      } finally {
+        setIsLoading(false);
       }
-
-      // Gọi API Gemini thông qua SDK
-      const response = await chatSessionRef.current.sendMessage({ message: text });
-      
-      // Thêm phản hồi của AI vào UI
-      setMessages((prev) => [...prev, { role: 'model', text: response.text }]);
-    } catch (error) {
-      console.error('Lỗi khi gọi Gemini API:', error);
-
-      const friendlyMessage =
-        error.code === 'MISSING_GEMINI_KEY' || error.message === 'CHAT_UNAVAILABLE'
-          ? 'Tính năng tư vấn AI chưa được cấu hình API key. Vui lòng thử lại sau.'
-          : 'Xin lỗi, hiện tại hệ thống tư vấn đang bận. Bạn vui lòng thử lại sau nhé!';
-
-      setMessages((prev) => [
-        ...prev, 
-        { role: 'model', text: friendlyMessage }
-      ]);
-    } finally {
-      setIsLoading(false);
-    }
-  };
+    },
+    [isAuthenticated]
+  );
 
   return {
     messages,
