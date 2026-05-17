@@ -6,6 +6,7 @@ import lombok.Builder;
 import lombok.Getter;
 
 import java.math.BigDecimal;
+import java.util.Comparator;
 import java.util.List;
 
 /**
@@ -19,6 +20,8 @@ public class ProductColorDetailResponse {
     private String colorName;
     private String colorCode;
     private Integer displayOrder;
+    private Long thumbnailImageId;
+    private String thumbnailUrl;
     private List<ColorImageInfo> images;
     private List<ColorSizeInfo> sizes;
 
@@ -40,8 +43,16 @@ public class ProductColorDetailResponse {
     }
 
     public static ProductColorDetailResponse from(ProductColor color) {
+        var thumbnail = color.getImages() != null
+            ? color.getImages().stream()
+                .filter(img -> Boolean.TRUE.equals(img.getIsPrimary()))
+                .min(Comparator.comparing(img -> img.getId() != null ? img.getId() : Long.MAX_VALUE))
+                .orElse(null)
+            : null;
+
         List<ColorImageInfo> imageInfos = color.getImages() != null
             ? color.getImages().stream()
+                .filter(img -> !Boolean.TRUE.equals(img.getIsPrimary()))
                 .map(img -> ColorImageInfo.builder()
                     .id(img.getId())
                     .imageUrl(CloudinaryUrlBuilder.detail(img.getImageUrl()))
@@ -66,6 +77,8 @@ public class ProductColorDetailResponse {
             .colorName(color.getColorName())
             .colorCode(color.getColorCode())
             .displayOrder(color.getDisplayOrder())
+            .thumbnailImageId(thumbnail != null ? thumbnail.getId() : null)
+            .thumbnailUrl(thumbnail != null ? CloudinaryUrlBuilder.detail(thumbnail.getImageUrl()) : null)
             .images(imageInfos)
             .sizes(sizeInfos)
             .build();

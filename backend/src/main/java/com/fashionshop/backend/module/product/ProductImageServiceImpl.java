@@ -27,8 +27,7 @@ import java.util.Set;
 public class ProductImageServiceImpl implements ProductImageService {
 
     private static final String CLOUDINARY_FOLDER = "fashion-shop/products";
-    private static final long MAX_FILE_SIZE = 5 * 1024 * 1024; // 5MB
-    private static final int MAX_IMAGES_PER_COLOR = 5;
+    private static final long MAX_FILE_SIZE = 5 * 1024 * 1024;
     private static final Set<String> ALLOWED_TYPES = Set.of("image/jpeg", "image/png", "image/webp");
 
     private final ProductImageRepository imageRepository;
@@ -45,70 +44,51 @@ public class ProductImageServiceImpl implements ProductImageService {
 
     @Override
     @Transactional
-    public ProductImageResponse uploadPrimary(Long productId, MultipartFile file) {
+    public ProductImageResponse uploadColorThumbnail(Long productId, Long colorId, MultipartFile file) {
         Product product = findProductOrThrow(productId);
+        ProductColor color = findColorOrThrow(colorId, productId);
         validateFile(file);
 
-        // Upload lên Cloudinary trước
         UploadResult uploadResult = storageService.uploadImage(file, CLOUDINARY_FOLDER);
-
-        try {
-            // Tìm và xóa ảnh primary cũ (cả DB + Cloudinary)
-            List<ProductImage> oldPrimaries = imageRepository.findAllPrimaryByProductId(productId);
-            for (ProductImage old : oldPrimaries) {
-                try {
-                    storageService.deleteImage(old.getPublicId());
-                } catch (Exception ex) {
-                    log.warn("Không thể xóa ảnh Cloudinary cũ publicId={}", old.getPublicId(), ex);
-                }
-                imageRepository.delete(old);
-            }
-
-            // Save ảnh mới
-            ProductImage image = ProductImage.builder()
+        ProductImage image = imageRepository.findColorThumbnail(productId, colorId)
+            .orElseGet(() -> ProductImage.builder()
                 .product(product)
-                .color(null)
-                .imageUrl(uploadResult.url())
-                .publicId(uploadResult.publicId())
+                .color(color)
                 .isPrimary(true)
                 .sortOrder(0)
-                .build();
+                .build());
 
-            return ProductImageResponse.from(imageRepository.save(image));
+        String oldPublicId = image.getPublicId();
+        image.setProduct(product);
+        image.setColor(color);
+        image.setImageUrl(uploadResult.url());
+        image.setPublicId(uploadResult.publicId());
+        image.setIsPrimary(true);
+        image.setSortOrder(0);
 
+        try {
+            ProductImage saved = imageRepository.save(image);
+            deleteOldCloudinaryImage(oldPublicId, uploadResult.publicId());
+            return ProductImageResponse.from(saved);
         } catch (Exception ex) {
-            // Rollback: DB fail → xóa ảnh vừa upload trên Cloudinary
-            log.warn("DB save thất bại, cleanup Cloudinary publicId={}", uploadResult.publicId());
-            storageService.deleteImage(uploadResult.publicId());
+            cleanupUploadedImage(uploadResult.publicId());
             throw ex;
         }
     }
 
     @Override
     @Transactional
-    public ProductImageResponse uploadColorImage(Long productId, Long colorId, MultipartFile file) {
+    public ProductImageResponse uploadGalleryImage(Long productId, MultipartFile file) {
         Product product = findProductOrThrow(productId);
         validateFile(file);
 
-        // Validate color tồn tại và thuộc product
-        ProductColor color = findColorOrThrow(colorId, productId);
-
-        // Enforce giới hạn 5 ảnh / màu
-        long currentCount = imageRepository.countByColorId(colorId);
-        if (currentCount >= MAX_IMAGES_PER_COLOR) {
-            throw new BusinessException(ErrorCode.IMAGE_LIMIT_EXCEEDED, HttpStatus.BAD_REQUEST);
-        }
-
-        // Tính sort_order tự động
-        int nextSortOrder = imageRepository.findMaxSortOrderByColorId(colorId) + 1;
-
-        // Upload lên Cloudinary
+        int nextSortOrder = imageRepository.findMaxSharedGallerySortOrder(productId) + 1;
         UploadResult uploadResult = storageService.uploadImage(file, CLOUDINARY_FOLDER);
 
         try {
             ProductImage image = ProductImage.builder()
                 .product(product)
-                .color(color)
+                .color(null)
                 .imageUrl(uploadResult.url())
                 .publicId(uploadResult.publicId())
                 .isPrimary(false)
@@ -116,10 +96,8 @@ public class ProductImageServiceImpl implements ProductImageService {
                 .build();
 
             return ProductImageResponse.from(imageRepository.save(image));
-
         } catch (Exception ex) {
-            log.warn("DB save thất bại, cleanup Cloudinary publicId={}", uploadResult.publicId());
-            storageService.deleteImage(uploadResult.publicId());
+            cleanupUploadedImage(uploadResult.publicId());
             throw ex;
         }
     }
@@ -129,9 +107,13 @@ public class ProductImageServiceImpl implements ProductImageService {
     public ProductImageResponse reorder(Long productId, Long imageId, Integer newSortOrder) {
         ProductImage image = findImageOrThrow(imageId, productId);
 
-        if (image.getColor() == null) {
+        if (image.getColor() != null || Boolean.TRUE.equals(image.getIsPrimary())) {
             throw new BusinessException(ErrorCode.IMAGE_NOT_FOUND, HttpStatus.BAD_REQUEST,
-                "Không thể đổi thứ tự ảnh thẻ chính");
+                "Chi co the doi thu tu anh gallery chung");
+        }
+        if (newSortOrder == null || newSortOrder < 0) {
+            throw new BusinessException(ErrorCode.VALIDATION_ERROR, HttpStatus.BAD_REQUEST,
+                "sortOrder phai lon hon hoac bang 0");
         }
 
         image.setSortOrder(newSortOrder);
@@ -144,31 +126,27 @@ public class ProductImageServiceImpl implements ProductImageService {
         ProductImage image = findImageOrThrow(imageId, productId);
         String publicId = image.getPublicId();
 
-        // Xóa DB trước
         imageRepository.delete(image);
 
-        // Xóa Cloudinary — log nếu fail, không rollback
         try {
             storageService.deleteImage(publicId);
         } catch (Exception ex) {
-            log.warn("Không thể xóa ảnh Cloudinary publicId={} — orphan chấp nhận được", publicId, ex);
+            log.warn("Cannot delete Cloudinary image publicId={}, leaving orphan", publicId, ex);
         }
     }
 
-    // ============ Private helpers ============
-
     private void validateFile(MultipartFile file) {
         if (file == null || file.isEmpty()) {
-            throw new BusinessException(ErrorCode.INVALID_FILE_TYPE, HttpStatus.BAD_REQUEST, "File ảnh không được để trống");
+            throw new BusinessException(ErrorCode.INVALID_FILE_TYPE, HttpStatus.BAD_REQUEST, "File anh khong duoc de trong");
         }
         if (file.getSize() > MAX_FILE_SIZE) {
             throw new BusinessException(ErrorCode.FILE_TOO_LARGE, HttpStatus.BAD_REQUEST,
-                "File ảnh tối đa 5MB, file hiện tại: " + (file.getSize() / 1024 / 1024) + "MB");
+                "File anh toi da 5MB");
         }
         String contentType = file.getContentType();
         if (contentType == null || !ALLOWED_TYPES.contains(contentType)) {
             throw new BusinessException(ErrorCode.INVALID_FILE_TYPE, HttpStatus.BAD_REQUEST,
-                "Chỉ chấp nhận ảnh JPEG, PNG hoặc WebP. Loại file hiện tại: " + contentType);
+                "Chi chap nhan anh JPEG, PNG hoac WebP");
         }
     }
 
@@ -191,8 +169,27 @@ public class ProductImageServiceImpl implements ProductImageService {
             .orElseThrow(() -> new BusinessException(ErrorCode.IMAGE_NOT_FOUND, HttpStatus.NOT_FOUND));
         if (!image.getProduct().getId().equals(productId)) {
             throw new BusinessException(ErrorCode.IMAGE_NOT_FOUND, HttpStatus.NOT_FOUND,
-                "Ảnh không thuộc sản phẩm này");
+                "Anh khong thuoc san pham nay");
         }
         return image;
+    }
+
+    private void deleteOldCloudinaryImage(String oldPublicId, String newPublicId) {
+        if (oldPublicId == null || oldPublicId.equals(newPublicId)) {
+            return;
+        }
+        try {
+            storageService.deleteImage(oldPublicId);
+        } catch (Exception ex) {
+            log.warn("Cannot delete old Cloudinary image publicId={}", oldPublicId, ex);
+        }
+    }
+
+    private void cleanupUploadedImage(String publicId) {
+        try {
+            storageService.deleteImage(publicId);
+        } catch (Exception cleanupEx) {
+            log.warn("Cannot cleanup uploaded Cloudinary image publicId={}", publicId, cleanupEx);
+        }
     }
 }

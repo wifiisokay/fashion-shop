@@ -6,6 +6,7 @@ import lombok.Builder;
 import lombok.Getter;
 
 import java.math.BigDecimal;
+import java.util.Comparator;
 import java.util.List;
 
 /**
@@ -53,7 +54,10 @@ public class ProductDetailResponse {
         // Root images: chỉ ảnh chung (color=null), apply detail transform
         List<ProductImageResponse> imageResps = product.getImages() != null
             ? product.getImages().stream()
-                .filter(img -> img.getColor() == null)
+                .filter(img -> img.getColor() == null && !Boolean.TRUE.equals(img.getIsPrimary()))
+                .sorted(Comparator
+                    .comparing((com.fashionshop.backend.domain.ProductImage img) -> img.getSortOrder() != null ? img.getSortOrder() : 0)
+                    .thenComparing(img -> img.getId() != null ? img.getId() : Long.MAX_VALUE))
                 .map(img -> ProductImageResponse.builder()
                     .id(img.getId())
                     .imageUrl(CloudinaryUrlBuilder.detail(img.getImageUrl()))

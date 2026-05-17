@@ -12,26 +12,53 @@ public interface ProductImageRepository extends JpaRepository<ProductImage, Long
 
     List<ProductImage> findByProductIdOrderBySortOrderAsc(Long productId);
 
-    /** Ảnh theo màu — dùng cho gallery detail. */
     List<ProductImage> findByColorIdOrderBySortOrderAsc(Long colorId);
 
-    /** Ảnh chung sản phẩm (color IS NULL, isPrimary=true) — dùng cho listing. */
-    @Query("SELECT pi FROM ProductImage pi WHERE pi.product.id = :productId AND pi.color IS NULL AND pi.isPrimary = true")
+    @Query("""
+        SELECT pi FROM ProductImage pi
+        WHERE pi.product.id = :productId
+          AND pi.color.id = :colorId
+          AND pi.isPrimary = true
+        """)
+    Optional<ProductImage> findColorThumbnail(Long productId, Long colorId);
+
+    @Query(value = """
+        SELECT pi.* FROM product_images pi
+        JOIN product_colors pc ON pc.id = pi.color_id
+        WHERE pi.product_id = :productId
+          AND pi.color_id IS NOT NULL
+          AND pi.is_primary = true
+        ORDER BY pc.display_order ASC, pc.id ASC, pi.id ASC
+        LIMIT 1
+        """, nativeQuery = true)
     Optional<ProductImage> findPrimaryByProductId(Long productId);
 
-    /** Clear isPrimary trên tất cả ảnh chung (color IS NULL) của product — dùng trước khi set primary mới. */
+    @Query("""
+        SELECT pi FROM ProductImage pi
+        WHERE pi.product.id = :productId
+          AND pi.color IS NULL
+          AND pi.isPrimary = false
+        ORDER BY pi.sortOrder ASC, pi.id ASC
+        """)
+    List<ProductImage> findSharedGalleryByProductId(Long productId);
+
     @Modifying
     @Query("UPDATE ProductImage pi SET pi.isPrimary = false WHERE pi.product.id = :productId AND pi.color IS NULL")
     void clearPrimaryByProductId(Long productId);
 
-    /** Đếm ảnh theo colorId — dùng để enforce giới hạn 5 ảnh/màu. */
     long countByColorId(Long colorId);
 
-    /** Tìm max sort_order theo colorId — dùng để auto-increment khi upload ảnh gallery. */
     @Query("SELECT COALESCE(MAX(pi.sortOrder), 0) FROM ProductImage pi WHERE pi.color.id = :colorId")
     int findMaxSortOrderByColorId(Long colorId);
 
-    /** Tìm tất cả ảnh primary (color IS NULL, isPrimary=true) — dùng để thay thế khi upload primary mới. */
+    @Query("""
+        SELECT COALESCE(MAX(pi.sortOrder), 0) FROM ProductImage pi
+        WHERE pi.product.id = :productId
+          AND pi.color IS NULL
+          AND pi.isPrimary = false
+        """)
+    int findMaxSharedGallerySortOrder(Long productId);
+
     @Query("SELECT pi FROM ProductImage pi WHERE pi.product.id = :productId AND pi.color IS NULL AND pi.isPrimary = true")
     List<ProductImage> findAllPrimaryByProductId(Long productId);
 }

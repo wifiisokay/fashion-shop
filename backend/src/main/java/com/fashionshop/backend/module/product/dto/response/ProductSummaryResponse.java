@@ -8,11 +8,8 @@ import lombok.Getter;
 import lombok.Setter;
 
 import java.math.BigDecimal;
+import java.util.Comparator;
 
-/**
- * DTO tóm tắt cho listing (card sản phẩm) — không kèm variant đầy đủ.
- * primaryImageUrl lấy từ ảnh có color=NULL + isPrimary=true, apply listing transform.
- */
 @Getter
 @Setter
 @Builder
@@ -33,13 +30,21 @@ public class ProductSummaryResponse {
     private Integer reviewCount;
 
     public static ProductSummaryResponse from(Product product) {
-        // Ảnh chung: color IS NULL + isPrimary=true → dùng cho listing
         String primaryImg = product.getImages() != null
             ? product.getImages().stream()
-                .filter(img -> img.getColor() == null && Boolean.TRUE.equals(img.getIsPrimary()))
+                .filter(img -> img.getColor() != null && Boolean.TRUE.equals(img.getIsPrimary()))
+                .min(Comparator
+                    .comparing((ProductImage img) -> img.getColor().getDisplayOrder() != null ? img.getColor().getDisplayOrder() : 0)
+                    .thenComparing(img -> img.getColor().getId() != null ? img.getColor().getId() : Long.MAX_VALUE)
+                    .thenComparing(img -> img.getId() != null ? img.getId() : Long.MAX_VALUE))
                 .map(ProductImage::getImageUrl)
-                .findFirst()
-                .orElse(product.getImages().isEmpty() ? null : product.getImages().get(0).getImageUrl())
+                .orElseGet(() -> product.getImages().stream()
+                    .filter(img -> img.getColor() == null && !Boolean.TRUE.equals(img.getIsPrimary()))
+                    .min(Comparator
+                        .comparing((ProductImage img) -> img.getSortOrder() != null ? img.getSortOrder() : 0)
+                        .thenComparing(img -> img.getId() != null ? img.getId() : Long.MAX_VALUE))
+                    .map(ProductImage::getImageUrl)
+                    .orElse(null))
             : null;
 
         return ProductSummaryResponse.builder()

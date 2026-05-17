@@ -1,4 +1,4 @@
-import { useState, useMemo } from 'react';
+import { useEffect, useState, useMemo } from 'react';
 import { useParams } from 'react-router-dom';
 import { useProduct } from '../../hooks/useProduct';
 import { useCart } from '../../hooks/useCart';
@@ -56,10 +56,20 @@ const ProductDetailPage = () => {
     ],
   };
 
-  const colors = useMemo(() => product.colors || [], [product.colors]);
+  const colors = useMemo(
+    () => (product.colors || []).slice().sort((a, b) => (a.displayOrder || 0) - (b.displayOrder || 0) || a.id - b.id),
+    [product.colors]
+  );
   const [selectedColorId, setSelectedColorId] = useState(() => colors[0]?.id || null);
   const [selectedSize, setSelectedSize] = useState(null);
   const [currentImageIndex, setCurrentImageIndex] = useState(0);
+
+  useEffect(() => {
+    if (colors.length > 0 && !colors.some((c) => c.id === selectedColorId)) {
+      setSelectedColorId(colors[0].id);
+      setCurrentImageIndex(0);
+    }
+  }, [colors, selectedColorId]);
 
   // Derive data from selectedColorId
   const selectedColor = useMemo(
@@ -68,21 +78,14 @@ const ProductDetailPage = () => {
   );
 
   const currentImages = useMemo(() => {
-    if (!selectedColor?.images?.length) {
-      // Fallback: ảnh chung (colorId=null)
-      return (product.images || [])
-        .sort((a, b) => {
-          if (a.isPrimary) return -1;
-          if (b.isPrimary) return 1;
-          return (a.sortOrder || 0) - (b.sortOrder || 0);
-        })
-        .map((img) => img.imageUrl);
-    }
-    return selectedColor.images
-      .sort((a, b) => (a.sortOrder || 0) - (b.sortOrder || 0))
-      .map((img) => img.imageUrl);
+    const galleryImages = (product.images || [])
+      .slice()
+      .sort((a, b) => (a.sortOrder || 0) - (b.sortOrder || 0) || a.id - b.id)
+      .map((img) => img.imageUrl)
+      .filter(Boolean);
+    const firstImage = selectedColor?.thumbnailUrl || galleryImages[0] || null;
+    return Array.from(new Set([firstImage, ...galleryImages].filter(Boolean)));
   }, [selectedColor, product.images]);
-
   const availableSizes = useMemo(
     () => selectedColor?.sizes || [],
     [selectedColor]

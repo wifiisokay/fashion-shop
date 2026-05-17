@@ -23,12 +23,12 @@ export const productApi = {
 
   // === IMAGES ===
   getImages: (productId) => axiosInstance.get(`/api/admin/products/${productId}/images`),
-  uploadPrimaryImage: (productId, formData) =>
-    axiosInstance.post(`/api/admin/products/${productId}/images/primary`, formData, {
+  uploadColorThumbnail: (productId, colorId, formData) =>
+    axiosInstance.post(`/api/admin/products/${productId}/images/colors/${colorId}/thumbnail`, formData, {
       headers: { 'Content-Type': 'multipart/form-data' },
     }),
-  uploadColorImage: (productId, colorId, formData) =>
-    axiosInstance.post(`/api/admin/products/${productId}/images/color/${colorId}`, formData, {
+  uploadGalleryImage: (productId, formData) =>
+    axiosInstance.post(`/api/admin/products/${productId}/images/gallery`, formData, {
       headers: { 'Content-Type': 'multipart/form-data' },
     }),
   reorderImage: (productId, imageId, newSortOrder) =>

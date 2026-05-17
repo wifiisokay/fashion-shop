@@ -1,5 +1,5 @@
 import { useState, useRef, useEffect } from 'react';
-import { MessageCircle, X, Send, Bot, User, ExternalLink } from 'lucide-react';
+import { X, Send, Bot, User, ExternalLink } from 'lucide-react';
 import { useChatMessages } from '../../hooks/useChatMessages';
 import { clsx } from 'clsx';
 import ReactMarkdown from 'react-markdown';
@@ -193,7 +193,7 @@ const ChatWidget = () => {
           isOpen ? 'bg-gray-800 text-white rotate-90 scale-0 opacity-0' : 'bg-black text-white rotate-0 scale-100 opacity-100'
         )}
       >
-        <MessageCircle className="w-6 h-6" />
+        <Bot className="w-6 h-6" />
       </button>
     </div>
   );

@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
-import { ArrowLeft, Save, Plus, Trash2, Upload, Star } from 'lucide-react';
+import { ArrowLeft, Save, Plus, Trash2, Upload } from 'lucide-react';
 import { toast } from 'sonner';
 import { Button } from '@/components/ui/Button';
 import { Input } from '@/components/ui/input';
@@ -27,7 +27,7 @@ import {
 import { useCategories } from '@/hooks/useCategories';
 import { useAdminProduct, useCreateProduct, useUpdateProduct } from '@/hooks/useAdminProducts';
 import { useCreateVariant, useUpdateVariant, useDeleteVariant } from '@/hooks/useAdminVariants';
-import { useUploadPrimaryImage, useUploadColorImage, useReorderImage, useDeleteImage } from '@/hooks/useAdminImages';
+import { useUploadColorThumbnail, useUploadGalleryImage, useReorderImage, useDeleteImage } from '@/hooks/useAdminImages';
 import { useCreateColor, useUpdateColor, useDeleteColor } from '@/hooks/useAdminColors';
 import Spinner from '@/components/ui/Spinner';
 import { DragDropContext, Droppable, Draggable } from '@hello-pangea/dnd';
@@ -54,8 +54,8 @@ const ProductFormPage = () => {
   const createVariant = useCreateVariant();
   const updateVariantMutation = useUpdateVariant();
   const deleteVariant = useDeleteVariant();
-  const uploadPrimaryImage = useUploadPrimaryImage();
-  const uploadColorImage = useUploadColorImage();
+  const uploadColorThumbnail = useUploadColorThumbnail();
+  const uploadGalleryImage = useUploadGalleryImage();
   const reorderImage = useReorderImage();
   const deleteImage = useDeleteImage();
   const createColor = useCreateColor();
@@ -82,9 +82,6 @@ const ProductFormPage = () => {
   const [editColor, setEditColor] = useState(null);
   const [colorForm, setColorForm] = useState({ colorName: '', colorCode: '#000000', displayOrder: 0 });
   const [deleteColorTarget, setDeleteColorTarget] = useState(null);
-
-  // Image upload state
-  const [uploadColorId, setUploadColorId] = useState('');
 
   // Flatten categories
   const categoryOptions = [];
@@ -119,7 +116,10 @@ const ProductFormPage = () => {
 
   const variants = product?.variants ?? [];
   const colors = product?.colors ?? [];
-  const images = product?.images ?? [];
+  const images = (product?.images ?? [])
+    .filter((img) => !img.colorId && !img.isPrimary)
+    .slice()
+    .sort((a, b) => (a.sortOrder || 0) - (b.sortOrder || 0));
   const isSaving = createProduct.isPending || updateProduct.isPending;
 
   // === Product submit ===
@@ -244,12 +244,12 @@ const ProductFormPage = () => {
   };
 
   // === Image CRUD ===
-  const handleUploadPrimaryImage = async (e) => {
+  const handleUploadColorThumbnail = async (e, colorId) => {
     const file = e.target.files?.[0];
     if (!file) return;
 
     try {
-      await uploadPrimaryImage.mutateAsync({ productId: parseInt(productId), file });
+      await uploadColorThumbnail.mutateAsync({ productId: parseInt(productId), colorId, file });
       toast.success('Tải ảnh thẻ lên thành công');
     } catch {
       toast.error('Tải ảnh thẻ thất bại');
@@ -257,23 +257,14 @@ const ProductFormPage = () => {
     e.target.value = '';
   };
 
-  const handleUploadColorImages = async (e, colorId) => {
+  const handleUploadGalleryImages = async (e) => {
     const files = Array.from(e.target.files || []);
     if (files.length === 0) return;
-
-    const targetColor = colors.find((c) => c.id === colorId);
-    const currentCount = targetColor?.images?.length || 0;
-    
-    if (currentCount + files.length > 5) {
-      toast.error(`Chỉ được tải lên tối đa 5 ảnh cho mỗi màu sắc. Màu này đã có ${currentCount} ảnh.`);
-      e.target.value = '';
-      return;
-    }
 
     let successCount = 0;
     for (const file of files) {
       try {
-        await uploadColorImage.mutateAsync({ productId: parseInt(productId), colorId, file });
+        await uploadGalleryImage.mutateAsync({ productId: parseInt(productId), file });
         successCount++;
       } catch {
         toast.error(`Tải ảnh ${file.name} thất bại`);
@@ -294,13 +285,10 @@ const ProductFormPage = () => {
       return;
     }
 
-    const colorIdStr = source.droppableId.replace('color-', '');
-    const colorId = parseInt(colorIdStr);
-    const targetColor = colors.find((c) => c.id === colorId);
-    if (!targetColor) return;
+    if (source.droppableId !== 'shared-gallery') return;
 
     // Current sorted images
-    const colorImages = (targetColor.images || []).slice().sort((a, b) => a.sortOrder - b.sortOrder);
+    const colorImages = images.slice();
     
     // Reorder locally
     const [movedImage] = colorImages.splice(source.index, 1);
@@ -622,132 +610,115 @@ const ProductFormPage = () => {
           </div>
         </TabsContent>
 
-        {/* === TAB 4: Hình ảnh === */}
+        {/* === TAB 4: Hinh anh === */}
         <TabsContent value="images">
           <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-6 space-y-6">
-            {(uploadPrimaryImage.isPending || uploadColorImage.isPending || reorderImage.isPending) && (
+            {(uploadColorThumbnail.isPending || uploadGalleryImage.isPending || reorderImage.isPending) && (
               <div className="flex items-center gap-2 text-sm text-gray-500">
                 <span className="w-4 h-4 border-2 border-gray-400 border-t-transparent rounded-full animate-spin" />
-                Đang xử lý ảnh...
+                Dang xu ly anh...
               </div>
             )}
 
-            {/* Ảnh chính (color=null, isPrimary=true) */}
             <div className="space-y-3">
-              <div className="flex items-center justify-between">
-                <h4 className="font-semibold">Ảnh chính (Listing)</h4>
-                <label className="cursor-pointer">
-                  <input type="file" accept="image/jpeg,image/png,image/webp" className="hidden"
-                    onChange={handleUploadPrimaryImage} />
-                  <Button type="button" size="sm" variant="outline" className="flex items-center gap-1" asChild>
-                    <span><Upload className="w-4 h-4" /> Upload ảnh chính</span>
-                  </Button>
-                </label>
-              </div>
-              <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
-                {images.filter(i => !i.colorId && i.isPrimary).map((img) => (
-                  <div key={img.id} className="relative group rounded-lg overflow-hidden border-2 border-yellow-400">
-                    <img src={img.imageUrl} alt="" className="w-full h-36 object-cover" />
-                    <Badge className="absolute top-2 left-2 bg-yellow-500 text-white text-xs">
-                      <Star className="w-3 h-3 mr-1" /> Chính
-                    </Badge>
-                    <div className="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center">
-                      <Button size="sm" variant="destructive" onClick={() => setDeleteImageTarget(img.id)}>
-                        <Trash2 className="w-3 h-3" />
-                      </Button>
+              <h4 className="font-semibold">Thumbnail theo mau</h4>
+              {colors.length === 0 ? (
+                <div className="text-center py-6 text-gray-400 border-2 border-dashed rounded-lg text-sm">
+                  Hay tao mau truoc khi upload thumbnail.
+                </div>
+              ) : (
+                <div className="grid sm:grid-cols-2 gap-3">
+                  {colors.map((c) => (
+                    <div key={c.id} className="flex items-center gap-3 rounded-lg border border-gray-200 p-3">
+                      <div className="w-20 h-24 rounded-md overflow-hidden bg-gray-100 border shrink-0">
+                        {c.thumbnailUrl ? (
+                          <img src={c.thumbnailUrl} alt={c.colorName} className="w-full h-full object-cover" />
+                        ) : (
+                          <div className="w-full h-full flex items-center justify-center text-xs text-gray-400 text-center px-2">
+                            Chua co anh
+                          </div>
+                        )}
+                      </div>
+                      <div className="min-w-0 flex-1 space-y-2">
+                        <div className="flex items-center gap-2 text-sm font-medium">
+                          <span className="w-4 h-4 rounded-full border" style={{ backgroundColor: c.colorCode || '#ccc' }} />
+                          <span className="truncate">{c.colorName}</span>
+                        </div>
+                        <div className="flex items-center gap-2">
+                          <label className="cursor-pointer">
+                            <input type="file" accept="image/jpeg,image/png,image/webp" className="hidden"
+                              onChange={(e) => handleUploadColorThumbnail(e, c.id)} />
+                            <Button type="button" size="sm" variant="outline" className="flex items-center gap-1" asChild>
+                              <span><Upload className="w-4 h-4" /> Upload</span>
+                            </Button>
+                          </label>
+                          {c.thumbnailUrl && (
+                            <Button type="button" size="sm" variant="destructive"
+                              onClick={() => c.thumbnailImageId && setDeleteImageTarget(c.thumbnailImageId)}>
+                              <Trash2 className="w-3 h-3" />
+                            </Button>
+                          )}
+                        </div>
+                      </div>
                     </div>
-                  </div>
-                ))}
-                {images.filter(i => !i.colorId && i.isPrimary).length === 0 && (
-                  <div className="col-span-full text-center py-6 text-gray-400 border-2 border-dashed rounded-lg text-sm">
-                    Chưa có ảnh chính. Upload để hiển thị trên listing.
-                  </div>
-                )}
-              </div>
+                  ))}
+                </div>
+              )}
             </div>
 
             <Separator />
 
-            {/* Ảnh theo màu */}
             <div className="space-y-3">
               <div className="flex items-center justify-between">
-                <h4 className="font-semibold">Ảnh theo màu</h4>
-                <div className="flex items-center gap-2">
-                  <Select value={uploadColorId} onValueChange={setUploadColorId}>
-                    <SelectTrigger className="w-40"><SelectValue placeholder="Chọn màu" /></SelectTrigger>
-                    <SelectContent>
-                      {colors.map((c) => <SelectItem key={c.id} value={c.id.toString()}>{c.colorName}</SelectItem>)}
-                    </SelectContent>
-                  </Select>
-                  <label className={`cursor-pointer ${!uploadColorId ? 'pointer-events-none opacity-50' : ''}`}>
-                    <input type="file" accept="image/jpeg,image/png,image/webp" className="hidden" multiple
-                      onChange={(e) => handleUploadColorImages(e, parseInt(uploadColorId))} disabled={!uploadColorId} />
-                    <Button type="button" size="sm" className="flex items-center gap-1" asChild disabled={!uploadColorId}>
-                      <span><Upload className="w-4 h-4" /> Upload</span>
-                    </Button>
-                  </label>
-                </div>
+                <h4 className="font-semibold">Gallery chung</h4>
+                <label className="cursor-pointer">
+                  <input type="file" accept="image/jpeg,image/png,image/webp" className="hidden" multiple
+                    onChange={handleUploadGalleryImages} />
+                  <Button type="button" size="sm" className="flex items-center gap-1" asChild>
+                    <span><Upload className="w-4 h-4" /> Upload gallery</span>
+                  </Button>
+                </label>
               </div>
-              
-              {colors.length === 0 ? (
-                <div className="text-center py-6 text-gray-400 border-2 border-dashed rounded-lg text-sm">
-                  Hãy tạo màu sắc trước để upload ảnh theo màu.
-                </div>
-              ) : (
-                <DragDropContext onDragEnd={handleDragEnd}>
-                  {colors.map((c) => {
-                    const colorImages = (c.images || [])
-                      .sort((a, b) => a.sortOrder - b.sortOrder);
 
-                    return (
-                      <div key={c.id} className="space-y-2">
-                        <div className="flex items-center gap-2 text-sm font-medium">
-                          <span className="w-4 h-4 rounded-full border" style={{ backgroundColor: c.colorCode || '#ccc' }} />
-                          {c.colorName} ({colorImages.length}/5 ảnh)
-                        </div>
-                        
-                        <Droppable droppableId={`color-${c.id}`} direction="horizontal">
-                          {(provided) => (
-                            <div 
-                              ref={provided.innerRef}
-                              {...provided.droppableProps}
-                              className={`flex flex-wrap gap-2 min-h-[120px] p-2 rounded-lg border-2 border-dashed ${colorImages.length === 0 ? 'bg-gray-50 items-center justify-center' : 'bg-white'}`}
-                            >
-                              {colorImages.length > 0 ? (
-                                colorImages.map((img, index) => (
-                                  <Draggable key={img.id} draggableId={img.id.toString()} index={index}>
-                                    {(provided, snapshot) => (
-                                      <div
-                                        ref={provided.innerRef}
-                                        {...provided.draggableProps}
-                                        {...provided.dragHandleProps}
-                                        className={`relative group rounded-lg overflow-hidden border w-[110px] h-[110px] flex-shrink-0 ${snapshot.isDragging ? 'shadow-xl ring-2 ring-primary z-50' : ''}`}
-                                      >
-                                        <img src={img.imageUrl} alt="" className="w-full h-full object-cover" />
-                                        <div className="absolute top-1 left-1 bg-black/50 text-white text-[10px] px-1.5 py-0.5 rounded backdrop-blur-sm">
-                                          {index + 1}
-                                        </div>
-                                        <div className="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center">
-                                          <Button size="sm" variant="destructive" onClick={() => setDeleteImageTarget(img.id)}>
-                                            <Trash2 className="w-3 h-3" />
-                                          </Button>
-                                        </div>
-                                      </div>
-                                    )}
-                                  </Draggable>
-                                ))
-                              ) : (
-                                <p className="text-xs text-gray-400 italic">Chưa có ảnh</p>
-                              )}
-                              {provided.placeholder}
-                            </div>
-                          )}
-                        </Droppable>
-                      </div>
-                    );
-                  })}
-                </DragDropContext>
-              )}
+              <DragDropContext onDragEnd={handleDragEnd}>
+                <Droppable droppableId="shared-gallery" direction="horizontal">
+                  {(provided) => (
+                    <div
+                      ref={provided.innerRef}
+                      {...provided.droppableProps}
+                      className={`flex flex-wrap gap-2 min-h-[120px] p-2 rounded-lg border-2 border-dashed ${images.length === 0 ? 'bg-gray-50 items-center justify-center' : 'bg-white'}`}
+                    >
+                      {images.length > 0 ? (
+                        images.map((img, index) => (
+                          <Draggable key={img.id} draggableId={img.id.toString()} index={index}>
+                            {(provided, snapshot) => (
+                              <div
+                                ref={provided.innerRef}
+                                {...provided.draggableProps}
+                                {...provided.dragHandleProps}
+                                className={`relative group rounded-lg overflow-hidden border w-[110px] h-[110px] flex-shrink-0 ${snapshot.isDragging ? 'shadow-xl ring-2 ring-primary z-50' : ''}`}
+                              >
+                                <img src={img.imageUrl} alt="" className="w-full h-full object-cover" />
+                                <div className="absolute top-1 left-1 bg-black/50 text-white text-[10px] px-1.5 py-0.5 rounded backdrop-blur-sm">
+                                  {index + 1}
+                                </div>
+                                <div className="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center">
+                                  <Button size="sm" variant="destructive" onClick={() => setDeleteImageTarget(img.id)}>
+                                    <Trash2 className="w-3 h-3" />
+                                  </Button>
+                                </div>
+                              </div>
+                            )}
+                          </Draggable>
+                        ))
+                      ) : (
+                        <p className="text-xs text-gray-400 italic">Chua co anh gallery</p>
+                      )}
+                      {provided.placeholder}
+                    </div>
+                  )}
+                </Droppable>
+              </DragDropContext>
             </div>
           </div>
         </TabsContent>

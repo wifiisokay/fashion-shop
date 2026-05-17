@@ -20,47 +20,46 @@ import java.util.Map;
 @RequestMapping("/api/admin/products/{productId}/images")
 @RequiredArgsConstructor
 @PreAuthorize("hasAnyRole('EMPLOYEE', 'ADMIN')")
-@Tag(name = "Admin Product Images", description = "Upload/xóa ảnh sản phẩm")
+@Tag(name = "Admin Product Images", description = "Upload/xoa anh san pham")
 public class AdminProductImageController {
 
     private final ProductImageService imageService;
 
     @GetMapping
-    @Operation(summary = "Danh sách ảnh của sản phẩm", security = @SecurityRequirement(name = "cookieAuth"))
+    @Operation(summary = "Danh sach anh cua san pham", security = @SecurityRequirement(name = "cookieAuth"))
     public ResponseEntity<ApiResponse<List<ProductImageResponse>>> list(@PathVariable Long productId) {
         return ResponseEntity.ok(ApiResponse.success(imageService.getByProductId(productId)));
     }
 
-    @PostMapping(value = "/primary", consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
-    @Operation(summary = "Upload ảnh thẻ sản phẩm",
-               description = "Upload ảnh chính (listing). Tự thay thế nếu đã tồn tại — xóa ảnh cũ trên Cloudinary.",
+    @PostMapping(value = "/colors/{colorId}/thumbnail", consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
+    @Operation(summary = "Upload thumbnail theo mau",
+               description = "Upsert 1 thumbnail cho mau: color_id != null, is_primary=true.",
                security = @SecurityRequirement(name = "cookieAuth"))
-    public ResponseEntity<ApiResponse<ProductImageResponse>> uploadPrimary(
-        @PathVariable Long productId,
-        @RequestParam("file") MultipartFile file
-    ) {
-        ProductImageResponse response = imageService.uploadPrimary(productId, file);
-        return ResponseEntity.status(HttpStatus.CREATED)
-            .body(ApiResponse.success("Upload ảnh thẻ thành công", response));
-    }
-
-    @PostMapping(value = "/color/{colorId}", consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
-    @Operation(summary = "Upload ảnh gallery theo màu",
-               description = "Upload ảnh cho màu cụ thể. Giới hạn 5 ảnh/màu, sort_order tự tính.",
-               security = @SecurityRequirement(name = "cookieAuth"))
-    public ResponseEntity<ApiResponse<ProductImageResponse>> uploadColorImage(
+    public ResponseEntity<ApiResponse<ProductImageResponse>> uploadColorThumbnail(
         @PathVariable Long productId,
         @PathVariable Long colorId,
         @RequestParam("file") MultipartFile file
     ) {
-        ProductImageResponse response = imageService.uploadColorImage(productId, colorId, file);
+        ProductImageResponse response = imageService.uploadColorThumbnail(productId, colorId, file);
         return ResponseEntity.status(HttpStatus.CREATED)
-            .body(ApiResponse.success("Upload ảnh màu thành công", response));
+            .body(ApiResponse.success("Upload thumbnail mau thanh cong", response));
+    }
+
+    @PostMapping(value = "/gallery", consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
+    @Operation(summary = "Upload anh gallery chung",
+               description = "Them anh gallery chung: color_id=null, is_primary=false.",
+               security = @SecurityRequirement(name = "cookieAuth"))
+    public ResponseEntity<ApiResponse<ProductImageResponse>> uploadGalleryImage(
+        @PathVariable Long productId,
+        @RequestParam("file") MultipartFile file
+    ) {
+        ProductImageResponse response = imageService.uploadGalleryImage(productId, file);
+        return ResponseEntity.status(HttpStatus.CREATED)
+            .body(ApiResponse.success("Upload anh gallery thanh cong", response));
     }
 
     @PatchMapping("/{imageId}/reorder")
-    @Operation(summary = "Đổi thứ tự ảnh", description = "Đổi sort_order của ảnh gallery theo màu.",
-               security = @SecurityRequirement(name = "cookieAuth"))
+    @Operation(summary = "Doi thu tu anh gallery chung", security = @SecurityRequirement(name = "cookieAuth"))
     public ResponseEntity<ApiResponse<ProductImageResponse>> reorder(
         @PathVariable Long productId,
         @PathVariable Long imageId,
@@ -68,18 +67,16 @@ public class AdminProductImageController {
     ) {
         Integer newSortOrder = body.get("sortOrder");
         return ResponseEntity.ok(ApiResponse.success(
-            "Đổi thứ tự thành công", imageService.reorder(productId, imageId, newSortOrder)));
+            "Doi thu tu thanh cong", imageService.reorder(productId, imageId, newSortOrder)));
     }
 
     @DeleteMapping("/{imageId}")
-    @Operation(summary = "Xóa ảnh sản phẩm",
-               description = "Xóa record DB và xóa file trên Cloudinary.",
-               security = @SecurityRequirement(name = "cookieAuth"))
+    @Operation(summary = "Xoa anh san pham", security = @SecurityRequirement(name = "cookieAuth"))
     public ResponseEntity<ApiResponse<Void>> delete(
         @PathVariable Long productId,
         @PathVariable Long imageId
     ) {
         imageService.delete(productId, imageId);
-        return ResponseEntity.ok(ApiResponse.success("Xóa ảnh thành công"));
+        return ResponseEntity.ok(ApiResponse.success("Xoa anh thanh cong"));
     }
 }
