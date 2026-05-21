@@ -19,6 +19,7 @@ public class ProductColorDetailResponse {
     private Long id;
     private String colorName;
     private String colorCode;
+    private String colorFamily;
     private Integer displayOrder;
     private Long thumbnailImageId;
     private String thumbnailUrl;
@@ -76,6 +77,7 @@ public class ProductColorDetailResponse {
             .id(color.getId())
             .colorName(color.getColorName())
             .colorCode(color.getColorCode())
+            .colorFamily(color.getColorFamily())
             .displayOrder(color.getDisplayOrder())
             .thumbnailImageId(thumbnail != null ? thumbnail.getId() : null)
             .thumbnailUrl(thumbnail != null ? CloudinaryUrlBuilder.detail(thumbnail.getImageUrl()) : null)

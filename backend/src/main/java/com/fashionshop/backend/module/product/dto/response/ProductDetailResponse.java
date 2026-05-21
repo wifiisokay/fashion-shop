@@ -43,7 +43,12 @@ public class ProductDetailResponse {
 
         // Nested colors[] với images[] + sizes[] — cho detail page
         List<ProductColorDetailResponse> colorResps = product.getColors() != null
-            ? product.getColors().stream().map(ProductColorDetailResponse::from).toList()
+            ? product.getColors().stream()
+                .map(ProductColorDetailResponse::from)
+                .sorted(Comparator
+                    .comparing((ProductColorDetailResponse color) -> color.getDisplayOrder() != null ? color.getDisplayOrder() : 0)
+                    .thenComparing(color -> color.getId() != null ? color.getId() : Long.MAX_VALUE))
+                .toList()
             : List.of();
 
         // Variants flat list — admin dùng
@@ -77,7 +82,7 @@ public class ProductDetailResponse {
             .isSale(product.getIsSale())
             .gender(product.getGender() != null ? product.getGender().name() : null)
             .material(product.getMaterial())
-            .colorFamily(product.getColorFamily())
+            .colorFamily(primaryColorFamily(colorResps))
             .fitType(product.getFitType())
             .season(product.getSeason())
             .styleTags(product.getStyleTags())
@@ -88,5 +93,9 @@ public class ProductDetailResponse {
             .variants(variantResps)
             .images(imageResps)
             .build();
+    }
+
+    private static String primaryColorFamily(List<ProductColorDetailResponse> colors) {
+        return colors == null || colors.isEmpty() ? null : colors.get(0).getColorFamily();
     }
 }

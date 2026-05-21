@@ -2,9 +2,10 @@ import axiosInstance from './axiosInstance';
 
 export const reviewApi = {
   // Public
-  getReviewsByProduct: (productId, params) => axiosInstance.get(`/api/reviews/product/${productId}`, { params }),
-  getReviewStats:      (productId) => axiosInstance.get(`/api/reviews/product/${productId}/stats`),
-  getReviewBreakdown:  (productId) => axiosInstance.get(`/api/reviews/product/${productId}/breakdown`),
+  getReviewsByProduct: (productId, params) => axiosInstance.get(`/api/products/${productId}/reviews`, { params }),
+  getProductReviews:   (productId, params) => axiosInstance.get(`/api/products/${productId}/reviews`, { params }),
+  getReviewStats:      (productId) => axiosInstance.get(`/api/products/${productId}/review-stats`),
+  getReviewBreakdown:  (productId) => axiosInstance.get(`/api/products/${productId}/review-stats`),
 
   // Customer
   createReview: (data)   => axiosInstance.post('/api/reviews', data),

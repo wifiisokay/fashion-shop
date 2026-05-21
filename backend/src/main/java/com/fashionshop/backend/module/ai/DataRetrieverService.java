@@ -15,6 +15,7 @@ import org.springframework.stereotype.Service;
 import jakarta.persistence.criteria.JoinType;
 
 import java.util.Collections;
+import java.util.Comparator;
 import java.util.List;
 import java.util.Map;
 import java.util.Random;
@@ -176,8 +177,21 @@ public class DataRetrieverService {
         return String.format("- [ID:%d] %s | Giá: %s VNĐ | Giới tính: %s | Chất liệu: %s | Màu: %s | Image: %s",
             p.getId(), p.getName(), price, p.getGender(),
             p.getMaterial() != null ? p.getMaterial() : "N/A",
-            p.getColorFamily() != null ? p.getColorFamily() : "N/A",
+            primaryColorFamily(p),
             primaryImage);
+    }
+
+    private String primaryColorFamily(Product product) {
+        if (product.getColors() == null || product.getColors().isEmpty()) {
+            return "N/A";
+        }
+        return product.getColors().stream()
+            .min(Comparator
+                .comparing((ProductColor color) -> color.getDisplayOrder() != null ? color.getDisplayOrder() : 0)
+                .thenComparing(color -> color.getId() != null ? color.getId() : Long.MAX_VALUE))
+            .map(ProductColor::getColorFamily)
+            .filter(value -> value != null && !value.isBlank())
+            .orElse("N/A");
     }
 
     private String formatOrder(Order o) {
@@ -236,12 +250,10 @@ public class DataRetrieverService {
 
         if (lowerMsg.contains("nam")) {
             spec = spec.and((root, query, cb) ->
-                cb.or(cb.equal(root.get("gender"), com.fashionshop.backend.common.enums.Gender.MALE),
-                       cb.equal(root.get("gender"), com.fashionshop.backend.common.enums.Gender.UNISEX)));
+                cb.equal(root.get("gender"), com.fashionshop.backend.common.enums.Gender.MALE));
         } else if (lowerMsg.contains("nữ")) {
             spec = spec.and((root, query, cb) ->
-                cb.or(cb.equal(root.get("gender"), com.fashionshop.backend.common.enums.Gender.FEMALE),
-                       cb.equal(root.get("gender"), com.fashionshop.backend.common.enums.Gender.UNISEX)));
+                cb.equal(root.get("gender"), com.fashionshop.backend.common.enums.Gender.FEMALE));
         }
 
         if (lowerMsg.contains("sale") || lowerMsg.contains("giảm giá") || lowerMsg.contains("khuyến mãi")) {

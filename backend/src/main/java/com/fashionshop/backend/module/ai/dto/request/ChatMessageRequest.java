@@ -10,4 +10,8 @@ public class ChatMessageRequest {
 
     @NotBlank(message = "Nội dung tin nhắn không được trống")
     private String content;
+
+    private Long productId;
+
+    private Long colorId;
 }

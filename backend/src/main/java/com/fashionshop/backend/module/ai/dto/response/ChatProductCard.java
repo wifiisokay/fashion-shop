@@ -14,9 +14,20 @@ import java.math.BigDecimal;
 public class ChatProductCard {
 
     private Long id;
+    private Long colorId;
     private String name;
     private BigDecimal price;
     private BigDecimal salePrice;
+    private BigDecimal displayPrice;
     private String imageUrl;
+    private String url;
+    private String role;
+    private String reason;
+    private String categorySlug;
+    private String gender;
+    private String colorName;
+    private String colorCode;
+    private String colorFamily;
+    private Long totalStock;
     private String matchReason;
 }

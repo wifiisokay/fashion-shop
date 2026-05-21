@@ -241,7 +241,6 @@ class ProductServiceImplTest {
         r.setCategoryId(1);
         r.setGender(Gender.MALE);
         r.setMaterial("Cotton");
-        r.setColorFamily("Trắng");
         return r;
     }
 }

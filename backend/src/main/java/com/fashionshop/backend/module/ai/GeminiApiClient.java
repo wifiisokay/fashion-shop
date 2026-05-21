@@ -17,7 +17,7 @@ import java.util.List;
  */
 @Slf4j
 @Component
-public class GeminiApiClient {
+public class GeminiApiClient implements AiClient {
 
     private static final String BASE_URL = "https://generativelanguage.googleapis.com/v1beta";
 
@@ -41,7 +41,13 @@ public class GeminiApiClient {
      * @param userMessage  tin nhắn mới của user
      * @return text response từ Gemini
      */
-    public String generateContent(String systemPrompt, List<GeminiMessage> history, String userMessage) {
+    @Override
+    public String name() {
+        return "gemini";
+    }
+
+    @Override
+    public String generateContent(String systemPrompt, List<AiMessage> history, String userMessage) {
         try {
             String requestBody = buildRequestBody(systemPrompt, history, userMessage);
 
@@ -62,7 +68,7 @@ public class GeminiApiClient {
         }
     }
 
-    private String buildRequestBody(String systemPrompt, List<GeminiMessage> history, String userMessage) {
+    private String buildRequestBody(String systemPrompt, List<AiMessage> history, String userMessage) {
         try {
             ObjectNode root = objectMapper.createObjectNode();
 
@@ -78,7 +84,7 @@ public class GeminiApiClient {
 
             // Add history messages
             if (history != null) {
-                for (GeminiMessage msg : history) {
+                for (AiMessage msg : history) {
                     ObjectNode content = objectMapper.createObjectNode();
                     content.put("role", msg.role());
                     ArrayNode parts = objectMapper.createArrayNode();
@@ -132,5 +138,4 @@ public class GeminiApiClient {
      * Message format cho Gemini history.
      * role: "user" hoặc "model"
      */
-    public record GeminiMessage(String role, String text) {}
 }

@@ -2,7 +2,7 @@ export const QUERY_KEYS = {
   // === PUBLIC ===
   products:          (filters = {}) => ['products', filters],
   product:           (id)           => ['products', String(id)],
-  outfitSuggestions: (productId)    => ['outfitSuggestions', String(productId)],
+  outfitSuggestions: (productId, colorId = null, refreshToken = 0) => ['outfitSuggestions', String(productId), colorId ?? 'default', refreshToken],
   categories:        ()             => ['categories'],
 
   // === CUSTOMER ===

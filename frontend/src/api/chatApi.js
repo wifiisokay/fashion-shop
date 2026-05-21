@@ -1,31 +1,40 @@
 import axiosInstance from './axiosInstance';
 
-/**
- * Chat API — gọi Backend REST API (không còn gọi Gemini SDK trực tiếp).
- * Bảo mật: API key chỉ ở backend, FE không chạm tới.
- */
 export const chatApi = {
-  /** Authenticated: gửi message → nhận AI response */
-  sendMessage: (content) =>
-    axiosInstance.post('/api/chat/message', { content }),
+  sendMessage: async (content, context = {}) => {
+    const { data } = await axiosInstance.post('/api/chat/message', { content, ...context });
+    return data?.data ?? null;
+  },
 
-  /** Guest: gửi message không cần đăng nhập (giới hạn intent) */
-  sendGuestMessage: (content, history = []) =>
-    axiosInstance.post('/api/chat/guest/message', { content, history }),
+  sendGuestMessage: async (content, history = [], context = {}) => {
+    const { data } = await axiosInstance.post('/api/chat/guest/message', { content, history, ...context });
+    return data?.data ?? null;
+  },
 
-  /** Lấy/tạo session hôm nay */
-  getTodaySession: () =>
-    axiosInstance.get('/api/chat/session/today'),
+  getTodaySession: async () => {
+    const { data } = await axiosInstance.get('/api/chat/session/today');
+    return data?.data ?? null;
+  },
 
-  /** Lấy messages của session hôm nay */
-  getTodayMessages: () =>
-    axiosInstance.get('/api/chat/messages/today'),
+  getTodayMessages: async () => {
+    const { data } = await axiosInstance.get('/api/chat/messages/today');
+    return data?.data ?? [];
+  },
 
-  /** Danh sách sessions phân trang */
-  getSessions: (page = 0, size = 10) =>
-    axiosInstance.get('/api/chat/sessions', { params: { page, size } }),
+  getSessions: async (page = 0, size = 10) => {
+    const { data } = await axiosInstance.get('/api/chat/sessions', { params: { page, size } });
+    return data?.data ?? null;
+  },
 
-  /** Messages của 1 session cụ thể */
-  getSessionMessages: (sessionId) =>
-    axiosInstance.get(`/api/chat/sessions/${sessionId}`),
+  getSessionMessages: async (sessionId) => {
+    const { data } = await axiosInstance.get(`/api/chat/sessions/${sessionId}`);
+    return data?.data ?? [];
+  },
+
+  getOutfitSuggestions: async (productId, colorId, refresh = false) => {
+    const { data } = await axiosInstance.get(`/api/products/${productId}/outfit-suggestions`, {
+      params: { ...(colorId ? { colorId } : {}), ...(refresh ? { refresh: true } : {}) },
+    });
+    return data?.data ?? null;
+  },
 };

@@ -23,8 +23,14 @@ public class OutfitSuggestionCache {
     @GeneratedValue(strategy = GenerationType.IDENTITY)
     private Long id;
 
-    @Column(name = "product_id", nullable = false, unique = true)
+    @Column(name = "product_id", nullable = false)
     private Long productId;
+
+    @Column(name = "color_id")
+    private Long colorId;
+
+    @Column(name = "color_key", insertable = false, updatable = false)
+    private Long colorKey;
 
     @Column(nullable = false, columnDefinition = "JSON")
     private String suggestions;

@@ -57,9 +57,6 @@ public class Product {
     @Builder.Default
     private Integer estimatedWeight = 300; // gram
 
-    @Column(name = "color_family")
-    private String colorFamily;
-
     @JdbcTypeCode(SqlTypes.JSON)
     @Column(name = "style_tags", columnDefinition = "json")
     @Builder.Default

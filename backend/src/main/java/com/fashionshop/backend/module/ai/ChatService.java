@@ -14,6 +14,8 @@ public interface ChatService {
     /** Customer: gửi tin nhắn, nhận phản hồi AI */
     ChatMessageResponse processMessage(Long userId, String content);
 
+    ChatMessageResponse processMessage(Long userId, String content, Long productId, Long colorId);
+
     /** Guest: gửi tin nhắn giới hạn (không lưu DB) */
     ChatMessageResponse processGuestMessage(GuestChatRequest request);
 

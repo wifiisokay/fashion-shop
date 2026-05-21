@@ -10,7 +10,7 @@ import org.springframework.transaction.annotation.Transactional;
 import java.time.LocalDateTime;
 
 /**
- * Scheduled job: xóa outfit suggestion cache cũ hơn 24h.
+ * Scheduled job: xóa outfit suggestion cache cũ hơn 48h.
  * Chạy lúc 2h sáng hàng ngày.
  */
 @Slf4j
@@ -23,7 +23,7 @@ public class ChatScheduler {
     @Scheduled(cron = "0 0 2 * * *") // 02:00 hàng ngày
     @Transactional
     public void cleanExpiredOutfitCache() {
-        LocalDateTime cutoff = LocalDateTime.now().minusHours(24);
+        LocalDateTime cutoff = LocalDateTime.now().minusHours(48);
         int deleted = cacheRepository.deleteByCreatedAtBefore(cutoff);
         if (deleted > 0) {
             log.info("ChatScheduler: cleaned {} expired outfit cache entries", deleted);

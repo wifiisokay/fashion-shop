@@ -1,14 +1,38 @@
 import { useState, useRef, useEffect } from 'react';
-import { X, Send, Bot, User, ExternalLink } from 'lucide-react';
+import { X, Send, Bot, User, ExternalLink, History, AlertCircle } from 'lucide-react';
 import { useChatMessages } from '../../hooks/useChatMessages';
 import { clsx } from 'clsx';
 import ReactMarkdown from 'react-markdown';
 import { formatPrice } from '../../utils/format';
 
+const COLOR_FAMILY_LABELS = {
+  neutral: 'Trung tinh',
+  cool: 'Tong lanh',
+  warm: 'Tong am',
+  earth: 'Tong dat',
+  mixed: 'Phoi mau',
+};
+
+const uniqueProducts = (items = []) => {
+  const seen = new Set();
+  return items.filter((item) => {
+    if (!item?.id) return false;
+    const key = String(item.id);
+    if (seen.has(key)) return false;
+    seen.add(key);
+    return true;
+  });
+};
+
+const colorLabel = (item) => {
+  if (!item?.colorName && !item?.colorFamily) return null;
+  return [item.colorName, COLOR_FAMILY_LABELS[item.colorFamily] || item.colorFamily].filter(Boolean).join(' / ');
+};
+
 const ChatWidget = () => {
   const [isOpen, setIsOpen] = useState(false);
   const [input, setInput] = useState('');
-  const { messages, isLoading, sendMessage } = useChatMessages();
+  const { messages, isLoading, sendMessage, retryLast, isAuthenticated } = useChatMessages(isOpen);
   const messagesEndRef = useRef(null);
 
   // Tự động cuộn xuống tin nhắn mới nhất
@@ -36,7 +60,7 @@ const ChatWidget = () => {
     <div className="fixed bottom-6 right-6 z-50">
       {/* Chat Window */}
       {isOpen && (
-        <div className="absolute bottom-16 right-0 w-80 sm:w-96 bg-white rounded-2xl shadow-2xl border border-gray-200 flex flex-col overflow-hidden transition-all duration-300 transform origin-bottom-right h-[500px] max-h-[80vh]">
+        <div className="fixed sm:absolute inset-x-3 bottom-20 sm:inset-auto sm:bottom-16 sm:right-0 sm:w-[380px] bg-white rounded-2xl shadow-2xl border border-gray-200 flex flex-col overflow-hidden transition-all duration-300 transform origin-bottom-right h-[560px] max-h-[82vh]">
           {/* Header */}
           <div className="bg-black text-white p-4 flex justify-between items-center">
             <div className="flex items-center gap-2">
@@ -46,16 +70,31 @@ const ChatWidget = () => {
                 <p className="text-xs text-gray-300">✨ Powered by Gemini</p>
               </div>
             </div>
-            <button 
-              onClick={() => setIsOpen(false)}
-              className="text-gray-300 hover:text-white transition-colors p-1 rounded-full hover:bg-white/10"
-            >
-              <X className="w-5 h-5" />
-            </button>
+            <div className="flex items-center gap-1">
+              <button
+                type="button"
+                className="text-gray-300 hover:text-white transition-colors p-1 rounded-full hover:bg-white/10"
+                title="Lịch sử"
+              >
+                <History className="w-5 h-5" />
+              </button>
+              <button
+                onClick={() => setIsOpen(false)}
+                className="text-gray-300 hover:text-white transition-colors p-1 rounded-full hover:bg-white/10"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
           </div>
 
           {/* Messages Area */}
           <div className="flex-1 overflow-y-auto p-4 space-y-4 bg-gray-50">
+            {!isAuthenticated && (
+              <div className="flex items-center gap-2 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-800">
+                <AlertCircle className="h-4 w-4 shrink-0" />
+                <span>Chế độ khách: bạn vẫn có thể hỏi sản phẩm/phối đồ, nhưng cần đăng nhập để xem đơn hàng.</span>
+              </div>
+            )}
             {messages.map((msg, index) => (
               <div key={index}>
                 {/* Message Bubble */}
@@ -72,10 +111,12 @@ const ChatWidget = () => {
                     {msg.role === 'user' ? <User className="w-4 h-4" /> : <Bot className="w-4 h-4" />}
                   </div>
                   <div className={clsx(
-                    'p-3 rounded-2xl text-sm',
+                    'p-3 rounded-2xl text-sm break-words',
                     msg.role === 'user' 
                       ? 'bg-black text-white rounded-tr-sm' 
-                      : 'bg-white border border-gray-200 text-gray-800 rounded-tl-sm shadow-sm'
+                      : msg.isError
+                        ? 'bg-red-50 border border-red-200 text-red-800 rounded-tl-sm shadow-sm'
+                        : 'bg-white border border-gray-200 text-gray-800 rounded-tl-sm shadow-sm'
                   )}>
                     {msg.role === 'user' ? (
                       <p className="whitespace-pre-wrap">{msg.text}</p>
@@ -90,9 +131,9 @@ const ChatWidget = () => {
                 {/* Product Cards */}
                 {msg.products && msg.products.length > 0 && (
                   <div className="mt-2 ml-11 space-y-2">
-                    {msg.products.map((product, pIdx) => (
+                    {uniqueProducts(msg.products).map((product) => (
                       <a
-                        key={pIdx}
+                        key={product.id}
                         href={`/products/${product.id}`}
                         target="_blank"
                         rel="noopener noreferrer"
@@ -112,19 +153,66 @@ const ChatWidget = () => {
                           <div className="flex items-center gap-2 mt-0.5">
                             {product.salePrice ? (
                               <>
-                                <span className="text-sm font-semibold text-red-600">{formatPrice(product.salePrice)}</span>
+                                <span className="text-sm font-semibold text-red-600">{formatPrice(product.displayPrice || product.salePrice)}</span>
                                 <span className="text-xs text-gray-400 line-through">{formatPrice(product.price)}</span>
                               </>
                             ) : (
-                              <span className="text-sm font-semibold text-gray-900">{formatPrice(product.price)}</span>
+                              <span className="text-sm font-semibold text-gray-900">{formatPrice(product.displayPrice || product.price)}</span>
                             )}
                           </div>
                           {product.matchReason && (
                             <p className="text-xs text-gray-500 mt-0.5 truncate">{product.matchReason}</p>
                           )}
+                          {colorLabel(product) && (
+                            <div className="mt-1 flex items-center gap-1.5 text-xs text-gray-500">
+                              {product.colorCode && (
+                                <span className="h-3 w-3 rounded-full border border-gray-200" style={{ backgroundColor: product.colorCode }} />
+                              )}
+                              <span className="truncate">{colorLabel(product)}</span>
+                            </div>
+                          )}
                         </div>
                         <ExternalLink className="w-4 h-4 text-gray-400 group-hover:text-blue-500 flex-shrink-0" />
                       </a>
+                    ))}
+                  </div>
+                )}
+
+                {/* Outfit Combos */}
+                {msg.outfitCombos && msg.outfitCombos.length > 0 && (
+                  <div className="mt-2 ml-11 space-y-2">
+                    {msg.outfitCombos.map((combo, comboIdx) => (
+                      <div key={comboIdx} className="rounded-xl border border-gray-200 bg-white p-3 shadow-sm">
+                        <div className="mb-2 flex items-center justify-between gap-2">
+                          <span className="rounded-full bg-gray-900 px-2 py-0.5 text-xs font-medium text-white">
+                            {combo.label || combo.outfitType || combo.style}
+                          </span>
+                        </div>
+                        {(combo.description || combo.reason) && <p className="mb-2 text-xs text-gray-600">{combo.description || combo.reason}</p>}
+                        {(combo.colorStory || combo.occasion) && (
+                          <div className="mb-2 flex flex-wrap gap-1.5 text-[11px] text-gray-600">
+                            {combo.colorStory && <span className="rounded-full bg-gray-100 px-2 py-0.5">{combo.colorStory}</span>}
+                            {combo.occasion && <span className="rounded-full bg-blue-50 px-2 py-0.5 text-blue-700">{combo.occasion}</span>}
+                          </div>
+                        )}
+                        <div className="flex gap-2 overflow-x-auto pb-1">
+                          {uniqueProducts(combo.products || combo.items || []).map((item) => (
+                            <a key={`${comboIdx}-${item.id}`} href={`/products/${item.id}`} className="w-24 shrink-0">
+                              {item.imageUrl && <img src={item.imageUrl} alt={item.name} className="h-28 w-24 rounded-lg object-cover" />}
+                              <p className="mt-1 truncate text-xs font-medium text-gray-900">{item.name}</p>
+                              {colorLabel(item) && (
+                                <div className="mt-0.5 flex items-center gap-1 text-[11px] text-gray-500">
+                                  {item.colorCode && (
+                                    <span className="h-2.5 w-2.5 rounded-full border border-gray-200" style={{ backgroundColor: item.colorCode }} />
+                                  )}
+                                  <span className="truncate">{item.colorName || COLOR_FAMILY_LABELS[item.colorFamily] || item.colorFamily}</span>
+                                </div>
+                              )}
+                              <p className="text-xs text-gray-600">{formatPrice(item.displayPrice || item.salePrice || item.price)}</p>
+                            </a>
+                          ))}
+                        </div>
+                      </div>
                     ))}
                   </div>
                 )}
@@ -135,7 +223,7 @@ const ChatWidget = () => {
                     {msg.suggestedQuestions.map((q, qIdx) => (
                       <button
                         key={qIdx}
-                        onClick={() => handleSuggestionClick(q)}
+                        onClick={() => q === 'Thử lại' ? retryLast() : handleSuggestionClick(q)}
                         disabled={isLoading}
                         className="px-3 py-1.5 text-xs bg-white border border-gray-200 rounded-full text-gray-700 hover:bg-gray-100 hover:border-gray-300 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
                       >

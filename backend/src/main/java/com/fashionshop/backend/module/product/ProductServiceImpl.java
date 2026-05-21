@@ -51,6 +51,8 @@ public class ProductServiceImpl implements ProductService {
     @Transactional
     public ProductDetailResponse create(ProductRequest request, User currentUser) {
         validateSalePrice(request);
+        validateTags(request);
+        validateSingleValueFields(request);
         Category category = findCategoryOrThrow(request.getCategoryId());
 
         Product product = Product.builder()
@@ -62,7 +64,6 @@ public class ProductServiceImpl implements ProductService {
             .gender(request.getGender())
             .material(request.getMaterial())
             .estimatedWeight(request.getEstimatedWeight() != null ? request.getEstimatedWeight() : 300)
-            .colorFamily(request.getColorFamily())
             .fitType(request.getFitType())
             .season(request.getSeason())
             .styleTags(request.getStyleTags() != null ? request.getStyleTags() : new ArrayList<>())
@@ -79,6 +80,8 @@ public class ProductServiceImpl implements ProductService {
     public ProductDetailResponse update(Long id, ProductRequest request) {
         Product product = findProductOrThrow(id);
         validateSalePrice(request);
+        validateTags(request);
+        validateSingleValueFields(request);
         Category category = findCategoryOrThrow(request.getCategoryId());
 
         product.setName(request.getName().trim());
@@ -89,7 +92,6 @@ public class ProductServiceImpl implements ProductService {
         product.setGender(request.getGender());
         product.setMaterial(request.getMaterial());
         product.setEstimatedWeight(request.getEstimatedWeight() != null ? request.getEstimatedWeight() : product.getEstimatedWeight());
-        product.setColorFamily(request.getColorFamily());
         product.setFitType(request.getFitType());
         product.setSeason(request.getSeason());
         product.setStyleTags(request.getStyleTags() != null ? request.getStyleTags() : new ArrayList<>());
@@ -202,6 +204,42 @@ public class ProductServiceImpl implements ProductService {
                 throw new BusinessException(ErrorCode.INVALID_SALE_PRICE, HttpStatus.BAD_REQUEST,
                     "Giá khuyến mãi phải nhỏ hơn giá gốc");
             }
+        }
+    }
+
+    /** Validate style_tags và occasion_tags phải nằm trong ProductTagLibrary. */
+    private void validateTags(ProductRequest req) {
+        if (req.getStyleTags() != null && !req.getStyleTags().isEmpty()) {
+            List<String> invalidStyle = req.getStyleTags().stream()
+                .filter(t -> !ProductTagLibrary.STYLE_TAGS.contains(t))
+                .toList();
+            if (!invalidStyle.isEmpty()) {
+                throw new BusinessException(ErrorCode.INVALID_TAG, HttpStatus.BAD_REQUEST,
+                    "style_tags không hợp lệ: " + invalidStyle + ". Xem danh sách tại GET /api/admin/products/tag-library");
+            }
+        }
+        if (req.getOccasionTags() != null && !req.getOccasionTags().isEmpty()) {
+            List<String> invalidOccasion = req.getOccasionTags().stream()
+                .filter(t -> !ProductTagLibrary.OCCASION_TAGS.contains(t))
+                .toList();
+            if (!invalidOccasion.isEmpty()) {
+                throw new BusinessException(ErrorCode.INVALID_TAG, HttpStatus.BAD_REQUEST,
+                    "occasion_tags không hợp lệ: " + invalidOccasion + ". Xem danh sách tại GET /api/admin/products/tag-library");
+            }
+        }
+    }
+
+    /** Validate các single-value field phải nằm trong tập hợp chuẩn hóa. */
+    private void validateSingleValueFields(ProductRequest req) {
+        if (req.getFitType() != null && !req.getFitType().isBlank()
+                && !ProductTagLibrary.FIT_TYPES.contains(req.getFitType())) {
+            throw new BusinessException(ErrorCode.INVALID_FIELD_VALUE, HttpStatus.BAD_REQUEST,
+                "fit_type '" + req.getFitType() + "' không hợp lệ. Giá trị chấp nhận: " + ProductTagLibrary.FIT_TYPES);
+        }
+        if (req.getSeason() != null && !req.getSeason().isBlank()
+                && !ProductTagLibrary.SEASONS.contains(req.getSeason())) {
+            throw new BusinessException(ErrorCode.INVALID_FIELD_VALUE, HttpStatus.BAD_REQUEST,
+                "season '" + req.getSeason() + "' không hợp lệ. Giá trị chấp nhận: " + ProductTagLibrary.SEASONS);
         }
     }
 

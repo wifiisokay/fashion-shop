@@ -30,8 +30,12 @@ CREATE TABLE chat_messages (
 CREATE TABLE outfit_suggestion_cache (
     id BIGINT AUTO_INCREMENT PRIMARY KEY,
     product_id BIGINT NOT NULL,
+    color_id BIGINT NULL,
+    color_key BIGINT GENERATED ALWAYS AS (COALESCE(color_id, 0)) STORED,
     suggestions JSON NOT NULL,
     created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
-    UNIQUE KEY uk_outfit_product (product_id),
-    CONSTRAINT fk_outfit_cache_product FOREIGN KEY (product_id) REFERENCES products(id) ON DELETE CASCADE
+    UNIQUE KEY uk_outfit_product_color (product_id, color_key),
+    KEY idx_outfit_cache_lookup (product_id, color_id, created_at),
+    CONSTRAINT fk_outfit_cache_product FOREIGN KEY (product_id) REFERENCES products(id) ON DELETE CASCADE,
+    CONSTRAINT fk_outfit_cache_color FOREIGN KEY (color_id) REFERENCES product_colors(id) ON DELETE CASCADE
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;

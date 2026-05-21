@@ -13,6 +13,10 @@ public interface OutfitSuggestionCacheRepository extends JpaRepository<OutfitSug
 
     Optional<OutfitSuggestionCache> findByProductId(Long productId);
 
+    @Query("SELECT c FROM OutfitSuggestionCache c WHERE c.productId = :productId AND ((:colorId IS NULL AND c.colorId IS NULL) OR c.colorId = :colorId)")
+    Optional<OutfitSuggestionCache> findByProductIdAndNullableColorId(@Param("productId") Long productId,
+                                                                      @Param("colorId") Long colorId);
+
     /** Scheduler: xóa cache cũ hơn cutoff */
     @Modifying
     @Query("DELETE FROM OutfitSuggestionCache c WHERE c.createdAt < :cutoff")

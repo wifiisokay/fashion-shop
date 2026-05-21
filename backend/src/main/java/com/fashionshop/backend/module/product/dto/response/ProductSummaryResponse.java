@@ -54,12 +54,26 @@ public class ProductSummaryResponse {
             .salePrice(product.getSalePrice())
             .isSale(product.getIsSale())
             .gender(product.getGender() != null ? product.getGender().name() : null)
-            .colorFamily(product.getColorFamily())
+            .colorFamily(primaryColorFamily(product))
             .fitType(product.getFitType())
             .season(product.getSeason())
             .primaryImageUrl(CloudinaryUrlBuilder.listing(primaryImg))
             .categoryName(product.getCategory() != null ? product.getCategory().getName() : null)
             .status(product.getStatus().name())
+            .avgRating(0.0)
+            .reviewCount(0)
             .build();
+    }
+
+    private static String primaryColorFamily(Product product) {
+        if (product.getColors() == null || product.getColors().isEmpty()) {
+            return null;
+        }
+        return product.getColors().stream()
+            .min(Comparator
+                .comparing((com.fashionshop.backend.domain.ProductColor color) -> color.getDisplayOrder() != null ? color.getDisplayOrder() : 0)
+                .thenComparing(color -> color.getId() != null ? color.getId() : Long.MAX_VALUE))
+            .map(com.fashionshop.backend.domain.ProductColor::getColorFamily)
+            .orElse(null);
     }
 }

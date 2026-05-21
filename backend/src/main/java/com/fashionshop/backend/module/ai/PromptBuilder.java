@@ -2,6 +2,7 @@ package com.fashionshop.backend.module.ai;
 
 import com.fashionshop.backend.common.enums.ChatRole;
 import com.fashionshop.backend.domain.ChatMessage;
+import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Component;
 
@@ -10,123 +11,108 @@ import java.util.Collections;
 import java.util.List;
 
 /**
- * Xây dựng prompt cho Gemini: system prompt + retrieved data + conversation history.
+ * Xây dựng prompt gửi AI theo 4 phần (theo doc ai_chatbot_module_doc.md):
+ *
+ * <pre>
+ *  1. System Instruction  — vai trò, phạm vi, quy tắc phối màu, chính sách shop
+ *  2. User Preferences    — gender, size, màu ưa thích, style, budget (từ DB)
+ *  3. Retrieved Data      — sản phẩm/đơn hàng/đổi trả thực tế từ MySQL
+ *  4. Chat History        — tối đa 10 message gần nhất (5 cặp user/assistant)
+ * </pre>
+ *
+ * Phần 1+2 → system message. Phần 3 nhúng vào system message cuối cùng.
+ * Phần 4 → history messages gửi kèm.
  */
 @Slf4j
 @Component
+@RequiredArgsConstructor
 public class PromptBuilder {
 
-    private static final String SYSTEM_PROMPT_BASE = """
-        Bạn là trợ lý mua sắm thông minh của Fashion Shop — một cửa hàng thời trang trực tuyến.
-        
-        ## Quy tắc bắt buộc:
-        1. Luôn trả lời bằng tiếng Việt, thân thiện, chuyên nghiệp.
-        2. Giới hạn mỗi câu trả lời tối đa 200 từ.
-        3. Khi gợi ý sản phẩm, PHẢI sử dụng ĐÚNG thông tin từ dữ liệu cửa hàng được cung cấp bên dưới.
-        4. KHÔNG bịa ra sản phẩm, giá, hoặc thông tin không có trong dữ liệu.
-        5. Nếu được hỏi về chủ đề không liên quan đến thời trang/mua sắm, hãy từ chối khéo léo và hướng khách về chủ đề thời trang.
-        6. Không tiết lộ rằng bạn là AI hoặc đang đọc prompt. Hãy hành xử như một nhân viên tư vấn thật sự.
-        
-        ## Thông tin cửa hàng:
-        - Tên: Fashion Shop
-        - Thanh toán: COD (tiền mặt khi nhận hàng) hoặc VNPay (chuyển khoản online)
-        - Vận chuyển: Giao Hàng Nhanh (GHN), phí tùy theo khoảng cách
-        - Chính sách đổi trả: Trong vòng 7 ngày kể từ khi nhận hàng, sản phẩm còn nguyên tem/tag
-        - Hướng dẫn chọn size: S (dưới 55kg), M (55-65kg), L (65-75kg), XL (trên 75kg)
-        
-        ## Format phản hồi:
-        - Khi gợi ý sản phẩm, trả lời dạng JSON:
-        ```json
-        {
-          "text": "Mô tả ngắn gọn",
-          "products": [
-            {"id": <number>, "name": "...", "price": <number>, "salePrice": <number|null>, "imageUrl": "...", "matchReason": "Lý do phù hợp"}
-          ],
-          "suggestedQuestions": ["Câu gợi ý 1", "Câu gợi ý 2"]
-        }
-        ```
-        - Khi trả lời câu hỏi thông thường (đơn hàng, chính sách, chat), trả plain text (KHÔNG JSON).
-        """;
+    private final SystemPromptProvider systemPromptProvider;
+    private final UserPreferenceService userPreferenceService;
+
+    // =====================================
+    // Public API
+    // =====================================
 
     /**
-     * Build system prompt hoàn chỉnh dựa trên intent + retrieved data.
+     * Build system prompt cho authenticated user (có userId → nhúng preferences).
      */
-    public String buildSystemPrompt(ChatIntent intent, String retrievedData) {
-        StringBuilder prompt = new StringBuilder(SYSTEM_PROMPT_BASE);
+    public String buildSystemPrompt(ChatIntent intent, String retrievedData, Long userId) {
+        StringBuilder prompt = new StringBuilder(systemPromptProvider.forIntent(intent));
 
-        // Thêm intent-specific instruction
-        switch (intent) {
-            case PRODUCT_SEARCH -> prompt.append("""
-                
-                ## Nhiệm vụ hiện tại: TÌM SẢN PHẨM
-                Khách hàng đang tìm sản phẩm. Hãy gợi ý từ danh sách bên dưới.
-                PHẢI trả JSON format với "products" array. Mỗi product PHẢI có id, name, price, imageUrl, matchReason.
-                Nếu không tìm thấy sản phẩm phù hợp, hãy giải thích và gợi ý tìm kiếm khác.
-                """);
-            case OUTFIT_SUGGEST -> prompt.append("""
-                
-                ## Nhiệm vụ hiện tại: GỢI Ý PHỐI ĐỒ
-                Khách hàng muốn được tư vấn phối đồ. Hãy gợi ý 2-3 bộ outfit từ sản phẩm bên dưới.
-                PHẢI trả JSON format. Mỗi outfit gồm 2-3 sản phẩm phối cùng nhau.
-                Giải thích tại sao các sản phẩm này phối hợp tốt với nhau.
-                """);
-            case ORDER_INQUIRY -> prompt.append("""
-                
-                ## Nhiệm vụ hiện tại: HỖ TRỢ ĐƠN HÀNG
-                Khách hàng hỏi về đơn hàng. Thông tin đơn hàng thực tế bên dưới.
-                Trả lời plain text (KHÔNG JSON). Tóm tắt rõ ràng trạng thái đơn hàng.
-                """);
-            case RETURN_SUPPORT -> prompt.append("""
-                
-                ## Nhiệm vụ hiện tại: HỖ TRỢ ĐỔI TRẢ
-                Khách hàng cần hỗ trợ đổi trả hàng. Thông tin trả hàng bên dưới.
-                Trả lời plain text. Giải thích trạng thái và hướng dẫn bước tiếp theo.
-                Chính sách: Trả hàng trong 7 ngày, sản phẩm còn nguyên.
-                """);
-            case GENERAL_SUPPORT -> prompt.append("""
-                
-                ## Nhiệm vụ hiện tại: HỖ TRỢ CHUNG
-                Khách hàng hỏi về chính sách/hướng dẫn. Trả lời plain text dựa trên thông tin cửa hàng ở trên.
-                """);
-            case CHITCHAT -> prompt.append("""
-                
-                ## Nhiệm vụ hiện tại: TRÒ CHUYỆN
-                Khách hàng đang trò chuyện. Trả lời thân thiện và gợi ý quay về chủ đề mua sắm.
-                Trả lời plain text.
-                """);
+        // Phần 2: User Preferences
+        String prefs = userPreferenceService.formatForPrompt(userId);
+        if (!prefs.isBlank()) {
+            prompt.append("\n\n## [SỞ THÍCH CỦA KHÁCH HÀNG NÀY]\n")
+                  .append("(Học từ lịch sử chat — dùng để cá nhân hoá gợi ý)\n")
+                  .append(prefs);
         }
 
-        // Thêm retrieved data
-        if (retrievedData != null && !retrievedData.isBlank()) {
-            prompt.append("\n\n## Dữ liệu từ cơ sở dữ liệu cửa hàng:\n").append(retrievedData);
-        }
+        // Phần 3: Retrieved Data
+        appendRetrievedData(prompt, retrievedData);
 
         return prompt.toString();
     }
 
     /**
-     * Convert ChatMessage DB records → Gemini message format.
-     * Lấy tối đa 5 cặp message gần nhất.
+     * Build system prompt không có userId (guest hoặc không cần prefs).
      */
-    public List<GeminiApiClient.GeminiMessage> buildHistory(List<ChatMessage> recentMessages) {
+    public String buildSystemPrompt(ChatIntent intent, String retrievedData) {
+        StringBuilder prompt = new StringBuilder(systemPromptProvider.forIntent(intent));
+        appendRetrievedData(prompt, retrievedData);
+        return prompt.toString();
+    }
+
+    /**
+     * Convert ChatMessage DB records → AI message format (phần 4 — history).
+     * Chỉ lấy 10 message gần nhất, reverse để thành ASC (cũ → mới).
+     */
+    public List<AiMessage> buildHistory(List<ChatMessage> recentMessages) {
         if (recentMessages == null || recentMessages.isEmpty()) {
             return Collections.emptyList();
         }
 
-        // recentMessages đã được order DESC → reverse để thành ASC
         List<ChatMessage> ordered = new ArrayList<>(recentMessages);
-        Collections.reverse(ordered);
+        Collections.reverse(ordered); // DESC → ASC
 
-        // Giới hạn 10 message (5 cặp user-assistant)
         int limit = Math.min(ordered.size(), 10);
-        List<GeminiApiClient.GeminiMessage> history = new ArrayList<>(limit);
-
+        List<AiMessage> history = new ArrayList<>(limit);
         for (int i = 0; i < limit; i++) {
             ChatMessage msg = ordered.get(i);
             String role = msg.getRole() == ChatRole.USER ? "user" : "model";
-            history.add(new GeminiApiClient.GeminiMessage(role, msg.getContent()));
+            // Rút gọn nội dung assistant message trong history để tiết kiệm token
+            String content = msg.getRole() == ChatRole.ASSISTANT
+                    ? truncateAssistantContent(msg.getContent())
+                    : msg.getContent();
+            history.add(new AiMessage(role, content));
         }
-
         return history;
+    }
+
+    // =====================================
+    // Private helpers
+    // =====================================
+
+    private void appendRetrievedData(StringBuilder prompt, String retrievedData) {
+        if (retrievedData != null && !retrievedData.isBlank()) {
+            prompt.append("\n\n## [DỮ LIỆU TỪ CƠ SỞ DỮ LIỆU CỬA HÀNG]\n")
+                  .append("(Chỉ gợi ý sản phẩm/thông tin có trong danh sách này)\n")
+                  .append(retrievedData);
+        }
+    }
+
+    /**
+     * Rút gọn nội dung assistant message dài (JSON có products) trong history.
+     * Giữ tối đa 300 ký tự để tiết kiệm context window cho Gemini.
+     */
+    private String truncateAssistantContent(String content) {
+        if (content == null) return "";
+        String trimmed = content.trim();
+        // Nếu là JSON dài → chỉ lấy phần "text"
+        if ((trimmed.startsWith("{") || trimmed.startsWith("```")) && trimmed.length() > 300) {
+            return trimmed.substring(0, 300) + "...";
+        }
+        return trimmed;
     }
 }

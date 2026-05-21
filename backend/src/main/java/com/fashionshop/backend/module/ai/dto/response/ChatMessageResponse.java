@@ -17,6 +17,7 @@ public class ChatMessageResponse {
     private String role;       // "user" | "assistant"
     private String content;    // text content
     private List<ChatProductCard> products;  // nullable — chỉ có khi PRODUCT_SEARCH / OUTFIT_SUGGEST
+    private List<OutfitComboResponse> outfitCombos;
     private List<String> suggestedQuestions; // nullable — gợi ý câu hỏi tiếp theo
     private String intent;     // nullable — intent đã classify
     private LocalDateTime createdAt;

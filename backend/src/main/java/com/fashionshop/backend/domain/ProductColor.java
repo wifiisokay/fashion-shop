@@ -37,6 +37,9 @@ public class ProductColor {
     @Column(name = "color_code", length = 7)
     private String colorCode;
 
+    @Column(name = "color_family", length = 20)
+    private String colorFamily;
+
     @Column(name = "display_order", nullable = false)
     @Builder.Default
     private Integer displayOrder = 0;

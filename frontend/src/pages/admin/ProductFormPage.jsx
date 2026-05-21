@@ -29,16 +29,30 @@ import { useAdminProduct, useCreateProduct, useUpdateProduct } from '@/hooks/use
 import { useCreateVariant, useUpdateVariant, useDeleteVariant } from '@/hooks/useAdminVariants';
 import { useUploadColorThumbnail, useUploadGalleryImage, useReorderImage, useDeleteImage } from '@/hooks/useAdminImages';
 import { useCreateColor, useUpdateColor, useDeleteColor } from '@/hooks/useAdminColors';
+import { useTagLibrary } from '@/hooks/useTagLibrary';
+import { useTagSuggestion } from '@/hooks/useTagSuggestion';
 import Spinner from '@/components/ui/Spinner';
+import TagPanel from '@/components/product/TagPanel';
 import { DragDropContext, Droppable, Draggable } from '@hello-pangea/dnd';
 
 const GENDER_OPTIONS = [
   { value: 'MALE', label: 'Nam' },
   { value: 'FEMALE', label: 'Nữ' },
-  { value: 'UNISEX', label: 'Unisex' },
 ];
-const FIT_OPTIONS = ['Slim', 'Regular', 'Oversized', 'Relaxed'];
-const SEASON_OPTIONS = ['Hè', 'Đông', '4 mùa'];
+
+const SEASON_LABELS = {
+  'ALL_SEASON': '4 mùa',
+  'SPRING_SUMMER': 'Xuân/Hè',
+  'FALL_WINTER': 'Thu/Đông'
+};
+
+const COLOR_FAMILY_LABELS = {
+  neutral: 'Trung tinh',
+  cool: 'Tong lanh',
+  warm: 'Tong am',
+  earth: 'Tong dat',
+  mixed: 'Phoi mau',
+};
 
 const ProductFormPage = () => {
   const navigate = useNavigate();
@@ -49,6 +63,8 @@ const ProductFormPage = () => {
   // Data fetching
   const { data: product, isLoading: loadingProduct } = useAdminProduct(productId);
   const { data: categories = [] } = useCategories();
+  const { data: tagLibrary } = useTagLibrary();
+  const suggestTagsMutation = useTagSuggestion();
   const createProduct = useCreateProduct();
   const updateProduct = useUpdateProduct();
   const createVariant = useCreateVariant();
@@ -66,8 +82,9 @@ const ProductFormPage = () => {
   const [form, setForm] = useState({
     name: '', description: '', basePrice: '', salePrice: '',
     isSale: false, gender: 'MALE', material: '', estimatedWeight: '300', colorFamily: '',
-    categoryId: '', styleTags: '', occasionTags: '',
+    categoryId: '', styleTags: [], occasionTags: [],
     fitType: '', season: '',
+    aiSuggestedStyleTags: [], aiSuggestedOccasionTags: []
   });
 
   // Variant dialog state
@@ -106,10 +123,12 @@ const ProductFormPage = () => {
         estimatedWeight: product.estimatedWeight?.toString() || '300',
         colorFamily: product.colorFamily || '',
         categoryId: product.category?.id?.toString() || '',
-        styleTags: (product.styleTags || []).join(', '),
-        occasionTags: (product.occasionTags || []).join(', '),
+        styleTags: product.styleTags || [],
+        occasionTags: product.occasionTags || [],
         fitType: product.fitType || '',
         season: product.season || '',
+        aiSuggestedStyleTags: [],
+        aiSuggestedOccasionTags: []
       });
     }
   }, [product, isEdit]);
@@ -134,10 +153,9 @@ const ProductFormPage = () => {
       gender: form.gender,
       material: form.material.trim() || null,
       estimatedWeight: form.estimatedWeight ? parseInt(form.estimatedWeight) : 300,
-      colorFamily: form.colorFamily.trim() || null,
       categoryId: parseInt(form.categoryId),
-      styleTags: form.styleTags ? form.styleTags.split(',').map((t) => t.trim()).filter(Boolean) : [],
-      occasionTags: form.occasionTags ? form.occasionTags.split(',').map((t) => t.trim()).filter(Boolean) : [],
+      styleTags: form.styleTags,
+      occasionTags: form.occasionTags,
       fitType: form.fitType || null,
       season: form.season || null,
     };
@@ -155,6 +173,53 @@ const ProductFormPage = () => {
     } catch (err) {
       toast.error(err.response?.data?.message || 'Có lỗi xảy ra');
     }
+  };
+
+  const handleTagToggle = (field, tag) => {
+    setForm((prev) => {
+      const currentTags = prev[field];
+      if (currentTags.includes(tag)) {
+        return { ...prev, [field]: currentTags.filter((t) => t !== tag) };
+      }
+      if (currentTags.length >= 4) return prev;
+      return { ...prev, [field]: [...currentTags, tag] };
+    });
+  };
+
+  const handleAISuggest = () => {
+    if (!form.name || form.description?.length < 20) {
+      toast.warning('Nhập tên và mô tả ít nhất 20 ký tự để AI gợi ý');
+      return;
+    }
+
+    const selectedCategory = categoryOptions.find(c => c.value === form.categoryId);
+
+    suggestTagsMutation.mutate({
+      name: form.name,
+      description: form.description,
+      gender: form.gender,
+      categoryName: selectedCategory?.label?.replace('  └ ', ''),
+      material: form.material,
+    }, {
+      onSuccess: (data) => {
+        setForm(prev => {
+          const mergeUnique = (arr1, arr2, max) => {
+            const set = new Set([...arr1, ...arr2]);
+            return Array.from(set).slice(0, max);
+          };
+
+          return {
+            ...prev,
+            styleTags: mergeUnique(prev.styleTags, data.styleTags || [], 4),
+            occasionTags: mergeUnique(prev.occasionTags, data.occasionTags || [], 4),
+            fitType: data.fitType || prev.fitType,
+            aiSuggestedStyleTags: data.styleTags || [],
+            aiSuggestedOccasionTags: data.occasionTags || [],
+          };
+        });
+        toast.success(`Gợi ý thành công (Độ tin cậy: ${data.confidence})`);
+      }
+    });
   };
 
   // === Variant CRUD ===
@@ -402,8 +467,10 @@ const ProductFormPage = () => {
               </div>
               <div className="space-y-2">
                 <Label>Nhóm màu</Label>
-                <Input value={form.colorFamily}
-                  onChange={(e) => setForm({ ...form, colorFamily: e.target.value })} placeholder="VD: Trắng, Đen" />
+                <div className="rounded-md border border-gray-200 bg-gray-50 px-3 py-2 text-sm text-gray-700">
+                  {COLOR_FAMILY_LABELS[form.colorFamily] || form.colorFamily || 'Tu dong theo mau chinh'}
+                </div>
+                <p className="text-xs text-gray-400">Backend tu derive tu ma mau va sync theo mau co thu tu nho nhat.</p>
               </div>
             </div>
 
@@ -429,24 +496,34 @@ const ProductFormPage = () => {
 
             {/* Tags */}
             <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-              <div className="space-y-2">
-                <Label>Style Tags</Label>
-                <Input value={form.styleTags}
-                  onChange={(e) => setForm({ ...form, styleTags: e.target.value })}
-                  placeholder="casual, streetwear, minimalist" />
+              <div className="space-y-2 md:col-span-2 grid grid-cols-1 md:grid-cols-2 gap-6">
+                <TagPanel
+                  label="Style Tags"
+                  tags={tagLibrary?.styleTags || []}
+                  selectedTags={form.styleTags}
+                  aiSuggestedTags={form.aiSuggestedStyleTags}
+                  onToggle={(tag) => handleTagToggle('styleTags', tag)}
+                  onSuggestClick={handleAISuggest}
+                  isLoadingSuggest={suggestTagsMutation.isPending}
+                  showSuggestBtn={true}
+                  maxCount={4}
+                />
+                <TagPanel
+                  label="Occasion Tags"
+                  tags={tagLibrary?.occasionTags || []}
+                  selectedTags={form.occasionTags}
+                  aiSuggestedTags={form.aiSuggestedOccasionTags}
+                  onToggle={(tag) => handleTagToggle('occasionTags', tag)}
+                  maxCount={4}
+                />
               </div>
-              <div className="space-y-2">
-                <Label>Occasion Tags</Label>
-                <Input value={form.occasionTags}
-                  onChange={(e) => setForm({ ...form, occasionTags: e.target.value })}
-                  placeholder="dạo phố, đi làm, đi chơi" />
-              </div>
+
               <div className="space-y-2">
                 <Label>Kiểu dáng (Fit Type)</Label>
                 <Select value={form.fitType} onValueChange={(val) => setForm({ ...form, fitType: val })}>
                   <SelectTrigger><SelectValue placeholder="Chọn kiểu dáng" /></SelectTrigger>
                   <SelectContent>
-                    {FIT_OPTIONS.map((f) => <SelectItem key={f} value={f}>{f}</SelectItem>)}
+                    {(tagLibrary?.fitTypes || []).map((f) => <SelectItem key={f} value={f}>{f}</SelectItem>)}
                   </SelectContent>
                 </Select>
               </div>
@@ -455,7 +532,9 @@ const ProductFormPage = () => {
                 <Select value={form.season} onValueChange={(val) => setForm({ ...form, season: val })}>
                   <SelectTrigger><SelectValue placeholder="Chọn mùa" /></SelectTrigger>
                   <SelectContent>
-                    {SEASON_OPTIONS.map((s) => <SelectItem key={s} value={s}>{s}</SelectItem>)}
+                    {(tagLibrary?.seasons || []).map((s) => (
+                      <SelectItem key={s} value={s}>{SEASON_LABELS[s] || s}</SelectItem>
+                    ))}
                   </SelectContent>
                 </Select>
               </div>
@@ -512,6 +591,7 @@ const ProductFormPage = () => {
                 <TableRow>
                   <TableHead>Tên màu</TableHead>
                   <TableHead>Mã màu</TableHead>
+                  <TableHead>Nhóm màu</TableHead>
                   <TableHead>Thứ tự</TableHead>
                   <TableHead className="w-24 text-right">Hành động</TableHead>
                 </TableRow>
@@ -519,7 +599,7 @@ const ProductFormPage = () => {
               <TableBody>
                 {colors.length === 0 ? (
                   <TableRow>
-                    <TableCell colSpan={4} className="text-center py-8 text-gray-500">
+                    <TableCell colSpan={5} className="text-center py-8 text-gray-500">
                       Chưa có màu nào. Thêm màu để tạo biến thể.
                     </TableCell>
                   </TableRow>
@@ -533,6 +613,9 @@ const ProductFormPage = () => {
                         </div>
                       </TableCell>
                       <TableCell><code className="text-xs">{c.colorCode}</code></TableCell>
+                      <TableCell>
+                        <Badge variant="outline">{COLOR_FAMILY_LABELS[c.colorFamily] || c.colorFamily || 'Chua co'}</Badge>
+                      </TableCell>
                       <TableCell>{c.displayOrder}</TableCell>
                       <TableCell className="text-right">
                         <div className="flex justify-end gap-1">
@@ -696,7 +779,7 @@ const ProductFormPage = () => {
                                 ref={provided.innerRef}
                                 {...provided.draggableProps}
                                 {...provided.dragHandleProps}
-                                className={`relative group rounded-lg overflow-hidden border w-[110px] h-[110px] flex-shrink-0 ${snapshot.isDragging ? 'shadow-xl ring-2 ring-primary z-50' : ''}`}
+                                className={`relative group rounded-lg overflow-hidden border w-[110px] h-[110px] shrink-0 ${snapshot.isDragging ? 'shadow-xl ring-2 ring-primary z-50' : ''}`}
                               >
                                 <img src={img.imageUrl} alt="" className="w-full h-full object-cover" />
                                 <div className="absolute top-1 left-1 bg-black/50 text-white text-[10px] px-1.5 py-0.5 rounded backdrop-blur-sm">

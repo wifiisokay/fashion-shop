@@ -3,6 +3,8 @@ import { formatPrice } from '../../utils/format';
 
 const ProductCard = ({ product }) => {
   const hasActiveSale = product.isSale && product.salePrice;
+  const avgRating = Number(product.avgRating || 0);
+  const reviewCount = Number(product.reviewCount || 0);
 
   return (
     <div className="group flex flex-col bg-white rounded-2xl overflow-hidden border border-gray-100 shadow-sm hover:shadow-md transition-all duration-300 relative">
@@ -23,13 +25,11 @@ const ProductCard = ({ product }) => {
         <Link to={`/products/${product.id}`} className="text-sm font-medium text-gray-900 hover:text-gray-600 line-clamp-2 mb-1">
           {product.name}
         </Link>
-        {product.reviewCount > 0 && (
-          <div className="flex items-center gap-1 mb-2 text-xs text-gray-500">
-            <span className="text-amber-500">★</span>
-            <span className="font-medium text-gray-700">{product.avgRating}</span>
-            <span>({product.reviewCount})</span>
-          </div>
-        )}
+        <div className="flex items-center gap-1 mb-2 text-xs text-gray-500">
+          <span className="text-amber-500">★</span>
+          <span className="font-medium text-gray-700">{avgRating.toFixed(1)}</span>
+          <span>({reviewCount} đánh giá)</span>
+        </div>
         <div className="mt-auto flex items-center justify-between">
           <div className="flex flex-col">
             {hasActiveSale ? (

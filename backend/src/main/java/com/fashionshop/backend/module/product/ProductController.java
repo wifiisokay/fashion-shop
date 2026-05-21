@@ -11,6 +11,8 @@ import com.fashionshop.backend.common.ApiResponse;
 import com.fashionshop.backend.common.PageResponse;
 import com.fashionshop.backend.module.product.dto.response.ProductDetailResponse;
 import com.fashionshop.backend.module.product.dto.response.ProductSummaryResponse;
+import com.fashionshop.backend.module.ai.OutfitSuggestionService;
+import com.fashionshop.backend.module.ai.dto.response.OutfitSuggestionResponse;
 
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.tags.Tag;
@@ -27,6 +29,7 @@ import lombok.RequiredArgsConstructor;
 public class ProductController {
 
     private final ProductService productService;
+    private final OutfitSuggestionService outfitSuggestionService;
 
     @GetMapping
     @Operation(summary = "Danh sách sản phẩm",
@@ -52,5 +55,15 @@ public class ProductController {
     @Operation(summary = "Chi tiết sản phẩm", description = "Trả đầy đủ variant + ảnh. Chỉ trả ACTIVE.")
     public ResponseEntity<ApiResponse<ProductDetailResponse>> getById(@PathVariable Long id) {
         return ResponseEntity.ok(ApiResponse.success(productService.getByIdPublic(id)));
+    }
+
+    @GetMapping("/{id}/outfit-suggestions")
+    @Operation(summary = "Gợi ý phối đồ AI", description = "Lazy-load outfit combos theo product và color.")
+    public ResponseEntity<ApiResponse<OutfitSuggestionResponse>> getOutfitSuggestions(
+        @PathVariable Long id,
+        @RequestParam(required = false) Long colorId,
+        @RequestParam(defaultValue = "false") boolean refresh
+    ) {
+        return ResponseEntity.ok(ApiResponse.success(outfitSuggestionService.getSuggestions(id, colorId, refresh)));
     }
 }

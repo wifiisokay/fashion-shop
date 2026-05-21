@@ -22,6 +22,7 @@ public class ProductRequest {
     @Size(max = 200, message = "Tên sản phẩm tối đa 200 ký tự")
     private String name;
 
+    @Size(min = 20, message = "Mô tả cần ít nhất 20 ký tự để AI gợi ý chính xác")
     private String description;
 
     @NotNull(message = "Giá cơ bản không được để trống")
@@ -46,10 +47,10 @@ public class ProductRequest {
     @Max(value = 50000, message = "Cân nặng tối đa 50kg")
     private Integer estimatedWeight;
 
-    private String colorFamily;
-
+    @Size(max = 4, message = "Chọn tối đa 4 phong cách")
     private List<String> styleTags;
 
+    @Size(max = 4, message = "Chọn tối đa 4 dịp phù hợp")
     private List<String> occasionTags;
 
     private String fitType;

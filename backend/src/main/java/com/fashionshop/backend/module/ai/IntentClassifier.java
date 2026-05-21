@@ -4,9 +4,12 @@ import com.fashionshop.backend.domain.ChatMessage;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Component;
 
+import java.text.Normalizer;
 import java.util.List;
+import java.util.Locale;
 import java.util.Map;
 import java.util.Set;
+import java.util.LinkedHashMap;
 
 /**
  * Rule-based intent classifier — phân loại tin nhắn theo keyword matching.
@@ -15,6 +18,10 @@ import java.util.Set;
 @Slf4j
 @Component
 public class IntentClassifier {
+
+    private static final Set<String> STRONG_OUTFIT_PHRASES = Set.of(
+        "phoi do", "mac voi", "ket hop", "mix match", "outfit", "nen mac gi", "mac gi"
+    );
 
     private static final Map<ChatIntent, Set<String>> INTENT_KEYWORDS = Map.of(
         ChatIntent.PRODUCT_SEARCH, Set.of(
@@ -47,6 +54,14 @@ public class IntentClassifier {
         )
     );
 
+    private static final List<ChatIntent> PRIORITY = List.of(
+        ChatIntent.RETURN_SUPPORT,
+        ChatIntent.ORDER_INQUIRY,
+        ChatIntent.OUTFIT_SUGGEST,
+        ChatIntent.PRODUCT_SEARCH,
+        ChatIntent.GENERAL_SUPPORT
+    );
+
     /**
      * Classify intent từ message + prior context.
      *
@@ -55,31 +70,51 @@ public class IntentClassifier {
      * @return intent phù hợp nhất
      */
     public ChatIntent classify(String message, List<ChatMessage> recentMessages) {
-        String normalizedMsg = message.toLowerCase().trim();
+        String normalizedMsg = normalizeVi(message);
+
+        if (isStandaloneNonCommerceQuestion(message, normalizedMsg)) {
+            log.info("[AI_INTENT] message='{}' normalized='{}' intent={} reason=standalone_non_commerce",
+                shorten(message), normalizedMsg.trim(), ChatIntent.CHITCHAT);
+            return ChatIntent.CHITCHAT;
+        }
+
+        if (containsStrongOutfitSignal(normalizedMsg)) {
+            log.info("[AI_INTENT] message='{}' normalized='{}' intent={} reason=strong_outfit_signal",
+                shorten(message), normalizedMsg.trim(), ChatIntent.OUTFIT_SUGGEST);
+            return ChatIntent.OUTFIT_SUGGEST;
+        }
 
         // Tính score cho mỗi intent
         ChatIntent bestIntent = ChatIntent.CHITCHAT;
         int bestScore = 0;
+        Map<ChatIntent, Integer> scores = new LinkedHashMap<>();
 
-        for (Map.Entry<ChatIntent, Set<String>> entry : INTENT_KEYWORDS.entrySet()) {
+        for (ChatIntent candidate : PRIORITY) {
+            Set<String> keywords = INTENT_KEYWORDS.get(candidate);
             int score = 0;
-            for (String keyword : entry.getValue()) {
-                if (normalizedMsg.contains(keyword.toLowerCase())) {
+            for (String keyword : keywords) {
+                if (normalizedMsg.contains(normalizeVi(keyword))) {
                     score++;
                 }
             }
+            scores.put(candidate, score);
             if (score > bestScore) {
                 bestScore = score;
-                bestIntent = entry.getKey();
+                bestIntent = candidate;
             }
         }
 
         // Nếu không match rõ ràng, kiểm tra prior context
+        String reason = bestScore > 0 ? "keyword_score" : "no_keyword";
         if (bestScore == 0 && recentMessages != null && !recentMessages.isEmpty()) {
             bestIntent = inferFromContext(normalizedMsg, recentMessages);
+            reason = bestIntent == ChatIntent.CHITCHAT ? "context_ignored" : "context_followup";
         }
 
         log.debug("Classified message '{}' → {} (score={})", message, bestIntent, bestScore);
+        log.info("[AI_INTENT] message='{}' normalized='{}' intent={} reason={} bestScore={} scores={} recentCount={}",
+            shorten(message), normalizedMsg.trim(), bestIntent, reason, bestScore, scores,
+            recentMessages == null ? 0 : recentMessages.size());
         return bestIntent;
     }
 
@@ -89,19 +124,86 @@ public class IntentClassifier {
      */
     private ChatIntent inferFromContext(String message, List<ChatMessage> recent) {
         // Lấy intent gần nhất (nếu có)
-        for (int i = recent.size() - 1; i >= 0; i--) {
+        for (int i = 0; i < recent.size(); i++) {
             String lastIntent = recent.get(i).getIntent();
             if (lastIntent != null) {
                 try {
                     ChatIntent prev = ChatIntent.valueOf(lastIntent);
                     // Nếu message ngắn + context trước là product/outfit → giữ intent đó
-                    if (message.length() < 30 &&
+                    if (message.length() < 30 && hasCommerceFollowUpSignal(message) &&
                         (prev == ChatIntent.PRODUCT_SEARCH || prev == ChatIntent.OUTFIT_SUGGEST)) {
+                        log.info("[AI_INTENT_CONTEXT] normalized='{}' previousIntent={} decision=keep_previous",
+                            message.trim(), prev);
                         return prev;
                     }
                 } catch (IllegalArgumentException ignored) {}
             }
         }
+        log.info("[AI_INTENT_CONTEXT] normalized='{}' decision=chitchat", message.trim());
         return ChatIntent.CHITCHAT;
+    }
+
+    private boolean isStandaloneNonCommerceQuestion(String rawMessage, String normalizedMsg) {
+        if (rawMessage == null || rawMessage.isBlank()) {
+            return true;
+        }
+        boolean hasCommerceKeyword = PRIORITY.stream()
+            .flatMap(intent -> INTENT_KEYWORDS.get(intent).stream())
+            .anyMatch(keyword -> normalizedMsg.contains(normalizeVi(keyword)));
+        if (hasCommerceKeyword || containsStrongOutfitSignal(normalizedMsg)) {
+            return false;
+        }
+        String compact = rawMessage.replaceAll("\\s+", "");
+        boolean looksLikeArithmetic = compact.matches(".*\\d+[+\\-*/xX=÷]\\d+.*")
+            || compact.matches(".*\\d+[+\\-*/xX÷]\\d+=\\?.*");
+        boolean looksLikeGeneralQuestion = normalizedMsg.contains(" la gi ")
+            || normalizedMsg.contains(" la bao nhieu ")
+            || normalizedMsg.contains(" tai sao ")
+            || normalizedMsg.contains(" nhu the nao ");
+        return looksLikeArithmetic || looksLikeGeneralQuestion;
+    }
+
+    private boolean hasCommerceFollowUpSignal(String normalizedMsg) {
+        return containsAny(normalizedMsg,
+            " cai ", " mau ", " size ", " gia ", " con ", " het ", " sp ", " san pham ",
+            " do ", " den ", " trang ", " xanh ", " nau ", " hong ", " vang ",
+            " nam ", " nu ", " unisex ", " re ", " dat ", " sale ");
+    }
+
+    private boolean containsAny(String value, String... tokens) {
+        for (String token : tokens) {
+            if (value.contains(token)) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    private String shorten(String value) {
+        if (value == null) return "";
+        String trimmed = value.replaceAll("\\s+", " ").trim();
+        return trimmed.length() > 120 ? trimmed.substring(0, 120) + "..." : trimmed;
+    }
+
+    private boolean containsStrongOutfitSignal(String normalizedMsg) {
+        for (String phrase : STRONG_OUTFIT_PHRASES) {
+            if (normalizedMsg.contains(phrase)) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    private String normalizeVi(String input) {
+        if (input == null) {
+            return "";
+        }
+        String normalized = Normalizer.normalize(input, Normalizer.Form.NFD)
+            .replaceAll("\\p{M}+", "")
+            .replace('đ', 'd')
+            .replace('Đ', 'D')
+            .toLowerCase(Locale.ROOT)
+            .trim();
+        return " " + normalized + " ";
     }
 }

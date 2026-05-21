@@ -10,6 +10,7 @@ public class ProductColorResponse {
     private Long id;
     private String colorName;
     private String colorCode;
+    private String colorFamily;
     private Integer displayOrder;
 
     public static ProductColorResponse from(ProductColor color) {
@@ -17,6 +18,7 @@ public class ProductColorResponse {
             .id(color.getId())
             .colorName(color.getColorName())
             .colorCode(color.getColorCode())
+            .colorFamily(color.getColorFamily())
             .displayOrder(color.getDisplayOrder())
             .build();
     }

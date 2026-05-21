@@ -12,6 +12,8 @@ export const productApi = {
   create: (data) => axiosInstance.post('/api/admin/products', data),
   update: (id, data) => axiosInstance.put(`/api/admin/products/${id}`, data),
   updateStatus: (id, data) => axiosInstance.patch(`/api/admin/products/${id}/status`, data),
+  getTagLibrary: () => axiosInstance.get('/api/admin/products/tag-library'),
+  suggestTags: (data) => axiosInstance.post('/api/admin/products/suggest-tags', data),
 
   // === VARIANTS ===
   getVariants: (productId) => axiosInstance.get(`/api/admin/products/${productId}/variants`),

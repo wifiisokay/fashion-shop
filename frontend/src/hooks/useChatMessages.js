@@ -1,118 +1,130 @@
-import { useState, useEffect, useCallback, useRef } from 'react';
+import { useCallback, useMemo, useRef, useState } from 'react';
+import { useMutation, useQuery } from '@tanstack/react-query';
+import { useLocation } from 'react-router-dom';
 import { chatApi } from '../api/chatApi';
 import { useAuth } from '../contexts/AuthContext';
+import { QUERY_KEYS } from '../constants/queryKeys';
 
-/**
- * Custom hook quản lý chat messages.
- * - Authenticated user: gọi /api/chat/message, load lịch sử từ DB
- * - Guest: gọi /api/chat/guest/message, giữ history trong memory
- */
-export const useChatMessages = () => {
+const welcomeMessage = {
+  role: 'assistant',
+  text: 'Xin chào! Mình là Fashi, trợ lý thời trang của Fashion Shop. Bạn cần tìm sản phẩm, phối đồ hay hỗ trợ đơn hàng?',
+  suggestedQuestions: ['Tìm áo thun nam', 'Gợi ý outfit đi chơi', 'Chính sách đổi trả'],
+};
+
+const normalizeMessage = (msg) => ({
+  role: msg.role === 'user' ? 'user' : 'assistant',
+  text: msg.content ?? msg.text ?? '',
+  products: msg.products || null,
+  outfitCombos: msg.outfitCombos || null,
+  suggestedQuestions: msg.suggestedQuestions || null,
+  intent: msg.intent || null,
+  isError: msg.isError || false,
+});
+
+const readPageContext = (pathname) => {
+  const match = pathname.match(/^\/products\/(\d+)/);
+  if (!match) {
+    return {};
+  }
+  let colorId = null;
+  try {
+    const raw = sessionStorage.getItem('chatProductContext');
+    if (raw) {
+      const parsed = JSON.parse(raw);
+      if (Number(parsed?.productId) === Number(match[1]) && parsed?.colorId != null) {
+        colorId = Number(parsed.colorId);
+      }
+    }
+  } catch (_error) {
+    colorId = null;
+  }
+  return colorId != null ? { productId: Number(match[1]), colorId } : { productId: Number(match[1]) };
+};
+
+export const useChatMessages = (enabled = false) => {
   const { user } = useAuth();
+  const location = useLocation();
   const isAuthenticated = !!user;
+  const guestHistoryRef = useRef([]);
+  const lastFailedTextRef = useRef(null);
+  const [localMessages, setLocalMessages] = useState([welcomeMessage]);
 
-  const [messages, setMessages] = useState([
-    {
-      role: 'assistant',
-      text: 'Xin chào! Mình là trợ lý thời trang AI của Fashion Shop. 👋\nBạn cần mình tư vấn phối đồ, tìm sản phẩm, hay hỗ trợ đơn hàng?',
-      suggestedQuestions: ['Tìm áo thun nam', 'Gợi ý outfit đi chơi', 'Chính sách đổi trả'],
-    },
-  ]);
-  const [isLoading, setIsLoading] = useState(false);
-  const guestHistoryRef = useRef([]); // Track guest conversation for context
+  const historyQuery = useQuery({
+    queryKey: QUERY_KEYS.chatMessages('today'),
+    queryFn: chatApi.getTodayMessages,
+    enabled: enabled && isAuthenticated,
+    staleTime: 0,
+  });
 
-  // Load today's messages khi user đã đăng nhập
-  useEffect(() => {
-    if (!isAuthenticated) return;
+  const messages = useMemo(() => {
+    if (!isAuthenticated) {
+      return localMessages;
+    }
+    const history = (historyQuery.data || []).map(normalizeMessage);
+    const optimistic = localMessages.filter((msg) => msg.localOnly);
+    return [welcomeMessage, ...history, ...optimistic];
+  }, [historyQuery.data, isAuthenticated, localMessages]);
 
-    const loadHistory = async () => {
-      try {
-        const { data } = await chatApi.getTodayMessages();
-        const history = data?.data;
-        if (history && history.length > 0) {
-          const mapped = history.map((msg) => ({
-            role: msg.role === 'user' ? 'user' : 'assistant',
-            text: msg.content,
-            products: msg.products || null,
-            suggestedQuestions: msg.suggestedQuestions || null,
-            intent: msg.intent || null,
-          }));
-          // Thêm welcome message ở đầu
-          setMessages([
-            {
-              role: 'assistant',
-              text: 'Xin chào! Mình là trợ lý thời trang AI của Fashion Shop. 👋\nBạn cần mình tư vấn phối đồ, tìm sản phẩm, hay hỗ trợ đơn hàng?',
-            },
-            ...mapped,
-          ]);
-        }
-      } catch (error) {
-        console.warn('Không tải được lịch sử chat:', error);
+  const sendMutation = useMutation({
+    mutationFn: async (text) => {
+      const currentPageContext = readPageContext(location.pathname);
+      if (isAuthenticated) {
+        return chatApi.sendMessage(text, currentPageContext);
       }
-    };
-
-    loadHistory();
-  }, [isAuthenticated]);
-
-  const sendMessage = useCallback(
-    async (text) => {
-      if (!text.trim()) return;
-
-      // Thêm user message vào UI ngay
-      setMessages((prev) => [...prev, { role: 'user', text }]);
-      setIsLoading(true);
-
-      try {
-        let response;
-
-        if (isAuthenticated) {
-          // Authenticated user → gọi backend có lưu session
-          const { data } = await chatApi.sendMessage(text);
-          response = data?.data;
-        } else {
-          // Guest → gọi guest endpoint với history context
-          const { data } = await chatApi.sendGuestMessage(text, guestHistoryRef.current);
-          response = data?.data;
-
-          // Update guest history cho context
-          guestHistoryRef.current = [
-            ...guestHistoryRef.current,
-            { role: 'user', text },
-            { role: 'model', text: response?.content || '' },
-          ].slice(-10); // Giữ tối đa 10 messages
-        }
-
-        if (response) {
-          setMessages((prev) => [
-            ...prev,
-            {
-              role: 'assistant',
-              text: response.content,
-              products: response.products || null,
-              suggestedQuestions: response.suggestedQuestions || null,
-              intent: response.intent || null,
-            },
-          ]);
-        }
-      } catch (error) {
-        console.error('Chat error:', error);
-        setMessages((prev) => [
-          ...prev,
-          {
-            role: 'assistant',
-            text: 'Xin lỗi, hệ thống AI đang bận. Vui lòng thử lại sau nhé! 🙏',
-          },
-        ]);
-      } finally {
-        setIsLoading(false);
+      return chatApi.sendGuestMessage(text, guestHistoryRef.current, currentPageContext);
+    },
+    onMutate: (text) => {
+      lastFailedTextRef.current = null;
+      setLocalMessages((prev) => [...prev, { role: 'user', text, localOnly: true }]);
+      return { text };
+    },
+    onSuccess: (response, text) => {
+      if (!response) return;
+      const assistantMessage = normalizeMessage(response);
+      if (!isAuthenticated) {
+        guestHistoryRef.current = [
+          ...guestHistoryRef.current,
+          { role: 'user', text },
+          { role: 'model', text: response.content || '' },
+        ].slice(-10);
+      }
+      if (isAuthenticated) {
+        setLocalMessages((prev) => prev.filter((msg) => !msg.localOnly));
+        historyQuery.refetch();
+      } else {
+        setLocalMessages((prev) => [...prev, assistantMessage]);
       }
     },
-    [isAuthenticated]
-  );
+    onError: (_error, text) => {
+      lastFailedTextRef.current = text;
+      setLocalMessages((prev) => [
+        ...prev,
+        {
+          role: 'assistant',
+          text: 'Xin lỗi, hệ thống AI đang bận. Bạn có thể thử lại tin nhắn này.',
+          isError: true,
+          suggestedQuestions: ['Thử lại'],
+        },
+      ]);
+    },
+  });
+
+  const sendMessage = useCallback((text) => {
+    if (!text?.trim() || sendMutation.isPending) return;
+    sendMutation.mutate(text.trim());
+  }, [sendMutation]);
+
+  const retryLast = useCallback(() => {
+    if (lastFailedTextRef.current) {
+      sendMessage(lastFailedTextRef.current);
+    }
+  }, [sendMessage]);
 
   return {
     messages,
-    isLoading,
+    isLoading: sendMutation.isPending || historyQuery.isFetching,
     sendMessage,
+    retryLast,
+    isAuthenticated,
   };
 };

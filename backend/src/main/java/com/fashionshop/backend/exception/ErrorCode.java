@@ -25,6 +25,8 @@ public enum ErrorCode {
     COLOR_NOT_BELONG("PRODUCT_009", "Màu không thuộc sản phẩm này"),
     PRIMARY_IMAGE_REQUIRED("PRODUCT_010", "Sản phẩm chưa có ảnh thẻ chính"),
     IMAGE_NOT_FOUND("PRODUCT_011", "Không tìm thấy ảnh"),
+    INVALID_TAG("PRODUCT_012", "Tag không hợp lệ hoặc vượt giới hạn cho phép"),
+    INVALID_FIELD_VALUE("PRODUCT_013", "Giá trị trường không nằm trong danh sách hợp lệ"),
 
     // CATEGORY
     CATEGORY_NOT_FOUND("CATEGORY_001", "Danh mục không tồn tại"),

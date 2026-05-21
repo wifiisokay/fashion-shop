@@ -43,17 +43,18 @@ public class ProductColorServiceImpl implements ProductColorService {
             .product(product)
             .colorName(request.getColorName().trim())
             .colorCode(request.getColorCode())
+            .colorFamily(ColorFamilyDeriver.derive(request.getColorCode()))
             .displayOrder(request.getDisplayOrder() != null ? request.getDisplayOrder() : 0)
             .build();
 
-        return ProductColorResponse.from(colorRepository.save(color));
+        ProductColor saved = colorRepository.save(color);
+        return ProductColorResponse.from(saved);
     }
 
     @Override
     @Transactional
     public ProductColorResponse update(Long productId, Long colorId, ProductColorRequest request) {
         ProductColor color = findColorOrThrow(colorId, productId);
-
         if (colorRepository.existsByProductIdAndColorNameAndIdNot(productId, request.getColorName().trim(), colorId)) {
             throw new BusinessException(ErrorCode.PRODUCT_NOT_FOUND, HttpStatus.CONFLICT,
                 "Đã tồn tại màu '" + request.getColorName() + "' cho sản phẩm này");
@@ -61,9 +62,11 @@ public class ProductColorServiceImpl implements ProductColorService {
 
         color.setColorName(request.getColorName().trim());
         color.setColorCode(request.getColorCode());
+        color.setColorFamily(ColorFamilyDeriver.derive(request.getColorCode()));
         color.setDisplayOrder(request.getDisplayOrder() != null ? request.getDisplayOrder() : 0);
 
-        return ProductColorResponse.from(colorRepository.save(color));
+        ProductColor saved = colorRepository.save(color);
+        return ProductColorResponse.from(saved);
     }
 
     @Override
@@ -91,4 +94,5 @@ public class ProductColorServiceImpl implements ProductColorService {
         }
         return color;
     }
+
 }

@@ -19,8 +19,11 @@ import com.fashionshop.backend.common.PageResponse;
 import com.fashionshop.backend.domain.User;
 import com.fashionshop.backend.module.product.dto.request.ProductRequest;
 import com.fashionshop.backend.module.product.dto.request.ProductStatusRequest;
+import com.fashionshop.backend.module.product.dto.request.ProductTagSuggestRequest;
 import com.fashionshop.backend.module.product.dto.response.ProductDetailResponse;
 import com.fashionshop.backend.module.product.dto.response.ProductSummaryResponse;
+import com.fashionshop.backend.module.product.dto.response.ProductTagLibraryResponse;
+import com.fashionshop.backend.module.product.dto.response.ProductTagSuggestResponse;
 
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.security.SecurityRequirement;
@@ -35,6 +38,8 @@ import lombok.RequiredArgsConstructor;
 public class AdminProductController {
 
     private final ProductService productService;
+    private final ProductTagSuggestionService tagSuggestionService;
+    private final ColorFamilyBackfillService colorFamilyBackfillService;
 
     @PostMapping
     @PreAuthorize("hasRole('ADMIN')")
@@ -91,5 +96,34 @@ public class AdminProductController {
     @Operation(summary = "Chi tiết sản phẩm (Admin)", security = @SecurityRequirement(name = "cookieAuth"))
     public ResponseEntity<ApiResponse<ProductDetailResponse>> getById(@PathVariable Long id) {
         return ResponseEntity.ok(ApiResponse.success(productService.getByIdAdmin(id)));
+    }
+
+    @GetMapping("/tag-library")
+    @PreAuthorize("hasAnyRole('EMPLOYEE', 'ADMIN')")
+    @Operation(summary = "Danh sách tag chuẩn hóa",
+               description = "Trả toàn bộ tag vocabulary để FE build UI. staleTime=Infinity — chỉ cập nhật khi có version mới.",
+               security = @SecurityRequirement(name = "cookieAuth"))
+    public ResponseEntity<ApiResponse<ProductTagLibraryResponse>> getTagLibrary() {
+        return ResponseEntity.ok(ApiResponse.success(ProductTagLibraryResponse.fromLibrary()));
+    }
+
+    @PostMapping("/suggest-tags")
+    @PreAuthorize("hasRole('ADMIN')")
+    @Operation(summary = "Gemini gợi ý tag cho sản phẩm",
+               description = "Gọi Gemini phân tích tên + mô tả sản phẩm và trả tag gợi ý. Fallback trả empty nếu AI lỗi.",
+               security = @SecurityRequirement(name = "cookieAuth"))
+    public ResponseEntity<ApiResponse<ProductTagSuggestResponse>> suggestTags(
+            @Valid @RequestBody ProductTagSuggestRequest request) {
+        return ResponseEntity.ok(ApiResponse.success(
+                "Gợi ý tag thành công", tagSuggestionService.suggestTags(request)));
+    }
+    @PostMapping("/maintenance/backfill-color-family")
+    @PreAuthorize("hasRole('ADMIN')")
+    @Operation(summary = "Backfill color_family cho product colors",
+               description = "Derive color_family từ color_code cho từng product color.",
+               security = @SecurityRequirement(name = "cookieAuth"))
+    public ResponseEntity<ApiResponse<ColorFamilyBackfillService.Result>> backfillColorFamily() {
+        return ResponseEntity.ok(ApiResponse.success(
+                "Backfill color family thành công", colorFamilyBackfillService.run()));
     }
 }

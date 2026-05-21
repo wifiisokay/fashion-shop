@@ -14,6 +14,10 @@ public class GuestChatRequest {
     @NotBlank(message = "Nội dung tin nhắn không được trống")
     private String content;
 
+    private Long productId;
+
+    private Long colorId;
+
     /** Lịch sử chat tạm (browser session — không lưu DB) */
     private List<GuestMessage> history = new ArrayList<>();
 
