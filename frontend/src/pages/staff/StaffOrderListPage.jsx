@@ -60,7 +60,26 @@ const StaffOrderListPage = () => {
       render: (val) => <span className="text-sm text-gray-700">{val || '—'}</span>
     },
     { title: 'Tổng tiền', dataIndex: 'totalAmount', key: 'totalAmount', render: (val) => <span className="font-medium text-gray-900">{formatPrice(val)}</span> },
-    { title: 'Thanh toán', dataIndex: 'paymentMethod', key: 'paymentMethod', render: (val) => val === 'COD' ? 'COD' : 'VNPAY' },
+    {
+      title: 'Thanh toán',
+      dataIndex: 'paymentMethod',
+      key: 'paymentMethod',
+      render: (val, row) => (
+        <div className="space-y-1">
+          <div>{val === 'COD' ? 'COD' : 'VNPAY'}</div>
+          <span className={clsx(
+            'inline-flex rounded-full px-2 py-0.5 text-xs font-medium',
+            row.paymentStatus === 'PAID' ? 'bg-green-100 text-green-700'
+              : row.paymentStatus === 'REFUNDED' ? 'bg-gray-100 text-gray-600'
+              : 'bg-yellow-100 text-yellow-700'
+          )}>
+            {row.paymentStatus === 'PAID' ? 'Đã thanh toán'
+              : row.paymentStatus === 'REFUNDED' ? 'Đã hoàn tiền'
+              : 'Chưa thanh toán'}
+          </span>
+        </div>
+      )
+    },
     { 
       title: 'Trạng thái', 
       dataIndex: 'status', 
@@ -159,9 +178,9 @@ const StaffOrderListPage = () => {
             <option value="DELIVERED">Đã giao</option>
             <option value="COMPLETED">Hoàn thành</option>
             <option value="CANCELLED">Đã hủy</option>
-            <option value="RETURN_REQUESTED">Yêu cầu trả hàng</option>
-            <option value="RETURNING">Đang trả hàng</option>
-            <option value="RETURNED">Đã trả hàng</option>
+            <option value="RETURN_REQUESTED">Yêu cầu đổi/trả</option>
+            <option value="RETURNING">Đang xử lý đổi/trả</option>
+            <option value="RETURNED">Đã xử lý đổi/trả</option>
           </select>
           <select
             value={categoryFilter}

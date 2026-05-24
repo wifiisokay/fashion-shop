@@ -1,6 +1,7 @@
 package com.fashionshop.backend.module.payment;
 
 import com.fashionshop.backend.common.enums.OrderStatus;
+import com.fashionshop.backend.common.enums.OrderPaymentStatus;
 import com.fashionshop.backend.common.enums.PaymentMethod;
 import com.fashionshop.backend.common.enums.PaymentStatus;
 import com.fashionshop.backend.domain.Order;
@@ -141,6 +142,7 @@ class PaymentServiceImplTest {
             assertEquals("VNP123456", payment.getVnpayTransactionNo());
             assertEquals("NCB", payment.getVnpayBankCode());
             assertEquals(OrderStatus.PENDING, order.getStatus());
+            assertEquals(OrderPaymentStatus.PAID, order.getPaymentStatus());
         }
 
         @Test
@@ -161,6 +163,7 @@ class PaymentServiceImplTest {
             assertEquals("00", result.get("RspCode"));
             assertEquals(PaymentStatus.FAILED, payment.getStatus());
             assertEquals(OrderStatus.CANCELLED, order.getStatus());
+            assertEquals(OrderPaymentStatus.UNPAID, order.getPaymentStatus());
         }
 
         @Test
@@ -247,6 +250,7 @@ class PaymentServiceImplTest {
             assertEquals(PaymentStatus.SUCCESS, payment.getStatus());
             assertNotNull(payment.getPaidAt());
             assertEquals(OrderStatus.PENDING, order.getStatus());
+            assertEquals(OrderPaymentStatus.PAID, order.getPaymentStatus());
             verify(paymentRepository).save(payment);
         }
 
@@ -268,6 +272,7 @@ class PaymentServiceImplTest {
             assertTrue(redirect.contains("status=failed"));
             assertEquals(PaymentStatus.FAILED, payment.getStatus());
             assertEquals(OrderStatus.CANCELLED, order.getStatus());
+            assertEquals(OrderPaymentStatus.UNPAID, order.getPaymentStatus());
         }
 
         @Test
@@ -346,6 +351,7 @@ class PaymentServiceImplTest {
             sut.processRefund(10L, "Giao hàng thất bại");
 
             assertEquals(PaymentStatus.REFUNDED, payment.getStatus());
+            assertEquals(OrderPaymentStatus.REFUNDED, payment.getOrder().getPaymentStatus());
             assertNotNull(payment.getRefundedAt());
             assertEquals("Giao hàng thất bại", payment.getRefundReason());
             verify(paymentRepository).save(payment);

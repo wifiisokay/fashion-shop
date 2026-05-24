@@ -13,7 +13,7 @@ public class CreateReturnRequest {
     @NotNull(message = "Mã đơn hàng không được để trống")
     private Long orderId;
 
-    @NotBlank(message = "Lý do trả hàng không được để trống")
-    @Size(max = 500, message = "Lý do trả hàng tối đa 500 ký tự")
+    @NotBlank(message = "Nội dung yêu cầu không được để trống")
+    @Size(max = 500, message = "Nội dung yêu cầu tối đa 500 ký tự")
     private String reason;
 }

@@ -1,5 +1,7 @@
 import { useQuery } from '@tanstack/react-query';
-import { Users, ShoppingBag, DollarSign, Package, AlertCircle } from 'lucide-react';
+import { Link } from 'react-router-dom';
+import { clsx } from 'clsx';
+import { Users, ShoppingBag, DollarSign, Package, AlertCircle, RotateCcw, CheckCircle } from 'lucide-react';
 import { formatPrice } from '../../utils/format';
 import { orderApi } from '../../api/orderApi';
 import dashboardApi from '../../api/dashboardApi';
@@ -21,13 +23,13 @@ import {
 
 const COLORS = ['#10B981', '#3B82F6', '#F59E0B', '#EF4444', '#8B5CF6', '#6B7280'];
 
-const StatCard = ({ title, value, icon: Icon }) => (
-  <div className="bg-white p-6 rounded-xl border border-gray-200 shadow-sm flex items-center justify-between">
+const StatCard = ({ title, value, icon: Icon, className, valueClassName, iconClassName }) => (
+  <div className={clsx("bg-white p-6 rounded-xl border border-gray-200 shadow-sm flex items-center justify-between transition-all duration-250 hover:shadow-md", className)}>
     <div>
       <p className="text-sm font-medium text-gray-500 mb-1">{title}</p>
-      <h3 className="text-2xl font-bold text-gray-900">{value}</h3>
+      <h3 className={clsx("text-2xl font-bold text-gray-900", valueClassName)}>{value}</h3>
     </div>
-    <div className="w-12 h-12 bg-indigo-50 rounded-full flex items-center justify-center text-indigo-600">
+    <div className={clsx("w-12 h-12 rounded-full flex items-center justify-center", iconClassName || "bg-indigo-50 text-indigo-600")}>
       <Icon className="w-6 h-6" />
     </div>
   </div>
@@ -83,7 +85,7 @@ const DashboardPage = () => {
     );
   }
 
-  const { totals, revenueTrend, orderStatusDistribution, packingStats } = statsData;
+  const { totals, revenueTrend, orderStatusDistribution, packingStats, returnStats } = statsData;
   const recentOrders = recentOrdersData?.content || [];
 
   return (
@@ -196,27 +198,80 @@ const DashboardPage = () => {
       </div>
 
       {packingStats && (
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
-          <StatCard
-            title="Đơn chưa đóng gói"
-            value={packingStats.confirmedNotPacked || 0}
-            icon={AlertCircle}
-          />
-          <StatCard
-            title="Đã đóng gói chờ giao"
-            value={packingStats.confirmedPacked || 0}
-            icon={Package}
-          />
-          <StatCard
-            title="Phí ship tháng này"
-            value={formatPrice(packingStats.shippingFeeTotalThisMonth || 0)}
-            icon={DollarSign}
-          />
-          <StatCard
-            title="Phí ship TB/đơn"
-            value={formatPrice(packingStats.shippingFeeAvgThisMonth || 0)}
-            icon={DollarSign}
-          />
+        <div className="space-y-3">
+          <div className="flex items-center justify-between">
+            <h2 className="text-base font-bold text-gray-800 flex items-center gap-2">
+              <Package className="w-5 h-5 text-gray-600" />
+              <span>Vận hành & Đóng gói</span>
+            </h2>
+            <Link to="/staff/orders" className="text-xs font-semibold text-indigo-600 hover:text-indigo-800 transition-colors">
+              Quản lý đơn hàng & đóng gói ↗
+            </Link>
+          </div>
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
+            <StatCard
+              title="Đơn chưa đóng gói"
+              value={packingStats.confirmedNotPacked || 0}
+              icon={AlertCircle}
+              className={packingStats.confirmedNotPacked > 0 ? "border-amber-200 bg-amber-50/30" : ""}
+              iconClassName={packingStats.confirmedNotPacked > 0 ? "bg-amber-100 text-amber-600" : "bg-indigo-50 text-indigo-600"}
+              valueClassName={packingStats.confirmedNotPacked > 0 ? "text-amber-700" : "text-gray-900"}
+            />
+            <StatCard
+              title="Đã đóng gói chờ giao"
+              value={packingStats.confirmedPacked || 0}
+              icon={Package}
+            />
+            <StatCard
+              title="Phí ship tháng này"
+              value={formatPrice(packingStats.shippingFeeTotalThisMonth || 0)}
+              icon={DollarSign}
+            />
+            <StatCard
+              title="Phí ship TB/đơn"
+              value={formatPrice(packingStats.shippingFeeAvgThisMonth || 0)}
+              icon={DollarSign}
+            />
+          </div>
+        </div>
+      )}
+
+      {returnStats && (
+        <div className="space-y-3">
+          <div className="flex items-center justify-between">
+            <h2 className="text-base font-bold text-gray-800 flex items-center gap-2">
+              <RotateCcw className="w-5 h-5 text-gray-600" />
+              <span>Yêu cầu Đổi/Trả & Khiếu nại</span>
+            </h2>
+            <Link to="/staff/returns" className="text-xs font-semibold text-indigo-600 hover:text-indigo-800 transition-colors">
+              Xem chi tiết yêu cầu đổi/trả ↗
+            </Link>
+          </div>
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
+            <StatCard
+              title="Yêu cầu chờ xử lý"
+              value={returnStats.pending || 0}
+              icon={RotateCcw}
+              className={returnStats.pending > 0 ? "border-red-200 bg-red-50/30 ring-1 ring-red-100" : ""}
+              iconClassName={returnStats.pending > 0 ? "bg-red-100 text-red-600" : "bg-indigo-50 text-indigo-600"}
+              valueClassName={returnStats.pending > 0 ? "text-red-700" : "text-gray-900"}
+            />
+            <StatCard
+              title="Yêu cầu đang xử lý"
+              value={returnStats.processing || 0}
+              icon={AlertCircle}
+            />
+            <StatCard
+              title="Đã xử lý tháng này"
+              value={returnStats.completedThisMonth || 0}
+              icon={CheckCircle}
+            />
+            <StatCard
+              title="Tiền hoàn ghi nhận"
+              value={formatPrice(returnStats.refundAmountThisMonth || 0)}
+              icon={DollarSign}
+            />
+          </div>
         </div>
       )}
 

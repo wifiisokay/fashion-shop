@@ -56,6 +56,13 @@ public class ReturnRequest {
     @Builder.Default
     private ReturnStatus status = ReturnStatus.PENDING;
 
+    @Column(name = "previous_order_status", length = 30)
+    private String previousOrderStatus;
+
+    @OneToMany(mappedBy = "returnRequest", cascade = CascadeType.ALL, orphanRemoval = true)
+    @Builder.Default
+    private List<ReturnItem> items = new ArrayList<>();
+
     @Column(name = "refund_amount", precision = 12, scale = 2)
     private BigDecimal refundAmount;
 

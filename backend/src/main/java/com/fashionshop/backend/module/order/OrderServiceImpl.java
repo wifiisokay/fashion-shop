@@ -15,6 +15,7 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import com.fashionshop.backend.common.PageResponse;
+import com.fashionshop.backend.common.enums.OrderPaymentStatus;
 import com.fashionshop.backend.common.enums.OrderStatus;
 import com.fashionshop.backend.common.enums.PaymentMethod;
 import com.fashionshop.backend.common.enums.PaymentStatus;
@@ -119,6 +120,7 @@ public class OrderServiceImpl implements OrderService {
             .user(userRef)
             .status(initialStatus)
             .paymentMethod(request.getPaymentMethod())
+            .paymentStatus(OrderPaymentStatus.UNPAID)
             .shippingFee(shippingFee)
             .note(request.getNote())
             .addressSnapshot(buildAddressSnapshot(address))
@@ -331,6 +333,7 @@ public class OrderServiceImpl implements OrderService {
                     && payment.getStatus() == PaymentStatus.PENDING) {
                 payment.setStatus(PaymentStatus.SUCCESS);
                 payment.setPaidAt(LocalDateTime.now());
+                order.setPaymentStatus(OrderPaymentStatus.PAID);
                 paymentRepository.save(payment);
                 log.info("COD payment #{} confirmed for order #{}", payment.getId(), orderId);
             }
@@ -430,6 +433,7 @@ public class OrderServiceImpl implements OrderService {
         }
 
         statusService.validateTransition(order.getStatus(), newStatus);
+        guardVnPayPaidBeforeProcessing(order, newStatus);
 
         // Bắt buộc xác nhận đóng gói trước khi giao hàng
         if (newStatus == OrderStatus.SHIPPING && !Boolean.TRUE.equals(order.getPackingConfirmed())) {
@@ -536,6 +540,19 @@ public class OrderServiceImpl implements OrderService {
     // ================================================================
     // Private helpers
     // ================================================================
+
+    private void guardVnPayPaidBeforeProcessing(Order order, OrderStatus newStatus) {
+        boolean processingStatus = newStatus == OrderStatus.CONFIRMED
+            || newStatus == OrderStatus.SHIPPING
+            || newStatus == OrderStatus.DELIVERED
+            || newStatus == OrderStatus.COMPLETED;
+        if (processingStatus
+            && order.getPaymentMethod() == PaymentMethod.VNPAY
+            && order.getPaymentStatus() != OrderPaymentStatus.PAID) {
+            throw new BusinessException(ErrorCode.ORDER_PAYMENT_NOT_PAID, HttpStatus.BAD_REQUEST,
+                "Đơn VNPay chưa thanh toán thành công, không thể xử lý đơn.");
+        }
+    }
 
     private BigDecimal calculateUnitPrice(Product product, ProductVariant variant) {
         BigDecimal basePrice = Boolean.TRUE.equals(product.getIsSale()) && product.getSalePrice() != null

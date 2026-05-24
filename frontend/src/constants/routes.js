@@ -13,6 +13,7 @@ export const ROUTES = {
   PAYMENT_RESULT: '/payment/result',
   MY_ORDERS: '/my-orders',
   MY_ORDER_DETAIL: '/my-orders/:id',
+  MY_RETURNS: '/my-returns',
   PROFILE: '/profile',
   // Staff
   STAFF_ORDERS: '/staff/orders',

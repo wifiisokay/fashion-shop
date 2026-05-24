@@ -147,10 +147,10 @@ public class DataRetrieverService {
             ).getContent();
 
             if (returns.isEmpty()) {
-                return "Khách hàng chưa có yêu cầu trả hàng nào.";
+                return "Khách hàng chưa có yêu cầu đổi/trả hoặc khiếu nại nào.";
             }
 
-            return "Yêu cầu trả hàng gần nhất:\n" +
+            return "Yêu cầu đổi/trả hoặc khiếu nại gần nhất:\n" +
                 returns.stream().map(this::formatReturn).collect(Collectors.joining("\n"));
         } catch (Exception e) {
             log.error("Error retrieving returns: {}", e.getMessage());

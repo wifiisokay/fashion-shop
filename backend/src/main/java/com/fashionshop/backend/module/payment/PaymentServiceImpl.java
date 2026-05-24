@@ -1,6 +1,7 @@
 package com.fashionshop.backend.module.payment;
 
 import com.fashionshop.backend.common.PageResponse;
+import com.fashionshop.backend.common.enums.OrderPaymentStatus;
 import com.fashionshop.backend.common.enums.OrderStatus;
 import com.fashionshop.backend.common.enums.PaymentMethod;
 import com.fashionshop.backend.common.enums.PaymentStatus;
@@ -114,11 +115,13 @@ public class PaymentServiceImpl implements PaymentService {
 
             // Chuyển order từ AWAITING_PAYMENT → PENDING
             Order order = payment.getOrder();
+            order.setPaymentStatus(OrderPaymentStatus.PAID);
             if (order.getStatus() == OrderStatus.AWAITING_PAYMENT) {
                 order.setStatus(OrderStatus.PENDING);
                 orderRepository.save(order);
                 log.info("Order #{} → PENDING (VNPay payment success)", order.getId());
             }
+            orderRepository.save(order);
         } else {
             // Thanh toán thất bại
             payment.setStatus(PaymentStatus.FAILED);
@@ -172,11 +175,13 @@ public class PaymentServiceImpl implements PaymentService {
                 payment.setPaidAt(LocalDateTime.now());
 
                 Order order = payment.getOrder();
+                order.setPaymentStatus(OrderPaymentStatus.PAID);
                 if (order.getStatus() == OrderStatus.AWAITING_PAYMENT) {
                     order.setStatus(OrderStatus.PENDING);
                     orderRepository.save(order);
                     log.info("Return fallback: Order #{} → PENDING", order.getId());
                 }
+                orderRepository.save(order);
             } else {
                 payment.setStatus(PaymentStatus.FAILED);
 
@@ -267,6 +272,8 @@ public class PaymentServiceImpl implements PaymentService {
         payment.setStatus(PaymentStatus.REFUNDED);
         payment.setRefundedAt(LocalDateTime.now());
         payment.setRefundReason(reason);
+        payment.getOrder().setPaymentStatus(OrderPaymentStatus.REFUNDED);
+        orderRepository.save(payment.getOrder());
         paymentRepository.save(payment);
 
         log.info("Payment #{} refunded — amount={} — reason={}",

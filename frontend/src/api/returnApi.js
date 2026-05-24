@@ -11,10 +11,12 @@ export const returnApi = {
   // Staff
   getAll:        (params) => axiosInstance.get('/api/staff/returns', { params }),
   getById:       (id)     => axiosInstance.get(`/api/staff/returns/${id}`),
+  getStaffDashboard: () => axiosInstance.get('/api/staff/returns/dashboard'),
   approveReturn: (id, data) => axiosInstance.patch(`/api/staff/returns/${id}/approve`, data),
   rejectReturn:  (id, data) => axiosInstance.patch(`/api/staff/returns/${id}/reject`, data),
 
   // Admin
+  getAdminDashboard: () => axiosInstance.get('/api/admin/returns/dashboard'),
   receiveReturn:  (id) => axiosInstance.patch(`/api/admin/returns/${id}/receive`),
   completeReturn: (id, data) => axiosInstance.patch(`/api/admin/returns/${id}/complete`, data),
 };

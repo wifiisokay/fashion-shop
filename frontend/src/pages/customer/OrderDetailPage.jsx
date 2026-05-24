@@ -111,14 +111,12 @@ const OrderDetailPage = () => {
                 {order.paymentMethod === 'COD' ? 'COD — Thanh toán khi nhận hàng' : 'VNPay'}
               </span></p>
               <p>Trạng thái: <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium ${
-                order.paymentStatus === 'SUCCESS' ? 'bg-green-100 text-green-700' :
+                order.paymentStatus === 'PAID' ? 'bg-green-100 text-green-700' :
                 order.paymentStatus === 'REFUNDED' ? 'bg-gray-100 text-gray-600' :
-                order.paymentStatus === 'FAILED' ? 'bg-red-100 text-red-700' :
                 'bg-yellow-100 text-yellow-700'
               }`}>
-                {order.paymentStatus === 'SUCCESS' ? 'Đã thanh toán' :
+                {order.paymentStatus === 'PAID' ? 'Đã thanh toán' :
                  order.paymentStatus === 'REFUNDED' ? 'Đã hoàn tiền' :
-                 order.paymentStatus === 'FAILED' ? 'Thất bại' :
                  'Chưa thanh toán'}
               </span></p>
               {order.paidAt && (
@@ -163,7 +161,7 @@ const OrderDetailPage = () => {
               'text-blue-800'
             }`}>
               <RotateCcw className="w-4 h-4 inline mr-1.5" />
-              Yêu cầu trả hàng
+              Yêu cầu đổi/trả hoặc khiếu nại
             </h3>
             <p className={`text-sm ${
               order.returnStatus === 'REJECTED' ? 'text-red-700' :
@@ -285,7 +283,7 @@ const OrderDetailPage = () => {
         <div className="space-y-3">
           {canRequestReturn && returnDaysLeft > 0 && (
             <p className="text-xs text-gray-500 text-right">
-              ⏳ Còn {returnDaysLeft} ngày để yêu cầu trả hàng
+              ⏳ Còn {returnDaysLeft} ngày để tạo yêu cầu đổi/trả hoặc khiếu nại
             </p>
           )}
           <div className="flex gap-3 justify-end">
@@ -310,7 +308,7 @@ const OrderDetailPage = () => {
             {canRequestReturn && (
               <Button variant="secondary" onClick={() => setShowReturnModal(true)}>
                 <RotateCcw className="w-4 h-4 mr-2" />
-                Yêu cầu trả hàng
+                Yêu cầu đổi/trả hoặc khiếu nại
               </Button>
             )}
           </div>
@@ -322,13 +320,13 @@ const OrderDetailPage = () => {
         <div className="space-y-3">
           {returnDaysLeft > 0 && (
             <p className="text-xs text-gray-500 text-right">
-              ⏳ Còn {returnDaysLeft} ngày để yêu cầu trả hàng
+              ⏳ Còn {returnDaysLeft} ngày để tạo yêu cầu đổi/trả hoặc khiếu nại
             </p>
           )}
           <div className="flex gap-3 justify-end">
             <Button variant="secondary" onClick={() => setShowReturnModal(true)}>
               <RotateCcw className="w-4 h-4 mr-2" />
-              Yêu cầu trả hàng
+              Yêu cầu đổi/trả hoặc khiếu nại
             </Button>
           </div>
         </div>
@@ -347,6 +345,7 @@ const OrderDetailPage = () => {
     {showReturnModal && (
       <ReturnRequestModal
         orderId={order.id}
+        orderItems={order.items || []}
         onClose={() => setShowReturnModal(false)}
       />
     )}

@@ -4,6 +4,7 @@ import com.fashionshop.backend.common.ApiResponse;
 import com.fashionshop.backend.common.PageResponse;
 import com.fashionshop.backend.common.enums.ReturnStatus;
 import com.fashionshop.backend.domain.User;
+import com.fashionshop.backend.module.returnrequest.dto.response.ReturnDashboardResponse;
 import com.fashionshop.backend.module.returnrequest.dto.response.ReturnResponse;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.security.SecurityRequirement;
@@ -18,13 +19,19 @@ import java.util.Map;
 @RestController
 @RequestMapping("/api/staff/returns")
 @RequiredArgsConstructor
-@Tag(name = "Returns — Staff", description = "Quản lý yêu cầu trả hàng (Staff/Admin)")
+@Tag(name = "Returns — Staff", description = "Quản lý yêu cầu đổi/trả hoặc khiếu nại (Staff/Admin)")
 public class StaffReturnController {
 
     private final ReturnService returnService;
 
+    @GetMapping("/dashboard")
+    @Operation(summary = "Dashboard xử lý yêu cầu đổi/trả hoặc khiếu nại", security = @SecurityRequirement(name = "cookieAuth"))
+    public ResponseEntity<ApiResponse<ReturnDashboardResponse>> dashboard() {
+        return ResponseEntity.ok(ApiResponse.success(returnService.getStaffDashboard()));
+    }
+
     @GetMapping
-    @Operation(summary = "Danh sách yêu cầu trả hàng", security = @SecurityRequirement(name = "cookieAuth"))
+    @Operation(summary = "Danh sách yêu cầu đổi/trả hoặc khiếu nại", security = @SecurityRequirement(name = "cookieAuth"))
     public ResponseEntity<ApiResponse<PageResponse<ReturnResponse>>> getAll(
         @RequestParam(required = false) ReturnStatus status,
         @RequestParam(defaultValue = "0") int page,
@@ -35,13 +42,13 @@ public class StaffReturnController {
     }
 
     @GetMapping("/{id}")
-    @Operation(summary = "Chi tiết yêu cầu trả hàng", security = @SecurityRequirement(name = "cookieAuth"))
+    @Operation(summary = "Chi tiết yêu cầu đổi/trả hoặc khiếu nại", security = @SecurityRequirement(name = "cookieAuth"))
     public ResponseEntity<ApiResponse<ReturnResponse>> getById(@PathVariable Long id) {
         return ResponseEntity.ok(ApiResponse.success(returnService.getReturnById(id)));
     }
 
     @PatchMapping("/{id}/approve")
-    @Operation(summary = "Duyệt yêu cầu trả hàng", security = @SecurityRequirement(name = "cookieAuth"))
+    @Operation(summary = "Duyệt yêu cầu đổi/trả hoặc khiếu nại", security = @SecurityRequirement(name = "cookieAuth"))
     public ResponseEntity<ApiResponse<Void>> approve(
         @AuthenticationPrincipal User user,
         @PathVariable Long id,
@@ -49,17 +56,17 @@ public class StaffReturnController {
     ) {
         String note = (body != null) ? body.get("note") : null;
         returnService.approveReturn(user.getId(), id, note);
-        return ResponseEntity.ok(ApiResponse.success("Đã duyệt yêu cầu trả hàng"));
+        return ResponseEntity.ok(ApiResponse.success("Đã duyệt yêu cầu"));
     }
 
     @PatchMapping("/{id}/reject")
-    @Operation(summary = "Từ chối yêu cầu trả hàng", security = @SecurityRequirement(name = "cookieAuth"))
+    @Operation(summary = "Từ chối yêu cầu đổi/trả hoặc khiếu nại", security = @SecurityRequirement(name = "cookieAuth"))
     public ResponseEntity<ApiResponse<Void>> reject(
         @AuthenticationPrincipal User user,
         @PathVariable Long id,
         @RequestBody Map<String, String> body
     ) {
         returnService.rejectReturn(user.getId(), id, body.get("note"));
-        return ResponseEntity.ok(ApiResponse.success("Đã từ chối yêu cầu trả hàng"));
+        return ResponseEntity.ok(ApiResponse.success("Đã từ chối yêu cầu"));
     }
 }

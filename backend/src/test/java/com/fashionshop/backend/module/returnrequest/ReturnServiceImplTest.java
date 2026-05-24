@@ -2,18 +2,21 @@ package com.fashionshop.backend.module.returnrequest;
 
 import com.fashionshop.backend.common.PageResponse;
 import com.fashionshop.backend.common.enums.OrderStatus;
+import com.fashionshop.backend.common.enums.OrderPaymentStatus;
 import com.fashionshop.backend.common.enums.PaymentMethod;
 import com.fashionshop.backend.common.enums.PaymentStatus;
+import com.fashionshop.backend.common.enums.ReturnRequestType;
 import com.fashionshop.backend.common.enums.ReturnStatus;
 import com.fashionshop.backend.domain.Order;
+import com.fashionshop.backend.domain.OrderItem;
 import com.fashionshop.backend.domain.Payment;
 import com.fashionshop.backend.domain.ReturnRequest;
 import com.fashionshop.backend.domain.User;
 import com.fashionshop.backend.domain.repository.OrderRepository;
+import com.fashionshop.backend.domain.repository.ReturnItemRepository;
 import com.fashionshop.backend.domain.repository.ReturnRequestRepository;
 import com.fashionshop.backend.domain.repository.UserRepository;
 import com.fashionshop.backend.exception.BusinessException;
-import com.fashionshop.backend.module.payment.PaymentService;
 import com.fashionshop.backend.module.returnrequest.dto.response.ReturnResponse;
 import com.fashionshop.backend.module.storage.StorageService;
 import com.fashionshop.backend.module.storage.UploadResult;
@@ -41,12 +44,11 @@ import static org.mockito.Mockito.*;
 class ReturnServiceImplTest {
 
     @Mock ReturnRequestRepository returnRepository;
+    @Mock ReturnItemRepository returnItemRepository;
     @Mock OrderRepository orderRepository;
     @Mock UserRepository userRepository;
     @Mock ReturnStatusService returnStatusService;
     @Mock StorageService storageService;
-    @Mock PaymentService paymentService;
-
     @InjectMocks ReturnServiceImpl sut;
 
     // ==================== Helpers ====================
@@ -61,7 +63,20 @@ class ReturnServiceImplTest {
             .subtotal(BigDecimal.valueOf(200000)).shippingFee(BigDecimal.valueOf(30000))
             .totalAmount(BigDecimal.valueOf(230000))
             .deliveredAt(LocalDateTime.now().minusDays(3)) // 3 ngày trước → trong window
-            .items(new ArrayList<>())
+            .items(new ArrayList<>(List.of(mockOrderItem())))
+            .build();
+    }
+
+    private OrderItem mockOrderItem() {
+        return OrderItem.builder()
+            .id(100L)
+            .productId(20L)
+            .productName("Áo thun")
+            .colorName("Trắng")
+            .size("L")
+            .unitPrice(BigDecimal.valueOf(200000))
+            .quantity(1)
+            .subtotal(BigDecimal.valueOf(200000))
             .build();
     }
 
@@ -107,7 +122,8 @@ class ReturnServiceImplTest {
             });
             when(returnStatusService.getLabel(ReturnStatus.PENDING)).thenReturn("Chờ xử lý");
 
-            ReturnResponse response = sut.createReturn(1L, 1L, "Hàng bị lỗi", null);
+            when(returnItemRepository.sumQuantityByOrderItemAndStatuses(eq(100L), anyCollection())).thenReturn(0L);
+            ReturnResponse response = sut.createReturn(1L, 1L, ReturnRequestType.RETURN, "Hàng bị lỗi", List.of(), null);
 
             assertNotNull(response);
             assertEquals("PENDING", response.getStatus());
@@ -136,7 +152,8 @@ class ReturnServiceImplTest {
                 .thenReturn(new UploadResult("https://cdn.test/img.jpg", "returns/5/abc"));
             when(returnStatusService.getLabel(ReturnStatus.PENDING)).thenReturn("Chờ xử lý");
 
-            ReturnResponse response = sut.createReturn(1L, 1L, "Hàng sai màu", List.of(file));
+            when(returnItemRepository.sumQuantityByOrderItemAndStatuses(eq(100L), anyCollection())).thenReturn(0L);
+            ReturnResponse response = sut.createReturn(1L, 1L, ReturnRequestType.EXCHANGE, "Hàng sai màu", List.of(), List.of(file));
 
             assertNotNull(response);
             verify(storageService).uploadImage(any(), eq("fashion-shop/returns/5"));
@@ -148,7 +165,7 @@ class ReturnServiceImplTest {
             when(orderRepository.findByIdAndUserId(99L, 1L)).thenReturn(Optional.empty());
 
             BusinessException ex = assertThrows(BusinessException.class,
-                () -> sut.createReturn(1L, 99L, "lỗi", null));
+                () -> sut.createReturn(1L, 99L, ReturnRequestType.RETURN, "lỗi", List.of(), null));
             assertEquals("ORDER_001", ex.getErrorCode().getCode());
         }
 
@@ -159,7 +176,7 @@ class ReturnServiceImplTest {
             when(orderRepository.findByIdAndUserId(1L, 1L)).thenReturn(Optional.of(order));
 
             BusinessException ex = assertThrows(BusinessException.class,
-                () -> sut.createReturn(1L, 1L, "lỗi", null));
+                () -> sut.createReturn(1L, 1L, ReturnRequestType.RETURN, "lỗi", List.of(), null));
             assertEquals("RETURN_002", ex.getErrorCode().getCode());
         }
 
@@ -172,7 +189,7 @@ class ReturnServiceImplTest {
             when(orderRepository.findByIdAndUserId(1L, 1L)).thenReturn(Optional.of(order));
 
             BusinessException ex = assertThrows(BusinessException.class,
-                () -> sut.createReturn(1L, 1L, "lỗi", null));
+                () -> sut.createReturn(1L, 1L, ReturnRequestType.RETURN, "lỗi", List.of(), null));
             assertEquals("RETURN_003", ex.getErrorCode().getCode());
         }
 
@@ -184,7 +201,7 @@ class ReturnServiceImplTest {
             when(returnRepository.existsByOrderIdAndStatusIn(eq(1L), anyCollection())).thenReturn(true);
 
             BusinessException ex = assertThrows(BusinessException.class,
-                () -> sut.createReturn(1L, 1L, "lỗi", null));
+                () -> sut.createReturn(1L, 1L, ReturnRequestType.RETURN, "lỗi", List.of(), null));
             assertEquals("RETURN_004", ex.getErrorCode().getCode());
         }
     }
@@ -305,17 +322,15 @@ class ReturnServiceImplTest {
             when(userRepository.findById(10L)).thenReturn(Optional.of(admin));
             doNothing().when(returnStatusService).validateTransition(ReturnStatus.RECEIVED, ReturnStatus.COMPLETED);
 
-            sut.completeReturn(10L, 1L, null);
+            sut.completeReturn(10L, 1L, null, null);
 
             assertEquals(ReturnStatus.COMPLETED, ret.getStatus());
             assertEquals(OrderStatus.RETURNED, order.getStatus());
-            // Không trigger refund cho COD
-            verify(paymentService, never()).processRefund(anyLong(), anyString());
         }
 
         @Test
-        @DisplayName("Hoàn tất VNPAY — RECEIVED → COMPLETED + trigger refund")
-        void success_vnpay_refund() {
+        @DisplayName("Hoàn tất VNPAY — RECEIVED → COMPLETED + ghi nhận thủ công")
+        void success_vnpay_manualRecord() {
             Order order = mockDeliveredVnpayOrder(1L);
             order.setStatus(OrderStatus.RETURNING);
             ReturnRequest ret = mockReturn(1L, ReturnStatus.RECEIVED, order, 1L);
@@ -324,18 +339,19 @@ class ReturnServiceImplTest {
             when(returnRepository.findById(1L)).thenReturn(Optional.of(ret));
             when(userRepository.findById(10L)).thenReturn(Optional.of(admin));
             doNothing().when(returnStatusService).validateTransition(ReturnStatus.RECEIVED, ReturnStatus.COMPLETED);
-            doNothing().when(paymentService).processRefund(10L, "Hoàn tiền trả hàng #1");
 
-            sut.completeReturn(10L, 1L, BigDecimal.valueOf(200000));
+            sut.completeReturn(10L, 1L, BigDecimal.valueOf(200000), "Đã hoàn thủ công");
 
             assertEquals(ReturnStatus.COMPLETED, ret.getStatus());
             assertEquals(BigDecimal.valueOf(200000), ret.getRefundAmount());
-            verify(paymentService).processRefund(10L, "Hoàn tiền trả hàng #1");
+            assertEquals("Đã hoàn thủ công", ret.getAdminNote());
+            assertEquals(PaymentStatus.REFUNDED, order.getPayment().getStatus());
+            assertEquals(OrderPaymentStatus.REFUNDED, order.getPaymentStatus());
         }
 
         @Test
-        @DisplayName("Hoàn tất VNPAY — refund lỗi → return vẫn COMPLETED (graceful)")
-        void success_vnpay_refundFails_graceful() {
+        @DisplayName("Hoàn tất VNPAY — không gọi refund gateway")
+        void success_vnpay_doesNotCallGateway() {
             Order order = mockDeliveredVnpayOrder(1L);
             order.setStatus(OrderStatus.RETURNING);
             ReturnRequest ret = mockReturn(1L, ReturnStatus.RECEIVED, order, 1L);
@@ -344,11 +360,7 @@ class ReturnServiceImplTest {
             when(returnRepository.findById(1L)).thenReturn(Optional.of(ret));
             when(userRepository.findById(10L)).thenReturn(Optional.of(admin));
             doNothing().when(returnStatusService).validateTransition(ReturnStatus.RECEIVED, ReturnStatus.COMPLETED);
-            doThrow(new RuntimeException("VNPay timeout")).when(paymentService)
-                .processRefund(anyLong(), anyString());
-
-            // Không throw → return vẫn COMPLETED
-            assertDoesNotThrow(() -> sut.completeReturn(10L, 1L, BigDecimal.valueOf(200000)));
+            assertDoesNotThrow(() -> sut.completeReturn(10L, 1L, BigDecimal.valueOf(200000), null));
             assertEquals(ReturnStatus.COMPLETED, ret.getStatus());
             assertEquals(OrderStatus.RETURNED, order.getStatus());
         }
@@ -363,7 +375,7 @@ class ReturnServiceImplTest {
             doNothing().when(returnStatusService).validateTransition(ReturnStatus.RECEIVED, ReturnStatus.COMPLETED);
 
             BusinessException ex = assertThrows(BusinessException.class,
-                () -> sut.completeReturn(10L, 1L, BigDecimal.valueOf(-100)));
+                () -> sut.completeReturn(10L, 1L, BigDecimal.valueOf(-100), null));
             assertEquals("RETURN_007", ex.getErrorCode().getCode());
         }
     }

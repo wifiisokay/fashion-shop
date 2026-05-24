@@ -37,9 +37,9 @@ public class OrderStatusService {
         Map.entry(DELIVERED,        "Đã giao hàng"),
         Map.entry(COMPLETED,        "Hoàn thành"),
         Map.entry(CANCELLED,        "Đã hủy"),
-        Map.entry(RETURN_REQUESTED, "Yêu cầu trả hàng"),
-        Map.entry(RETURNING,        "Đang trả hàng"),
-        Map.entry(RETURNED,         "Đã trả hàng")
+        Map.entry(RETURN_REQUESTED, "Yêu cầu đổi/trả hoặc khiếu nại"),
+        Map.entry(RETURNING,        "Đang xử lý đổi/trả"),
+        Map.entry(RETURNED,         "Đã xử lý đổi/trả")
     );
 
     /** Validate chuyển trạng thái hợp lệ — throw nếu không hợp lệ. */

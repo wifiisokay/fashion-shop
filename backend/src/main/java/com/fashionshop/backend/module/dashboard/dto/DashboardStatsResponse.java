@@ -18,6 +18,7 @@ public class DashboardStatsResponse {
     private List<RevenuePoint> revenueTrend;
     private List<OrderStatusCount> orderStatusDistribution;
     private PackingStats packingStats;
+    private ReturnStats returnStats;
 
     @Data
     @Builder
@@ -57,5 +58,16 @@ public class DashboardStatsResponse {
         private long confirmedPacked;
         private BigDecimal shippingFeeTotalThisMonth;
         private BigDecimal shippingFeeAvgThisMonth;
+    }
+
+    @Data
+    @Builder
+    @NoArgsConstructor
+    @AllArgsConstructor
+    public static class ReturnStats {
+        private long pending;
+        private long processing;
+        private long completedThisMonth;
+        private BigDecimal refundAmountThisMonth;
     }
 }

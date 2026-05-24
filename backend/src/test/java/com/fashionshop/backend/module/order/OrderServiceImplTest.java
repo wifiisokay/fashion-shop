@@ -1,8 +1,10 @@
 package com.fashionshop.backend.module.order;
 
 import com.fashionshop.backend.common.PageResponse;
+import com.fashionshop.backend.common.enums.OrderPaymentStatus;
 import com.fashionshop.backend.common.enums.OrderStatus;
 import com.fashionshop.backend.common.enums.PaymentMethod;
+import com.fashionshop.backend.common.enums.PaymentStatus;
 import com.fashionshop.backend.domain.*;
 import com.fashionshop.backend.domain.repository.*;
 import com.fashionshop.backend.exception.BusinessException;
@@ -141,6 +143,8 @@ class OrderServiceImplTest {
             assertNull(result.getPaymentUrl());
             assertEquals(8, variant.getStockQuantity()); // 10 - 2
             verify(cartService).clearCart(1L);
+            verify(paymentRepository).save(argThat(payment ->
+                payment.getOrder().getPaymentStatus() == OrderPaymentStatus.UNPAID));
         }
 
         @Test
@@ -165,6 +169,8 @@ class OrderServiceImplTest {
             CreateOrderResponse result = sut.createOrder(1L, req, null);
 
             assertEquals(OrderStatus.AWAITING_PAYMENT, result.getStatus());
+            verify(paymentRepository).save(argThat(payment ->
+                payment.getOrder().getPaymentStatus() == OrderPaymentStatus.UNPAID));
         }
 
         @Test
@@ -244,6 +250,35 @@ class OrderServiceImplTest {
     // ==================== staffCancelOrder ====================
 
     @Nested
+    @DisplayName("confirmReceived")
+    class ConfirmReceived {
+
+        @Test
+        @DisplayName("COD DELIVERED → COMPLETED + payment SUCCESS + order payment PAID")
+        void codDelivered_setsPaid() {
+            Order order = mockOrder(OrderStatus.DELIVERED);
+            Payment payment = Payment.builder()
+                .id(10L)
+                .order(order)
+                .method(PaymentMethod.COD)
+                .status(PaymentStatus.PENDING)
+                .build();
+
+            when(orderRepository.findByIdAndUserId(1L, 1L)).thenReturn(Optional.of(order));
+            when(paymentRepository.findByOrderId(1L)).thenReturn(Optional.of(payment));
+            when(paymentRepository.save(any(Payment.class))).thenAnswer(inv -> inv.getArgument(0));
+            when(orderRepository.save(any(Order.class))).thenAnswer(inv -> inv.getArgument(0));
+
+            sut.confirmReceived(1L, 1L);
+
+            assertEquals(OrderStatus.COMPLETED, order.getStatus());
+            assertEquals(PaymentStatus.SUCCESS, payment.getStatus());
+            assertNotNull(payment.getPaidAt());
+            assertEquals(OrderPaymentStatus.PAID, order.getPaymentStatus());
+        }
+    }
+
+    @Nested
     @DisplayName("staffCancelOrder")
     class StaffCancel {
 
@@ -295,6 +330,24 @@ class OrderServiceImplTest {
 
             OrderDetailResponse result = sut.updateOrderStatus(1L, req);
             assertEquals("CONFIRMED", result.getStatus());
+            assertEquals("UNPAID", result.getPaymentStatus());
+        }
+
+        @Test
+        @DisplayName("VNPay UNPAID không được chuyển sang CONFIRMED")
+        void vnpayUnpaidToConfirmed_throws() {
+            Order order = mockOrder(OrderStatus.PENDING);
+            order.setPaymentMethod(PaymentMethod.VNPAY);
+            order.setPaymentStatus(OrderPaymentStatus.UNPAID);
+            order.setItems(List.of());
+            when(orderRepository.findById(1L)).thenReturn(Optional.of(order));
+
+            UpdateOrderStatusRequest req = new UpdateOrderStatusRequest();
+            req.setStatus(OrderStatus.CONFIRMED);
+
+            BusinessException ex = assertThrows(BusinessException.class,
+                () -> sut.updateOrderStatus(1L, req));
+            assertEquals("ORDER_015", ex.getErrorCode().getCode());
         }
 
         @Test
@@ -418,6 +471,7 @@ class OrderServiceImplTest {
 
             assertEquals(1, result.getContent().size());
             assertEquals("PENDING", result.getContent().get(0).getStatus());
+            assertEquals("UNPAID", result.getContent().get(0).getPaymentStatus());
         }
     }
 }

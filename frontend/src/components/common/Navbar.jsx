@@ -17,6 +17,7 @@ const Navbar = () => {
   const customerMenuItems = [
     { label: 'Sản phẩm', path: ROUTES.PRODUCTS },
     { label: 'Đơn hàng của tôi', path: ROUTES.MY_ORDERS },
+    { label: 'Đổi/Trả của tôi', path: ROUTES.MY_RETURNS },
   ];
 
   const staffMenuItems = [

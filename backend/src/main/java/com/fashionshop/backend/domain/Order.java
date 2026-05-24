@@ -1,5 +1,6 @@
 package com.fashionshop.backend.domain;
 
+import com.fashionshop.backend.common.enums.OrderPaymentStatus;
 import com.fashionshop.backend.common.enums.OrderStatus;
 import com.fashionshop.backend.common.enums.PaymentMethod;
 import jakarta.persistence.*;
@@ -48,6 +49,11 @@ public class Order {
     @Enumerated(EnumType.STRING)
     @Column(name = "payment_method", nullable = false, length = 10)
     private PaymentMethod paymentMethod;
+
+    @Enumerated(EnumType.STRING)
+    @Column(name = "payment_status", nullable = false, length = 20)
+    @Builder.Default
+    private OrderPaymentStatus paymentStatus = OrderPaymentStatus.UNPAID;
 
     @Column(nullable = false, precision = 12, scale = 0)
     private BigDecimal subtotal;

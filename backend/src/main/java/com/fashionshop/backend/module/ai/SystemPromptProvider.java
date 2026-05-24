@@ -95,7 +95,7 @@ public class SystemPromptProvider {
     private static final String RETURN_SUPPORT_INSTRUCTION = """
             
             ## [NHIỆM VỤ: HỖ TRỢ ĐỔI TRẢ]
-            Khách hàng cần hỗ trợ đổi/trả hàng. Thông tin liên quan được cung cấp bên dưới.
+            Khách hàng cần hỗ trợ đổi/trả hàng hoặc khiếu nại. Thông tin liên quan được cung cấp bên dưới.
             - Trả lời plain text. Nêu rõ: đủ điều kiện hay không, còn bao nhiêu ngày, bước tiếp theo.
             - Chính sách: 7 ngày kể từ khi nhận, sản phẩm còn nguyên.
             """;

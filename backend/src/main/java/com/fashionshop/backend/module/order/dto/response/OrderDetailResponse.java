@@ -125,7 +125,7 @@ public class OrderDetailResponse {
             .shippingFeeDifference(shippingFeeDifference)
             .packingWarnings(warnings)
             // Payment info
-            .paymentStatus(order.getPayment() != null ? order.getPayment().getStatus().name() : null)
+            .paymentStatus(order.getPaymentStatus() != null ? order.getPaymentStatus().name() : null)
             .paidAt(order.getPayment() != null ? order.getPayment().getPaidAt() : null)
             // Return info
             .returnId(returnId)

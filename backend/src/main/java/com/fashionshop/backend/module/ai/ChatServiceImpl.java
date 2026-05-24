@@ -673,7 +673,7 @@ public class ChatServiceImpl implements ChatService {
             case PRODUCT_SEARCH -> List.of("Xem thêm sản phẩm khác", "Tư vấn phối đồ");
             case OUTFIT_SUGGEST -> List.of("Gợi ý outfit khác", "Tìm sản phẩm cụ thể");
             case ORDER_INQUIRY -> List.of("Xem đơn hàng khác", "Chính sách đổi trả");
-            case RETURN_SUPPORT -> List.of("Hướng dẫn trả hàng", "Liên hệ hỗ trợ");
+            case RETURN_SUPPORT -> List.of("Hướng dẫn đổi/trả hoặc khiếu nại", "Liên hệ hỗ trợ");
             case GENERAL_SUPPORT -> List.of("Tìm sản phẩm", "Tư vấn size");
             case CHITCHAT -> List.of("Tìm áo thun nam", "Gợi ý outfit đi chơi", "Xem đơn hàng");
         };

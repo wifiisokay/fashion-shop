@@ -11,14 +11,17 @@ import org.springframework.transaction.annotation.Transactional;
 
 import com.fashionshop.backend.common.enums.OrderStatus;
 import com.fashionshop.backend.common.enums.ProductStatus;
+import com.fashionshop.backend.common.enums.ReturnStatus;
 import com.fashionshop.backend.common.enums.Role;
 import com.fashionshop.backend.domain.repository.OrderRepository;
 import com.fashionshop.backend.domain.repository.ProductRepository;
+import com.fashionshop.backend.domain.repository.ReturnRequestRepository;
 import com.fashionshop.backend.domain.repository.UserRepository;
 import com.fashionshop.backend.module.dashboard.dto.DashboardStatsResponse;
 import com.fashionshop.backend.module.dashboard.dto.DashboardStatsResponse.OrderStatusCount;
 import com.fashionshop.backend.module.dashboard.dto.DashboardStatsResponse.PackingStats;
 import com.fashionshop.backend.module.dashboard.dto.DashboardStatsResponse.RevenuePoint;
+import com.fashionshop.backend.module.dashboard.dto.DashboardStatsResponse.ReturnStats;
 import com.fashionshop.backend.module.dashboard.dto.DashboardStatsResponse.Totals;
 
 import lombok.RequiredArgsConstructor;
@@ -32,6 +35,7 @@ public class DashboardServiceImpl implements DashboardService {
     private final OrderRepository orderRepository;
     private final UserRepository userRepository;
     private final ProductRepository productRepository;
+    private final ReturnRequestRepository returnRequestRepository;
 
     @Override
     @Transactional(readOnly = true)
@@ -88,11 +92,19 @@ public class DashboardServiceImpl implements DashboardService {
             .shippingFeeAvgThisMonth(shippingFeeAvgThisMonth)
             .build();
 
+        ReturnStats returnStats = ReturnStats.builder()
+            .pending(returnRequestRepository.countByStatus(ReturnStatus.PENDING))
+            .processing(returnRequestRepository.countByStatusIn(List.of(ReturnStatus.APPROVED, ReturnStatus.RECEIVED)))
+            .completedThisMonth(returnRequestRepository.countByStatusAndUpdatedAtAfter(ReturnStatus.COMPLETED, monthStart))
+            .refundAmountThisMonth(returnRequestRepository.sumCompletedRefundAmountSince(monthStart))
+            .build();
+
         return DashboardStatsResponse.builder()
             .totals(totals)
             .revenueTrend(revenueTrend)
             .orderStatusDistribution(statusDistribution)
             .packingStats(packingStats)
+            .returnStats(returnStats)
             .build();
     }
 }

@@ -15,6 +15,7 @@ public class OrderSummaryResponse {
     private String status;
     private String statusLabel;
     private String paymentMethod;
+    private String paymentStatus;
     private BigDecimal totalAmount;
     private int itemCount;
     private String firstItemName;
@@ -29,6 +30,7 @@ public class OrderSummaryResponse {
             .status(order.getStatus().name())
             .statusLabel(statusLabel)
             .paymentMethod(order.getPaymentMethod().name())
+            .paymentStatus(order.getPaymentStatus() != null ? order.getPaymentStatus().name() : null)
             .totalAmount(order.getTotalAmount())
             .itemCount(items != null ? items.size() : 0)
             .firstItemName(items != null && !items.isEmpty() ? items.get(0).getProductName() : null)
