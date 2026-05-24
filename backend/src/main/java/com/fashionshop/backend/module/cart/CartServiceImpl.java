@@ -1,5 +1,13 @@
 package com.fashionshop.backend.module.cart;
 
+import java.math.BigDecimal;
+import java.util.List;
+import java.util.Optional;
+
+import org.springframework.http.HttpStatus;
+import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
+
 import com.fashionshop.backend.domain.CartItem;
 import com.fashionshop.backend.domain.ProductVariant;
 import com.fashionshop.backend.domain.User;
@@ -13,14 +21,8 @@ import com.fashionshop.backend.module.cart.dto.request.AddToCartRequest;
 import com.fashionshop.backend.module.cart.dto.request.UpdateCartRequest;
 import com.fashionshop.backend.module.cart.dto.response.CartItemResponse;
 import com.fashionshop.backend.module.cart.dto.response.CartSummaryResponse;
-import lombok.RequiredArgsConstructor;
-import org.springframework.http.HttpStatus;
-import org.springframework.stereotype.Service;
-import org.springframework.transaction.annotation.Transactional;
 
-import java.math.BigDecimal;
-import java.util.List;
-import java.util.Optional;
+import lombok.RequiredArgsConstructor;
 
 @Service
 @RequiredArgsConstructor
@@ -115,10 +117,7 @@ public class CartServiceImpl implements CartService {
 
         List<CartItemResponse> responseItems = items.stream()
             .map(item -> {
-                String imageUrl = imageRepository
-                    .findPrimaryByProductId(item.getVariant().getProduct().getId())
-                    .map(img -> img.getImageUrl())
-                    .orElse(null);
+                String imageUrl = resolveVariantImageUrl(item.getVariant());
                 return CartItemResponse.from(item, imageUrl);
             })
             .toList();
@@ -140,6 +139,24 @@ public class CartServiceImpl implements CartService {
             .totalPrice(totalPrice)
             .hasUnavailableItems(hasUnavailable)
             .build();
+    }
+
+    private String resolveVariantImageUrl(ProductVariant variant) {
+        if (variant == null || variant.getProduct() == null) {
+            return null;
+        }
+
+        Long productId = variant.getProduct().getId();
+        if (variant.getColor() != null) {
+            var colorImage = imageRepository.findColorThumbnail(productId, variant.getColor().getId());
+            if (colorImage.isPresent()) {
+                return colorImage.get().getImageUrl();
+            }
+        }
+
+        return imageRepository.findPrimaryByProductId(productId)
+            .map(img -> img.getImageUrl())
+            .orElse(null);
     }
 
     /**

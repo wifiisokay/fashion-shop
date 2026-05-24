@@ -59,6 +59,21 @@ const StaffOrderDetailPage = () => {
   if (isError || !order) return <div className="text-center py-20 text-red-500">Lỗi tải chi tiết đơn hàng</div>;
 
   const address = order.addressSnapshot || {};
+  const feeDiffValue = order.shippingFeeDifference != null ? Number(order.shippingFeeDifference) : null;
+  const feeDiffLabel = feeDiffValue == null
+    ? null
+    : feeDiffValue > 0
+      ? `+${formatPrice(feeDiffValue)}`
+      : feeDiffValue < 0
+        ? `-${formatPrice(Math.abs(feeDiffValue))}`
+        : formatPrice(0);
+  const feeDiffClass = feeDiffValue == null
+    ? 'text-gray-600'
+    : feeDiffValue > 0
+      ? 'text-red-600'
+      : feeDiffValue < 0
+        ? 'text-green-600'
+        : 'text-gray-700';
 
   const handleUpdateStatus = async (newStatus) => {
     try {
@@ -247,6 +262,34 @@ const StaffOrderDetailPage = () => {
                 <div><span className="text-gray-500 block">KL quy đổi</span><span className="font-medium">{order.volumetricWeight}g</span></div>
                 <div><span className="text-gray-500 block">Tính cước</span><span className="font-bold text-blue-700">{order.chargeableWeight}g</span></div>
               </div>
+
+              {order.estimatedShippingFee != null && (
+                <div className="mt-4 grid grid-cols-1 sm:grid-cols-3 gap-4 text-sm">
+                  <div>
+                    <span className="text-gray-500 block">Phí ship khách đã trả</span>
+                    <span className="font-medium">{formatPrice(order.shippingFee)}</span>
+                  </div>
+                  <div>
+                    <span className="text-gray-500 block">Phí ship ước tính</span>
+                    <span className="font-medium">{formatPrice(order.estimatedShippingFee)}</span>
+                  </div>
+                  <div>
+                    <span className="text-gray-500 block">Chênh lệch</span>
+                    <span className={`font-semibold ${feeDiffClass}`}>{feeDiffLabel}</span>
+                  </div>
+                </div>
+              )}
+
+              {order.paymentMethod === 'VNPAY' && (
+                <p className="text-xs text-gray-500 mt-3">
+                  Đơn thanh toán online. Phí ship ước tính chỉ dùng để kiểm tra nội bộ, không tự động thu thêm khách.
+                </p>
+              )}
+              {order.paymentMethod === 'COD' && (
+                <p className="text-xs text-gray-500 mt-3">
+                  Phí ship ước tính dùng để staff tham khảo khi giao COD.
+                </p>
+              )}
               {/* Warnings */}
               {order.packingWarnings?.length > 0 && (
                 <div className="mt-3 space-y-1">

@@ -58,6 +58,8 @@ public interface OrderRepository extends JpaRepository<Order, Long> {
 
     long countByStatus(OrderStatus status);
 
+    long countByStatusAndPackingConfirmed(OrderStatus status, boolean packingConfirmed);
+
     // Scheduler
     List<Order> findByStatusAndCreatedAtBefore(OrderStatus status, LocalDateTime cutoff);
 
@@ -76,4 +78,16 @@ public interface OrderRepository extends JpaRepository<Order, Long> {
 
     @Query("SELECT o.status, COUNT(o) FROM Order o GROUP BY o.status")
     List<Object[]> getOrderStatusDistribution();
+
+    @Query("SELECT COALESCE(SUM(o.shippingFee), 0) FROM Order o " +
+           "WHERE o.createdAt >= :startDate AND o.status IN :statuses")
+    java.math.BigDecimal sumShippingFeeByCreatedAtAfterAndStatusIn(
+        @Param("startDate") LocalDateTime startDate,
+        @Param("statuses") List<OrderStatus> statuses);
+
+    @Query("SELECT COALESCE(AVG(o.shippingFee), 0) FROM Order o " +
+           "WHERE o.createdAt >= :startDate AND o.status IN :statuses")
+    java.math.BigDecimal avgShippingFeeByCreatedAtAfterAndStatusIn(
+        @Param("startDate") LocalDateTime startDate,
+        @Param("statuses") List<OrderStatus> statuses);
 }

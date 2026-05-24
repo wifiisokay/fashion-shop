@@ -1,11 +1,41 @@
 package com.fashionshop.backend.module.order;
 
+import java.math.BigDecimal;
+import java.time.LocalDateTime;
+import java.util.ArrayList;
+import java.util.HashMap;
+import java.util.LinkedHashMap;
+import java.util.List;
+import java.util.Map;
+
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.PageRequest;
+import org.springframework.http.HttpStatus;
+import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
+
 import com.fashionshop.backend.common.PageResponse;
 import com.fashionshop.backend.common.enums.OrderStatus;
 import com.fashionshop.backend.common.enums.PaymentMethod;
 import com.fashionshop.backend.common.enums.PaymentStatus;
-import com.fashionshop.backend.domain.*;
-import com.fashionshop.backend.domain.repository.*;
+import com.fashionshop.backend.domain.Address;
+import com.fashionshop.backend.domain.CartItem;
+import com.fashionshop.backend.domain.Order;
+import com.fashionshop.backend.domain.OrderItem;
+import com.fashionshop.backend.domain.Payment;
+import com.fashionshop.backend.domain.Product;
+import com.fashionshop.backend.domain.ProductImage;
+import com.fashionshop.backend.domain.ProductVariant;
+import com.fashionshop.backend.domain.Review;
+import com.fashionshop.backend.domain.User;
+import com.fashionshop.backend.domain.repository.AddressRepository;
+import com.fashionshop.backend.domain.repository.OrderRepository;
+import com.fashionshop.backend.domain.repository.PaymentRepository;
+import com.fashionshop.backend.domain.repository.ProductImageRepository;
+import com.fashionshop.backend.domain.repository.ProductVariantRepository;
+import com.fashionshop.backend.domain.repository.ReturnRequestRepository;
+import com.fashionshop.backend.domain.repository.ReviewRepository;
+import com.fashionshop.backend.domain.repository.UserRepository;
 import com.fashionshop.backend.exception.BusinessException;
 import com.fashionshop.backend.exception.ErrorCode;
 import com.fashionshop.backend.module.cart.CartService;
@@ -13,20 +43,17 @@ import com.fashionshop.backend.module.order.dto.request.CancelOrderRequest;
 import com.fashionshop.backend.module.order.dto.request.ConfirmPackingRequest;
 import com.fashionshop.backend.module.order.dto.request.CreateOrderRequest;
 import com.fashionshop.backend.module.order.dto.request.UpdateOrderStatusRequest;
-import com.fashionshop.backend.module.order.dto.response.*;
+import com.fashionshop.backend.module.order.dto.response.CreateOrderResponse;
+import com.fashionshop.backend.module.order.dto.response.OrderDetailResponse;
+import com.fashionshop.backend.module.order.dto.response.OrderStatsResponse;
+import com.fashionshop.backend.module.order.dto.response.OrderSummaryResponse;
+import com.fashionshop.backend.module.order.shipping.PackingShippingEstimate;
+import com.fashionshop.backend.module.order.shipping.ShippingFeeEstimator;
 import com.fashionshop.backend.module.payment.PaymentService;
 import com.fashionshop.backend.module.returnrequest.ReturnStatusService;
+
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
-import org.springframework.data.domain.Page;
-import org.springframework.data.domain.PageRequest;
-import org.springframework.http.HttpStatus;
-import org.springframework.stereotype.Service;
-import org.springframework.transaction.annotation.Transactional;
-
-import java.math.BigDecimal;
-import java.time.LocalDateTime;
-import java.util.*;
 
 @Slf4j
 @Service
@@ -49,6 +76,7 @@ public class OrderServiceImpl implements OrderService {
     private final OrderStatusService statusService;
     private final PaymentService paymentService;
     private final ReturnStatusService returnStatusService;
+    private final ShippingFeeEstimator shippingFeeEstimator;
 
     // ================================================================
     // Customer — Tạo đơn hàng
@@ -124,9 +152,7 @@ public class OrderServiceImpl implements OrderService {
             BigDecimal unitPrice = calculateUnitPrice(product, variant);
             BigDecimal itemSubtotal = unitPrice.multiply(BigDecimal.valueOf(cartItem.getQuantity()));
 
-            // Lấy ảnh primary
-            String imageUrl = imageRepository.findPrimaryByProductId(product.getId())
-                .map(ProductImage::getImageUrl).orElse(null);
+                String imageUrl = resolveVariantImageUrl(variant);
 
             // Snapshot order item
             OrderItem orderItem = OrderItem.builder()
@@ -249,9 +275,14 @@ public class OrderServiceImpl implements OrderService {
             returnRefundAmount = ret.getRefundAmount();
         }
 
+        PackingShippingEstimate estimate = shippingFeeEstimator.estimateFromOrder(order);
+
         return OrderDetailResponse.from(order, statusService.getLabel(order.getStatus()),
             itemIdToReview, returnId, returnStatus, returnStatusLabel,
-            returnReason, returnAdminNote, returnEvidenceImages, returnRefundAmount);
+            returnReason, returnAdminNote, returnEvidenceImages, returnRefundAmount,
+            estimate != null ? estimate.estimatedShippingFee() : null,
+            estimate != null ? estimate.shippingFeeDifference() : null,
+            estimate != null ? estimate.warnings() : null);
     }
 
     // ================================================================
@@ -366,9 +397,14 @@ public class OrderServiceImpl implements OrderService {
             returnRefundAmount = ret.getRefundAmount();
         }
 
+        PackingShippingEstimate estimate = shippingFeeEstimator.estimateFromOrder(order);
+
         return OrderDetailResponse.from(order, statusService.getLabel(order.getStatus()),
             Map.of(), returnId, returnStatus, returnStatusLabel,
-            returnReason, returnAdminNote, returnEvidenceImages, returnRefundAmount);
+            returnReason, returnAdminNote, returnEvidenceImages, returnRefundAmount,
+            estimate != null ? estimate.estimatedShippingFee() : null,
+            estimate != null ? estimate.shippingFeeDifference() : null,
+            estimate != null ? estimate.warnings() : null);
     }
 
     // ================================================================
@@ -468,18 +504,16 @@ public class OrderServiceImpl implements OrderService {
             throw new BusinessException(ErrorCode.PACKING_INVALID_STATUS, HttpStatus.BAD_REQUEST);
         }
 
+        PackingShippingEstimate estimate = shippingFeeEstimator.estimate(order, request);
+
         // Set kích thước
         order.setPackageLength(request.getLength());
         order.setPackageWidth(request.getWidth());
         order.setPackageHeight(request.getHeight());
         order.setActualWeight(request.getActualWeight());
 
-        // Tính khối lượng quy đổi: L × W × H / 5000 (kg) → gram
-        int volumetricWeight = (request.getLength() * request.getWidth() * request.getHeight()) * 1000 / 5000;
-        order.setVolumetricWeight(volumetricWeight);
-
-        // Khối lượng tính cước = max(thực tế, quy đổi)
-        order.setChargeableWeight(Math.max(request.getActualWeight(), volumetricWeight));
+        order.setVolumetricWeight(estimate.volumetricWeight());
+        order.setChargeableWeight(estimate.chargeableWeight());
 
         // Ghi chú đóng gói vào note (append)
         if (request.getPackingNote() != null && !request.getPackingNote().isBlank()) {
@@ -494,7 +528,9 @@ public class OrderServiceImpl implements OrderService {
             orderId, request.getLength(), request.getWidth(), request.getHeight(),
             request.getActualWeight(), order.getChargeableWeight());
 
-        return OrderDetailResponse.from(order, statusService.getLabel(order.getStatus()));
+        return OrderDetailResponse.from(order, statusService.getLabel(order.getStatus()),
+            Map.of(), null, null, null, null, null, null, null,
+            estimate.estimatedShippingFee(), estimate.shippingFeeDifference(), estimate.warnings());
     }
 
     // ================================================================
@@ -536,6 +572,23 @@ public class OrderServiceImpl implements OrderService {
         }
     }
 
+        private String resolveVariantImageUrl(ProductVariant variant) {
+            if (variant == null || variant.getProduct() == null) {
+                return null;
+            }
+
+            Long productId = variant.getProduct().getId();
+            if (variant.getColor() != null) {
+                var colorImage = imageRepository.findColorThumbnail(productId, variant.getColor().getId());
+                if (colorImage.isPresent()) {
+                    return colorImage.get().getImageUrl();
+                }
+            }
+
+            return imageRepository.findPrimaryByProductId(productId)
+                .map(ProductImage::getImageUrl)
+                .orElse(null);
+        }
     private PageResponse<OrderSummaryResponse> buildPageResponse(Page<Order> orders) {
         var content = orders.getContent().stream()
             .map(o -> OrderSummaryResponse.from(o, statusService.getLabel(o.getStatus())))

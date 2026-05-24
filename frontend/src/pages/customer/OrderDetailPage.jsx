@@ -41,6 +41,7 @@ const OrderDetailPage = () => {
 
   const address = order.addressSnapshot || {};
   const canCancel = order.status === 'PENDING' || order.status === 'AWAITING_PAYMENT';
+  const canShowReviews = order.status === 'COMPLETED';
 
   // Return window: 7 days from deliveredAt
   const canRequestReturn = (() => {
@@ -191,44 +192,46 @@ const OrderDetailPage = () => {
                     <span className="font-bold text-gray-900">{formatPrice(item.subtotal)}</span>
                   </div>
                   {/* Review button / badge */}
-                  <div className="mt-3">
-                    {item.canReview && (
-                      <button onClick={() => setReviewTarget({ item })}
-                        className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium text-amber-700 bg-amber-50 border border-amber-200 rounded-lg hover:bg-amber-100 transition-colors">
-                        <Star className="w-3.5 h-3.5" /> Viết đánh giá
-                      </button>
-                    )}
-                    {item.reviewId && (
-                      <div className="bg-gray-50 border border-gray-100 rounded-lg p-3">
-                        <div className="flex items-center justify-between mb-1.5">
-                          <div className="flex items-center gap-2">
-                            <span className="text-xs font-medium text-green-700 bg-green-100 px-2 py-0.5 rounded flex items-center gap-1">
-                              ✓ Đã đánh giá
-                            </span>
-                            <StarRating value={item.reviewRating || 0} size={14} />
+                  {canShowReviews && (
+                    <div className="mt-3">
+                      {item.canReview && (
+                        <button onClick={() => setReviewTarget({ item })}
+                          className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium text-amber-700 bg-amber-50 border border-amber-200 rounded-lg hover:bg-amber-100 transition-colors">
+                          <Star className="w-3.5 h-3.5" /> Viết đánh giá
+                        </button>
+                      )}
+                      {item.reviewId && (
+                        <div className="bg-gray-50 border border-gray-100 rounded-lg p-3">
+                          <div className="flex items-center justify-between mb-1.5">
+                            <div className="flex items-center gap-2">
+                              <span className="text-xs font-medium text-green-700 bg-green-100 px-2 py-0.5 rounded flex items-center gap-1">
+                                ✓ Đã đánh giá
+                              </span>
+                              <StarRating value={item.reviewRating || 0} size={14} />
+                            </div>
+                            <div className="flex gap-2">
+                              <button onClick={() => setReviewTarget({ 
+                                item, 
+                                existingReview: { id: item.reviewId, rating: item.reviewRating, comment: item.reviewComment } 
+                              })}
+                                className="text-gray-400 hover:text-blue-600 transition-colors" title="Sửa">
+                                <Pencil className="w-3.5 h-3.5" />
+                              </button>
+                              <button onClick={() => {
+                                if (window.confirm('Xóa đánh giá này?')) deleteMutation.mutate(item.reviewId);
+                              }}
+                                className="text-gray-400 hover:text-red-600 transition-colors" title="Xóa">
+                                <Trash2 className="w-3.5 h-3.5" />
+                              </button>
+                            </div>
                           </div>
-                          <div className="flex gap-2">
-                            <button onClick={() => setReviewTarget({ 
-                              item, 
-                              existingReview: { id: item.reviewId, rating: item.reviewRating, comment: item.reviewComment } 
-                            })}
-                              className="text-gray-400 hover:text-blue-600 transition-colors" title="Sửa">
-                              <Pencil className="w-3.5 h-3.5" />
-                            </button>
-                            <button onClick={() => {
-                              if (window.confirm('Xóa đánh giá này?')) deleteMutation.mutate(item.reviewId);
-                            }}
-                              className="text-gray-400 hover:text-red-600 transition-colors" title="Xóa">
-                              <Trash2 className="w-3.5 h-3.5" />
-                            </button>
-                          </div>
+                          {item.reviewComment && (
+                            <p className="text-sm text-gray-700 mt-1">{item.reviewComment}</p>
+                          )}
                         </div>
-                        {item.reviewComment && (
-                          <p className="text-sm text-gray-700 mt-1">{item.reviewComment}</p>
-                        )}
-                      </div>
-                    )}
-                  </div>
+                      )}
+                    </div>
+                  )}
                 </div>
               </div>
             ))}

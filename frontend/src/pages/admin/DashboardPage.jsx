@@ -83,7 +83,7 @@ const DashboardPage = () => {
     );
   }
 
-  const { totals, revenueTrend, orderStatusDistribution } = statsData;
+  const { totals, revenueTrend, orderStatusDistribution, packingStats } = statsData;
   const recentOrders = recentOrdersData?.content || [];
 
   return (
@@ -194,6 +194,31 @@ const DashboardPage = () => {
           </div>
         </div>
       </div>
+
+      {packingStats && (
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
+          <StatCard
+            title="Đơn chưa đóng gói"
+            value={packingStats.confirmedNotPacked || 0}
+            icon={AlertCircle}
+          />
+          <StatCard
+            title="Đã đóng gói chờ giao"
+            value={packingStats.confirmedPacked || 0}
+            icon={Package}
+          />
+          <StatCard
+            title="Phí ship tháng này"
+            value={formatPrice(packingStats.shippingFeeTotalThisMonth || 0)}
+            icon={DollarSign}
+          />
+          <StatCard
+            title="Phí ship TB/đơn"
+            value={formatPrice(packingStats.shippingFeeAvgThisMonth || 0)}
+            icon={DollarSign}
+          />
+        </div>
+      )}
 
       {/* Recent Orders */}
       <div className="bg-white rounded-xl border border-gray-200 shadow-sm overflow-hidden">

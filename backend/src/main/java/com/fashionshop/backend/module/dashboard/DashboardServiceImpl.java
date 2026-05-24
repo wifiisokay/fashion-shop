@@ -1,5 +1,14 @@
 package com.fashionshop.backend.module.dashboard;
 
+import java.math.BigDecimal;
+import java.time.LocalDate;
+import java.time.LocalDateTime;
+import java.util.List;
+import java.util.stream.Collectors;
+
+import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
+
 import com.fashionshop.backend.common.enums.OrderStatus;
 import com.fashionshop.backend.common.enums.ProductStatus;
 import com.fashionshop.backend.common.enums.Role;
@@ -7,18 +16,13 @@ import com.fashionshop.backend.domain.repository.OrderRepository;
 import com.fashionshop.backend.domain.repository.ProductRepository;
 import com.fashionshop.backend.domain.repository.UserRepository;
 import com.fashionshop.backend.module.dashboard.dto.DashboardStatsResponse;
-import com.fashionshop.backend.module.dashboard.dto.DashboardStatsResponse.*;
+import com.fashionshop.backend.module.dashboard.dto.DashboardStatsResponse.OrderStatusCount;
+import com.fashionshop.backend.module.dashboard.dto.DashboardStatsResponse.PackingStats;
+import com.fashionshop.backend.module.dashboard.dto.DashboardStatsResponse.RevenuePoint;
+import com.fashionshop.backend.module.dashboard.dto.DashboardStatsResponse.Totals;
+
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
-import org.springframework.stereotype.Service;
-import org.springframework.transaction.annotation.Transactional;
-
-import java.math.BigDecimal;
-import java.time.LocalDateTime;
-import java.time.format.DateTimeFormatter;
-import java.util.ArrayList;
-import java.util.List;
-import java.util.stream.Collectors;
 
 @Slf4j
 @Service
@@ -66,10 +70,29 @@ public class DashboardServiceImpl implements DashboardService {
             return new OrderStatusCount(status, count);
         }).collect(Collectors.toList());
 
+        // 4. Packing / Shipping fee stats
+        long confirmedNotPacked = orderRepository.countByStatusAndPackingConfirmed(OrderStatus.CONFIRMED, false);
+        long confirmedPacked = orderRepository.countByStatusAndPackingConfirmed(OrderStatus.CONFIRMED, true);
+
+        LocalDateTime monthStart = LocalDate.now().withDayOfMonth(1).atStartOfDay();
+        List<OrderStatus> feeStatuses = List.of(OrderStatus.SHIPPING, OrderStatus.DELIVERED, OrderStatus.COMPLETED);
+        BigDecimal shippingFeeTotalThisMonth = orderRepository
+            .sumShippingFeeByCreatedAtAfterAndStatusIn(monthStart, feeStatuses);
+        BigDecimal shippingFeeAvgThisMonth = orderRepository
+            .avgShippingFeeByCreatedAtAfterAndStatusIn(monthStart, feeStatuses);
+
+        PackingStats packingStats = PackingStats.builder()
+            .confirmedNotPacked(confirmedNotPacked)
+            .confirmedPacked(confirmedPacked)
+            .shippingFeeTotalThisMonth(shippingFeeTotalThisMonth)
+            .shippingFeeAvgThisMonth(shippingFeeAvgThisMonth)
+            .build();
+
         return DashboardStatsResponse.builder()
             .totals(totals)
             .revenueTrend(revenueTrend)
             .orderStatusDistribution(statusDistribution)
+            .packingStats(packingStats)
             .build();
     }
 }
