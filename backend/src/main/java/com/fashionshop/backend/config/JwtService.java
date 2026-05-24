@@ -1,19 +1,25 @@
 package com.fashionshop.backend.config;
 
+import java.nio.charset.StandardCharsets;
+import java.util.Date;
+import java.util.function.Function;
+
+import javax.crypto.SecretKey;
+
+import org.springframework.security.core.userdetails.UserDetails;
+import org.springframework.stereotype.Service;
+
 import com.fashionshop.backend.domain.User;
-import io.jsonwebtoken.*;
+
+import io.jsonwebtoken.Claims;
+import io.jsonwebtoken.JwtException;
+import io.jsonwebtoken.Jwts;
 import io.jsonwebtoken.io.Decoders;
+import io.jsonwebtoken.io.DecodingException;
 import io.jsonwebtoken.security.Keys;
 import jakarta.annotation.PostConstruct;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
-import org.springframework.security.core.userdetails.UserDetails;
-import org.springframework.stereotype.Service;
-
-import javax.crypto.SecretKey;
-import java.nio.charset.StandardCharsets;
-import java.util.Date;
-import java.util.function.Function;
 
 /**
  * JWT service — generate, validate, extract.
@@ -117,18 +123,30 @@ public class JwtService {
             throw new IllegalStateException("JWT secret is missing. Please set jwt.secret or JWT_SECRET.");
         }
 
+        String secret = rawSecret.trim();
+
         // Prefer Base64 secret if provided; fallback to plain text for compatibility with existing setups.
         try {
-            byte[] base64Key = Decoders.BASE64.decode(rawSecret);
+            byte[] base64Key = Decoders.BASE64.decode(secret);
             if (base64Key.length >= 32) {
                 return Keys.hmacShaKeyFor(base64Key);
             }
             log.warn("JWT secret appears Base64 but too short (<32 bytes). Falling back to plain-text secret bytes.");
-        } catch (IllegalArgumentException ignored) {
-            // Not a Base64 string, continue with plain text secret.
+        } catch (IllegalArgumentException | DecodingException ignored) {
+            // Not standard Base64, try Base64URL format next.
         }
 
-        byte[] plainKey = rawSecret.getBytes(StandardCharsets.UTF_8);
+        try {
+            byte[] base64UrlKey = Decoders.BASE64URL.decode(secret);
+            if (base64UrlKey.length >= 32) {
+                return Keys.hmacShaKeyFor(base64UrlKey);
+            }
+            log.warn("JWT secret appears Base64URL but too short (<32 bytes). Falling back to plain-text secret bytes.");
+        } catch (IllegalArgumentException | DecodingException ignored) {
+            // Not Base64URL either, continue with plain text secret.
+        }
+
+        byte[] plainKey = secret.getBytes(StandardCharsets.UTF_8);
         if (plainKey.length < 32) {
             throw new IllegalStateException("JWT secret must be at least 32 bytes for HS256.");
         }

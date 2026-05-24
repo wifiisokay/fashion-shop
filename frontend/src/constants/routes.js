@@ -24,4 +24,6 @@ export const ROUTES = {
   ADMIN_PRODUCT_FORM: '/admin/products/form',
   ADMIN_CATEGORIES: '/admin/categories',
   ADMIN_USERS: '/admin/users',
+  ADMIN_REVIEWS: '/admin/reviews',
+  ADMIN_SETTINGS: '/admin/settings',
 };

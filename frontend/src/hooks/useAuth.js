@@ -11,8 +11,14 @@ export const useLogin = () => {
   return useMutation({
     mutationFn: authApi.login,
     onSuccess: (response, variables) => {
-      login(response.data?.data);
-      const from = variables?.from || ROUTES.HOME;
+      const userData = response.data?.data;
+      login(userData);
+      
+      let from = variables?.from;
+      if (!from || from === ROUTES.HOME) {
+        from = userData?.role === 'ADMIN' ? ROUTES.ADMIN_DASHBOARD : ROUTES.HOME;
+      }
+      
       navigate(from, { replace: true });
     },
   });

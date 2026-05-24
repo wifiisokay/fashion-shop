@@ -6,10 +6,19 @@ import org.springframework.stereotype.Repository;
 
 import java.util.Optional;
 
+import org.springframework.data.jpa.repository.JpaSpecificationExecutor;
+
 @Repository
-public interface UserRepository extends JpaRepository<User, Long> {
+public interface UserRepository extends JpaRepository<User, Long>, JpaSpecificationExecutor<User> {
 
     Optional<User> findByEmail(String email);
 
     boolean existsByEmail(String email);
+
+    long countByRole(com.fashionshop.backend.common.enums.Role role);
+
+    long countByStatus(com.fashionshop.backend.common.enums.UserStatus status);
+
+    long countByRoleAndStatus(com.fashionshop.backend.common.enums.Role role,
+                              com.fashionshop.backend.common.enums.UserStatus status);
 }

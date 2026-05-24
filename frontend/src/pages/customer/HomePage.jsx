@@ -1,8 +1,19 @@
-import { Link } from 'react-router-dom';
+import { Link, Navigate } from 'react-router-dom';
 import { ROUTES } from '../../constants/routes';
 import Button from '../../components/ui/Button';
+import { useAuth } from '../../contexts/AuthContext';
 
 const HomePage = () => {
+  const { user } = useAuth();
+
+  if (user?.role === 'ADMIN') {
+    return <Navigate to={ROUTES.ADMIN_DASHBOARD} replace />;
+  }
+
+  if (user?.role === 'EMPLOYEE') {
+    return <Navigate to={ROUTES.STAFF_ORDERS} replace />;
+  }
+
   return (
     <div className="space-y-16 pb-16">
       {/* Hero Section */}

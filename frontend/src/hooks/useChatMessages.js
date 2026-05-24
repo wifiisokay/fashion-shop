@@ -1,64 +1,132 @@
-import { useState, useRef, useEffect } from 'react';
+import { useCallback, useMemo, useRef, useState } from 'react';
+import { useMutation, useQuery } from '@tanstack/react-query';
+import { useLocation } from 'react-router-dom';
 import { chatApi } from '../api/chatApi';
+import { useAuth } from '../contexts/AuthContext';
+import { QUERY_KEYS } from '../constants/queryKeys';
 
-export const useChatMessages = () => {
-  const [messages, setMessages] = useState([
-    { 
-      role: 'model', 
-      text: 'Xin chào! Mình là trợ lý thời trang của Fashion Shop. Mình có thể giúp bạn phối đồ hay tìm kiếm trang phục phù hợp cho dịp nào không?' 
-    }
-  ]);
-  const [isLoading, setIsLoading] = useState(false);
-  const chatSessionRef = useRef(null);
+const welcomeMessage = {
+  role: 'assistant',
+  text: 'Xin chào! Mình là Fashi, trợ lý thời trang của Fashion Shop. Bạn cần tìm sản phẩm, phối đồ hay hỗ trợ đơn hàng?',
+  suggestedQuestions: ['Tìm áo thun nam', 'Gợi ý outfit đi chơi', 'Chính sách đổi trả'],
+};
 
-  // Khởi tạo session chat một lần khi hook được mount
-  useEffect(() => {
-    if (!chatSessionRef.current) {
-      try {
-        chatSessionRef.current = chatApi.createSession();
-      } catch (error) {
-        console.warn('Không khởi tạo được phiên chat AI:', error);
+const normalizeMessage = (msg) => ({
+  role: msg.role === 'user' ? 'user' : 'assistant',
+  text: msg.content ?? msg.text ?? '',
+  products: msg.products || null,
+  outfitCombos: msg.outfitCombos || null,
+  suggestedQuestions: msg.suggestedQuestions || null,
+  intent: msg.intent || null,
+  isError: msg.isError || false,
+});
+
+const readPageContext = (pathname) => {
+  const match = pathname.match(/^\/products\/(\d+)/);
+  if (!match) {
+    return {};
+  }
+  let colorId = null;
+  try {
+    const raw = sessionStorage.getItem('chatProductContext');
+    if (raw) {
+      const parsed = JSON.parse(raw);
+      if (Number(parsed?.productId) === Number(match[1]) && parsed?.colorId != null) {
+        colorId = Number(parsed.colorId);
       }
     }
-  }, []);
+  } catch (_error) {
+    colorId = null;
+  }
+  return colorId != null ? { productId: Number(match[1]), colorId } : { productId: Number(match[1]) };
+};
 
-  const sendMessage = async (text) => {
-    if (!text.trim()) return;
+export const useChatMessages = (enabled = false) => {
+  const { user } = useAuth();
+  const location = useLocation();
+  const isAuthenticated = !!user;
+  const guestHistoryRef = useRef([]);
+  const lastFailedTextRef = useRef(null);
+  const [localMessages, setLocalMessages] = useState([welcomeMessage]);
 
-    // Thêm tin nhắn của user vào UI ngay lập tức
-    setMessages((prev) => [...prev, { role: 'user', text }]);
-    setIsLoading(true);
+  const historyQuery = useQuery({
+    queryKey: QUERY_KEYS.chatMessages('today'),
+    queryFn: chatApi.getTodayMessages,
+    enabled: enabled && isAuthenticated,
+    staleTime: 0,
+  });
 
-    try {
-      if (!chatSessionRef.current) {
-        throw new Error('CHAT_UNAVAILABLE');
+  const messages = useMemo(() => {
+    if (!isAuthenticated) {
+      return localMessages;
+    }
+    const history = (historyQuery.data || []).map(normalizeMessage);
+    const optimistic = localMessages.filter((msg) => msg.localOnly);
+    return [welcomeMessage, ...history, ...optimistic];
+  }, [historyQuery.data, isAuthenticated, localMessages]);
+
+  const sendMutation = useMutation({
+    mutationFn: async ({ text, context }) => {
+      const currentPageContext = context || readPageContext(location.pathname);
+      if (isAuthenticated) {
+        return chatApi.sendMessage(text, currentPageContext);
       }
-
-      // Gọi API Gemini thông qua SDK
-      const response = await chatSessionRef.current.sendMessage({ message: text });
-      
-      // Thêm phản hồi của AI vào UI
-      setMessages((prev) => [...prev, { role: 'model', text: response.text }]);
-    } catch (error) {
-      console.error('Lỗi khi gọi Gemini API:', error);
-
-      const friendlyMessage =
-        error.code === 'MISSING_GEMINI_KEY' || error.message === 'CHAT_UNAVAILABLE'
-          ? 'Tính năng tư vấn AI chưa được cấu hình API key. Vui lòng thử lại sau.'
-          : 'Xin lỗi, hiện tại hệ thống tư vấn đang bận. Bạn vui lòng thử lại sau nhé!';
-
-      setMessages((prev) => [
-        ...prev, 
-        { role: 'model', text: friendlyMessage }
+      return chatApi.sendGuestMessage(text, guestHistoryRef.current, currentPageContext);
+    },
+    onMutate: ({ text }) => {
+      lastFailedTextRef.current = null;
+      setLocalMessages((prev) => [...prev, { role: 'user', text, localOnly: true }]);
+      return { text };
+    },
+    onSuccess: (response, variables) => {
+      if (!response) return;
+      const text = variables?.text || '';
+      const assistantMessage = normalizeMessage(response);
+      if (!isAuthenticated) {
+        guestHistoryRef.current = [
+          ...guestHistoryRef.current,
+          { role: 'user', text },
+          { role: 'model', text: response.content || '' },
+        ].slice(-10);
+      }
+      if (isAuthenticated) {
+        setLocalMessages((prev) => prev.filter((msg) => !msg.localOnly));
+        historyQuery.refetch();
+      } else {
+        setLocalMessages((prev) => [...prev, assistantMessage]);
+      }
+    },
+    onError: (_error, variables) => {
+      const text = variables?.text || '';
+      lastFailedTextRef.current = text;
+      setLocalMessages((prev) => [
+        ...prev,
+        {
+          role: 'assistant',
+          text: 'Xin lỗi, hệ thống AI đang bận. Bạn có thể thử lại tin nhắn này.',
+          isError: true,
+          suggestedQuestions: ['Thử lại'],
+        },
       ]);
-    } finally {
-      setIsLoading(false);
+    },
+  });
+
+  const sendMessage = useCallback((text, context = null) => {
+    if (!text?.trim() || sendMutation.isPending) return;
+    sendMutation.mutate({ text: text.trim(), context });
+  }, [sendMutation]);
+
+  const retryLast = useCallback(() => {
+    if (lastFailedTextRef.current) {
+      sendMessage(lastFailedTextRef.current);
     }
-  };
+  }, [sendMessage]);
 
   return {
     messages,
-    isLoading,
+    isLoading: sendMutation.isPending || historyQuery.isFetching,
     sendMessage,
+    retryLast,
+    isAuthenticated,
   };
 };

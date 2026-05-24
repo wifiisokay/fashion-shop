@@ -1,4 +1,4 @@
-import { Routes, Route, Outlet } from 'react-router-dom';
+import { Routes, Route, Outlet, Navigate } from 'react-router-dom';
 import { ROUTES } from '../constants/routes';
 import PrivateRoute from './PrivateRoute';
 import RoleRoute from './RoleRoute';
@@ -26,6 +26,8 @@ import ProductManagePage from '../pages/admin/ProductManagePage';
 import ProductFormPage from '../pages/admin/ProductFormPage';
 import CategoryManagePage from '../pages/admin/CategoryManagePage';
 import UserManagePage from '../pages/admin/UserManagePage';
+import ShopSettingsPage from '../pages/admin/ShopSettingsPage';
+import AdminReviewPage from '../pages/admin/AdminReviewPage';
 
 const AppRouter = () => {
   return (
@@ -48,7 +50,7 @@ const AppRouter = () => {
           <PrivateRoute><RoleRoute allowedRoles={['CUSTOMER']}><CheckoutPage /></RoleRoute></PrivateRoute>
         } />
         <Route path={ROUTES.PAYMENT_RESULT} element={
-          <PrivateRoute><RoleRoute allowedRoles={['CUSTOMER']}><PaymentResultPage /></RoleRoute></PrivateRoute>
+          <PaymentResultPage />
         } />
         <Route path={ROUTES.MY_ORDERS} element={
           <PrivateRoute><RoleRoute allowedRoles={['CUSTOMER']}><OrderListPage /></RoleRoute></PrivateRoute>
@@ -73,11 +75,14 @@ const AppRouter = () => {
         <Route path="/admin" element={
           <PrivateRoute><RoleRoute allowedRoles={['ADMIN']}><Outlet /></RoleRoute></PrivateRoute>
         }>
+          <Route index element={<Navigate to="dashboard" replace />} />
           <Route path="dashboard" element={<DashboardPage />} />
           <Route path="products" element={<ProductManagePage />} />
           <Route path="products/form" element={<ProductFormPage />} />
           <Route path="categories" element={<CategoryManagePage />} />
           <Route path="users" element={<UserManagePage />} />
+          <Route path="reviews" element={<AdminReviewPage />} />
+          <Route path="settings" element={<ShopSettingsPage />} />
         </Route>
       </Route>
     </Routes>

@@ -6,7 +6,7 @@ export const formatPrice = (price) =>
 export const formatDate = (dateStr) => dayjs(dateStr).format('DD/MM/YYYY HH:mm');
 
 export const formatOrderStatus = (status) => ({
-  PENDING_PAYMENT:  { label: 'Chờ thanh toán',   color: 'default' },
+  AWAITING_PAYMENT: { label: 'Chờ thanh toán',   color: 'gold'    },
   PENDING:          { label: 'Chờ xác nhận',      color: 'gold'    },
   CONFIRMED:        { label: 'Đã xác nhận',        color: 'blue'    },
   SHIPPING:         { label: 'Đang giao',          color: 'cyan'    },

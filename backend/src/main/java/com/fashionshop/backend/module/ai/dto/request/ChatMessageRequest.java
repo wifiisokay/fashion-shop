@@ -1,0 +1,20 @@
+package com.fashionshop.backend.module.ai.dto.request;
+
+import com.fashionshop.backend.module.ai.dto.ProductContextDto;
+import jakarta.validation.constraints.NotBlank;
+import lombok.Getter;
+import lombok.Setter;
+
+@Getter
+@Setter
+public class ChatMessageRequest {
+
+    @NotBlank(message = "Nội dung tin nhắn không được trống")
+    private String content;
+
+    private Long productId;
+
+    private Long colorId;
+
+    private ProductContextDto productContext;
+}
