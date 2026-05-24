@@ -36,7 +36,13 @@ public class ChatController {
     public ResponseEntity<ApiResponse<ChatMessageResponse>> sendMessage(
             @AuthenticationPrincipal User user,
             @Valid @RequestBody ChatMessageRequest request) {
-        ChatMessageResponse response = chatService.processMessage(user.getId(), request.getContent(), request.getProductId(), request.getColorId());
+        Long productId = request.getProductContext() != null && request.getProductContext().getProductId() != null
+                ? request.getProductContext().getProductId()
+                : request.getProductId();
+        Long colorId = request.getProductContext() != null && request.getProductContext().getColorId() != null
+                ? request.getProductContext().getColorId()
+                : request.getColorId();
+        ChatMessageResponse response = chatService.processMessage(user.getId(), request.getContent(), productId, colorId);
         return ResponseEntity.ok(ApiResponse.success(response));
     }
 

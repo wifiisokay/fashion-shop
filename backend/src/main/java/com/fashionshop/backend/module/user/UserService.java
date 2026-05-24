@@ -33,9 +33,29 @@ public interface UserService {
     // ADMIN METHODS
     // ================================================================
 
-    com.fashionshop.backend.common.PageResponse<com.fashionshop.backend.module.user.dto.response.AdminUserResponse> getAdminUsers(String keyword, com.fashionshop.backend.common.enums.Role role, int page, int size);
+    com.fashionshop.backend.common.PageResponse<com.fashionshop.backend.module.user.dto.response.AdminUserResponse> getAdminUsers(
+        String keyword,
+        com.fashionshop.backend.common.enums.Role role,
+        com.fashionshop.backend.common.enums.UserStatus status,
+        int page,
+        int size);
 
     com.fashionshop.backend.module.user.dto.response.UserStatsResponse getUserStats();
 
     void toggleUserStatus(Long userId, com.fashionshop.backend.common.enums.UserStatus newStatus, com.fashionshop.backend.domain.User currentUser);
+
+    com.fashionshop.backend.module.user.dto.response.AdminUserResponse getAdminUserDetail(Long userId);
+
+    com.fashionshop.backend.module.user.dto.response.CreateStaffResponse createStaff(
+        com.fashionshop.backend.module.user.dto.request.CreateStaffRequest request);
+
+    com.fashionshop.backend.module.user.dto.response.AdminUserResponse updateUserRole(
+        Long targetUserId,
+        com.fashionshop.backend.common.enums.Role role,
+        com.fashionshop.backend.domain.User currentUser);
+
+    com.fashionshop.backend.module.user.dto.response.AdminUserResponse updateUserStatus(
+        Long targetUserId,
+        com.fashionshop.backend.common.enums.UserStatus status,
+        com.fashionshop.backend.domain.User currentUser);
 }

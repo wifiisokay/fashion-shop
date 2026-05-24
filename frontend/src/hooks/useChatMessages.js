@@ -66,20 +66,21 @@ export const useChatMessages = (enabled = false) => {
   }, [historyQuery.data, isAuthenticated, localMessages]);
 
   const sendMutation = useMutation({
-    mutationFn: async (text) => {
-      const currentPageContext = readPageContext(location.pathname);
+    mutationFn: async ({ text, context }) => {
+      const currentPageContext = context || readPageContext(location.pathname);
       if (isAuthenticated) {
         return chatApi.sendMessage(text, currentPageContext);
       }
       return chatApi.sendGuestMessage(text, guestHistoryRef.current, currentPageContext);
     },
-    onMutate: (text) => {
+    onMutate: ({ text }) => {
       lastFailedTextRef.current = null;
       setLocalMessages((prev) => [...prev, { role: 'user', text, localOnly: true }]);
       return { text };
     },
-    onSuccess: (response, text) => {
+    onSuccess: (response, variables) => {
       if (!response) return;
+      const text = variables?.text || '';
       const assistantMessage = normalizeMessage(response);
       if (!isAuthenticated) {
         guestHistoryRef.current = [
@@ -95,7 +96,8 @@ export const useChatMessages = (enabled = false) => {
         setLocalMessages((prev) => [...prev, assistantMessage]);
       }
     },
-    onError: (_error, text) => {
+    onError: (_error, variables) => {
+      const text = variables?.text || '';
       lastFailedTextRef.current = text;
       setLocalMessages((prev) => [
         ...prev,
@@ -109,9 +111,9 @@ export const useChatMessages = (enabled = false) => {
     },
   });
 
-  const sendMessage = useCallback((text) => {
+  const sendMessage = useCallback((text, context = null) => {
     if (!text?.trim() || sendMutation.isPending) return;
-    sendMutation.mutate(text.trim());
+    sendMutation.mutate({ text: text.trim(), context });
   }, [sendMutation]);
 
   const retryLast = useCallback(() => {

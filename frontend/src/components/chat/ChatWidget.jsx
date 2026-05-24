@@ -1,6 +1,7 @@
 import { useState, useRef, useEffect } from 'react';
-import { X, Send, Bot, User, ExternalLink, History, AlertCircle } from 'lucide-react';
+import { X, Send, Bot, User, ExternalLink, History, AlertCircle, ShoppingCart, Sparkles } from 'lucide-react';
 import { useChatMessages } from '../../hooks/useChatMessages';
+import { useCart } from '../../hooks/useCart';
 import { clsx } from 'clsx';
 import ReactMarkdown from 'react-markdown';
 import { formatPrice } from '../../utils/format';
@@ -32,7 +33,9 @@ const colorLabel = (item) => {
 const ChatWidget = () => {
   const [isOpen, setIsOpen] = useState(false);
   const [input, setInput] = useState('');
+  const [variantSelections, setVariantSelections] = useState({});
   const { messages, isLoading, sendMessage, retryLast, isAuthenticated } = useChatMessages(isOpen);
+  const { addToCart } = useCart();
   const messagesEndRef = useRef(null);
 
   // Tự động cuộn xuống tin nhắn mới nhất
@@ -54,6 +57,24 @@ const ChatWidget = () => {
   const handleSuggestionClick = (question) => {
     if (isLoading) return;
     sendMessage(question);
+  };
+
+  const productKey = (product) => `${product.id}-${product.colorId || 'default'}`;
+
+  const handleOutfitForProduct = (product) => {
+    if (isLoading || !product?.id) return;
+    sendMessage('Mẫu này phối với gì khi đi làm?', {
+      productContext: {
+        productId: product.id,
+        colorId: product.colorId,
+      },
+    });
+  };
+
+  const handleAddProduct = (product) => {
+    const selectedVariantId = variantSelections[productKey(product)];
+    if (!selectedVariantId) return;
+    addToCart.mutate({ variantId: Number(selectedVariantId), quantity: 1 });
   };
 
   return (
@@ -132,48 +153,80 @@ const ChatWidget = () => {
                 {msg.products && msg.products.length > 0 && (
                   <div className="mt-2 ml-11 space-y-2">
                     {uniqueProducts(msg.products).map((product) => (
-                      <a
-                        key={product.id}
-                        href={`/products/${product.id}`}
-                        target="_blank"
-                        rel="noopener noreferrer"
-                        className="flex items-center gap-3 p-2.5 bg-white border border-gray-200 rounded-xl hover:border-gray-300 hover:shadow-sm transition-all group"
-                      >
-                        {product.imageUrl && (
-                          <img
-                            src={product.imageUrl}
-                            alt={product.name}
-                            className="w-14 h-14 rounded-lg object-cover flex-shrink-0"
-                          />
-                        )}
-                        <div className="flex-1 min-w-0">
-                          <p className="text-sm font-medium text-gray-900 truncate group-hover:text-blue-600 transition-colors">
-                            {product.name}
-                          </p>
-                          <div className="flex items-center gap-2 mt-0.5">
-                            {product.salePrice ? (
-                              <>
-                                <span className="text-sm font-semibold text-red-600">{formatPrice(product.displayPrice || product.salePrice)}</span>
-                                <span className="text-xs text-gray-400 line-through">{formatPrice(product.price)}</span>
-                              </>
-                            ) : (
-                              <span className="text-sm font-semibold text-gray-900">{formatPrice(product.displayPrice || product.price)}</span>
+                      <div key={product.id} className="bg-white border border-gray-200 rounded-xl p-2.5 shadow-sm">
+                        <div className="flex items-center gap-3">
+                          {product.imageUrl && (
+                            <img src={product.imageUrl} alt={product.name} className="w-14 h-14 rounded-lg object-cover flex-shrink-0" />
+                          )}
+                          <div className="flex-1 min-w-0">
+                            <p className="text-sm font-medium text-gray-900 truncate">{product.name}</p>
+                            <div className="flex items-center gap-2 mt-0.5">
+                              {product.salePrice ? (
+                                <>
+                                  <span className="text-sm font-semibold text-red-600">{formatPrice(product.displayPrice || product.salePrice)}</span>
+                                  <span className="text-xs text-gray-400 line-through">{formatPrice(product.price)}</span>
+                                </>
+                              ) : (
+                                <span className="text-sm font-semibold text-gray-900">{formatPrice(product.displayPrice || product.price)}</span>
+                              )}
+                            </div>
+                            {product.matchReason && <p className="text-xs text-gray-500 mt-0.5 truncate">{product.matchReason}</p>}
+                            {colorLabel(product) && (
+                              <div className="mt-1 flex items-center gap-1.5 text-xs text-gray-500">
+                                {product.colorCode && (
+                                  <span className="h-3 w-3 rounded-full border border-gray-200" style={{ backgroundColor: product.colorCode }} />
+                                )}
+                                <span className="truncate">{colorLabel(product)}</span>
+                              </div>
                             )}
                           </div>
-                          {product.matchReason && (
-                            <p className="text-xs text-gray-500 mt-0.5 truncate">{product.matchReason}</p>
-                          )}
-                          {colorLabel(product) && (
-                            <div className="mt-1 flex items-center gap-1.5 text-xs text-gray-500">
-                              {product.colorCode && (
-                                <span className="h-3 w-3 rounded-full border border-gray-200" style={{ backgroundColor: product.colorCode }} />
-                              )}
-                              <span className="truncate">{colorLabel(product)}</span>
-                            </div>
-                          )}
                         </div>
-                        <ExternalLink className="w-4 h-4 text-gray-400 group-hover:text-blue-500 flex-shrink-0" />
-                      </a>
+                        <div className="mt-2 flex flex-wrap items-center gap-1.5">
+                          {product.availableVariants?.length > 0 && (
+                            <select
+                              value={variantSelections[productKey(product)] || ''}
+                              onChange={(event) => setVariantSelections((prev) => ({
+                                ...prev,
+                                [productKey(product)]: event.target.value,
+                              }))}
+                              className="h-8 min-w-16 rounded-lg border border-gray-200 bg-white px-2 text-xs text-gray-700"
+                            >
+                              <option value="">Size</option>
+                              {product.availableVariants.map((variant) => (
+                                <option key={variant.variantId} value={variant.variantId}>{variant.sizeName}</option>
+                              ))}
+                            </select>
+                          )}
+                          <button
+                            type="button"
+                            disabled={!isAuthenticated || !variantSelections[productKey(product)] || addToCart.isPending}
+                            onClick={() => handleAddProduct(product)}
+                            className="inline-flex h-8 items-center gap-1 rounded-lg border border-gray-200 px-2 text-xs text-gray-700 hover:bg-gray-50 disabled:cursor-not-allowed disabled:opacity-50"
+                            title={isAuthenticated ? 'Thêm vào giỏ hàng' : 'Đăng nhập để thêm vào giỏ'}
+                          >
+                            <ShoppingCart className="h-3.5 w-3.5" />
+                            Thêm
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => handleOutfitForProduct(product)}
+                            disabled={isLoading}
+                            className="inline-flex h-8 items-center gap-1 rounded-lg border border-gray-200 px-2 text-xs text-gray-700 hover:bg-gray-50 disabled:opacity-50"
+                          >
+                            <Sparkles className="h-3.5 w-3.5" />
+                            Phối đồ
+                          </button>
+                          <a
+                            href={`/products/${product.id}`}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className="inline-flex h-8 items-center gap-1 rounded-lg border border-gray-200 px-2 text-xs text-gray-700 hover:bg-gray-50"
+                          >
+                            <ExternalLink className="h-3.5 w-3.5" />
+                            Xem
+                          </a>
+                        </div>
+                      </div>
                     ))}
                   </div>
                 )}

@@ -2,7 +2,6 @@ package com.fashionshop.backend.module.ai;
 
 import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.ObjectMapper;
-import com.fashionshop.backend.domain.OutfitSuggestionCache;
 import com.fashionshop.backend.domain.repository.OutfitSuggestionCacheRepository;
 import com.fashionshop.backend.module.ai.dto.response.ChatProductCard;
 import com.fashionshop.backend.module.ai.dto.response.OutfitComboResponse;
@@ -82,13 +81,9 @@ public class OutfitSuggestionService {
         log.info("[OUTFIT] build_result productId={}, colorId={}, combos={}", productId, colorId, combos.size());
         LocalDateTime createdAt = LocalDateTime.now();
         if (!combos.isEmpty()) {
-            OutfitSuggestionCache saved = cacheRepository.save(OutfitSuggestionCache.builder()
-                .productId(productId)
-                .colorId(colorId)
-                .suggestions(writeCombos(combos))
-                .build());
-            log.info("[OUTFIT] cache_saved productId={}, colorId={}, combos={}", productId, colorId, combos.size());
-            createdAt = saved.getCreatedAt();
+            if (safeUpsertCache(productId, colorId, combos)) {
+                log.info("[OUTFIT] cache_upserted productId={}, colorId={}, combos={}", productId, colorId, combos.size());
+            }
         } else {
             log.warn("[OUTFIT] no_combo_found productId={}, colorId={}", productId, colorId);
         }
@@ -407,6 +402,18 @@ public class OutfitSuggestionService {
             return objectMapper.writeValueAsString(combos);
         } catch (Exception e) {
             throw new IllegalStateException("Failed to write outfit cache", e);
+        }
+    }
+
+    private boolean safeUpsertCache(Long productId, Long colorId, List<OutfitComboResponse> combos) {
+        try {
+            String suggestions = writeCombos(combos);
+            cacheRepository.upsertCache(productId, colorId, suggestions);
+            return true;
+        } catch (Exception e) {
+            log.warn("[OUTFIT] cache_save_failed productId={}, colorId={}, reason={}",
+                productId, colorId, e.getMessage());
+            return false;
         }
     }
 }

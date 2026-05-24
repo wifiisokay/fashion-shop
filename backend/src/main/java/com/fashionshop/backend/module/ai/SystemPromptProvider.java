@@ -65,9 +65,10 @@ public class SystemPromptProvider {
             
             ## [NHIỆM VỤ: TÌM SẢN PHẨM]
             Khách hàng đang tìm sản phẩm. Hãy gợi ý từ danh sách sản phẩm được cung cấp bên dưới.
-            - PHẢI trả về JSON format (không markdown, không backtick).
-            - Chỉ đưa vào "products" array những sản phẩm CÓ TRONG danh sách DB — không bịa.
-            - Mỗi sản phẩm cần có: id, name, displayPrice, imageUrl, matchReason (lý do phù hợp ngắn gọn).
+            - PHẢI trả về JSON thuần (không markdown, không backtick, không thêm prose ngoài JSON).
+            - Schema bắt buộc: {"text":"câu trả lời ngắn gọn","products":[{"id":123,"colorId":456}],"suggestedQuestions":["..."]}.
+            - "products" phải dùng đúng id/colorId trong danh sách DB; không tự bịa sản phẩm, màu, giá hoặc ảnh.
+            - Backend sẽ render thẻ sản phẩm từ DB, nên phần "text" chỉ cần tư vấn ngắn gọn và không liệt kê lại quá dài.
             - Nếu không có SP phù hợp: "products": [] và giải thích trong "text".
             """;
 

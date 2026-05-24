@@ -1,5 +1,6 @@
 package com.fashionshop.backend.module.ai.dto.request;
 
+import com.fashionshop.backend.module.ai.dto.ProductContextDto;
 import jakarta.validation.constraints.NotBlank;
 import lombok.Getter;
 import lombok.Setter;
@@ -14,4 +15,6 @@ public class ChatMessageRequest {
     private Long productId;
 
     private Long colorId;
+
+    private ProductContextDto productContext;
 }

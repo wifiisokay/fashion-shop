@@ -8,5 +8,8 @@ export const useOutfitSuggestions = (productId, colorId, enabled = false, refres
     queryFn: () => chatApi.getOutfitSuggestions(productId, colorId, refreshToken > 0),
     enabled: enabled && !!productId,
     staleTime: refreshToken > 0 ? 0 : 24 * 60 * 60 * 1000,
+    refetchOnWindowFocus: false,
+    refetchOnReconnect: false,
+    retry: 1,
   });
 };

@@ -8,7 +8,7 @@ import java.time.LocalDateTime;
 
 /**
  * Cache gợi ý outfit từ Gemini — TTL 24h.
- * Mỗi product chỉ có 1 cache entry (UNIQUE product_id).
+ * Unique theo (product_id, color_key) để tách theo màu.
  */
 @Entity
 @Table(name = "outfit_suggestion_cache")

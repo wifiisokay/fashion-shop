@@ -36,6 +36,9 @@ public class ChatMessage {
     @Column(nullable = false, columnDefinition = "TEXT")
     private String content;
 
+    @Column(columnDefinition = "JSON")
+    private String metadata;
+
     @Column(length = 30)
     private String intent;
 

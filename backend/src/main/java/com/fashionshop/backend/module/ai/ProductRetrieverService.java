@@ -14,6 +14,7 @@ import org.springframework.stereotype.Service;
 
 import com.fashionshop.backend.common.enums.Gender;
 import com.fashionshop.backend.module.ai.dto.response.ChatProductCard;
+import com.fashionshop.backend.module.ai.dto.response.ChatProductVariantOption;
 import com.fashionshop.backend.module.ai.nlu.NluSearchParams;
 import com.fashionshop.backend.module.storage.CloudinaryUrlBuilder;
 
@@ -52,6 +53,13 @@ public class ProductRetrieverService {
         log.info("[AI_SEARCH_PARAMS] message='{}' limit={} params={}", shorten(logMessage), limit, params);
         List<ChatProductCard> cards = queryProducts(params, limit);
         long total = countProducts(params);
+        if (cards.isEmpty() && hasText(params.colorKeyword()) && hasText(params.colorFamily())) {
+            SearchParams relaxedColor = params.withoutColorKeyword();
+            log.info("[AI_SEARCH_FALLBACK] reason=color_keyword_zero_result original={} relaxed={}", params, relaxedColor);
+            cards = queryProducts(relaxedColor, limit);
+            total = countProducts(relaxedColor);
+            params = relaxedColor;
+        }
         if (cards.isEmpty() && params.keyword() != null && !params.categoryIds().isEmpty()) {
             SearchParams relaxed = params.withoutKeyword();
             log.info("[AI_SEARCH_RELAX] reason=keyword_with_category_zero_result original={} relaxed={}", params, relaxed);
@@ -234,6 +242,10 @@ public class ProductRetrieverService {
     }
 
     private void appendFilters(StringBuilder sql, SearchParams params) {
+        List<String> colorKeywords = expandColorKeywords(params.colorKeyword);
+        boolean useColorKeyword = !colorKeywords.isEmpty();
+        boolean useColorFamily = hasText(params.colorFamily);
+
         if (params.gender != null) {
             sql.append(" AND (p.gender = :gender OR p.gender = 'UNISEX')");
         }
@@ -246,27 +258,37 @@ public class ProductRetrieverService {
         if (params.saleOnly) {
             sql.append(" AND p.is_sale = 1");
         }
-        if (params.colorFamily != null) {
+        if (useColorKeyword) {
+            sql.append(" AND (");
+            for (int i = 0; i < colorKeywords.size(); i++) {
+                if (i > 0) {
+                    sql.append(" OR ");
+                }
+                sql.append(" LOWER(pc.color_name) LIKE :colorKeyword").append(i);
+            }
+            sql.append(")");
+        } else if (useColorFamily) {
             sql.append(" AND pc.color_family = :colorFamily");
-        }
-        if (params.colorKeyword != null && params.colorFamily == null) {
-            sql.append(" AND (LOWER(pc.color_name) LIKE :colorKeyword OR LOWER(pc.color_family) LIKE :colorKeyword)");
         }
         if (params.darkColor) {
             sql.append(" AND (LOWER(pc.color_name) LIKE '%đen%' OR LOWER(pc.color_name) LIKE '%black%' OR LOWER(pc.color_name) LIKE '%navy%' OR LOWER(pc.color_family) IN ('cool','neutral'))");
         }
-        if (params.keyword != null) {
+        if (hasText(params.keyword)) {
             sql.append(" AND (LOWER(p.name) LIKE :keyword OR LOWER(p.description) LIKE :keyword)");
         }
-        if (params.styleTag != null) {
+        if (hasText(params.styleTag)) {
             sql.append(" AND JSON_CONTAINS(p.style_tags, JSON_QUOTE(:styleTag))");
         }
-        if (params.occasionTag != null) {
+        if (hasText(params.occasionTag)) {
             sql.append(" AND JSON_CONTAINS(p.occasion_tags, JSON_QUOTE(:occasionTag))");
         }
     }
 
     private void bindFilters(Query query, SearchParams params) {
+        List<String> colorKeywords = expandColorKeywords(params.colorKeyword);
+        boolean useColorKeyword = !colorKeywords.isEmpty();
+        boolean useColorFamily = hasText(params.colorFamily);
+
         if (params.gender != null) {
             query.setParameter("gender", params.gender.name());
         }
@@ -276,19 +298,21 @@ public class ProductRetrieverService {
         if (params.maxPrice != null) {
             query.setParameter("maxPrice", params.maxPrice);
         }
-        if (params.colorKeyword != null) {
-            query.setParameter("colorKeyword", "%" + params.colorKeyword + "%");
+        if (useColorKeyword) {
+            for (int i = 0; i < colorKeywords.size(); i++) {
+                query.setParameter("colorKeyword" + i, normalizeLike(colorKeywords.get(i)));
+            }
         }
-        if (params.colorFamily != null) {
+        if (!useColorKeyword && useColorFamily) {
             query.setParameter("colorFamily", params.colorFamily);
         }
-        if (params.keyword != null) {
-            query.setParameter("keyword", "%" + params.keyword + "%");
+        if (hasText(params.keyword)) {
+            query.setParameter("keyword", normalizeLike(params.keyword));
         }
-        if (params.styleTag != null) {
+        if (hasText(params.styleTag)) {
             query.setParameter("styleTag", params.styleTag);
         }
-        if (params.occasionTag != null) {
+        if (hasText(params.occasionTag)) {
             query.setParameter("occasionTag", params.occasionTag);
         }
     }
@@ -440,6 +464,35 @@ public class ProductRetrieverService {
         return false;
     }
 
+    private boolean hasText(String value) {
+        return value != null && !value.trim().isEmpty();
+    }
+
+    private String normalizeLike(String value) {
+        return "%" + value.trim().toLowerCase(Locale.ROOT) + "%";
+    }
+
+    private List<String> expandColorKeywords(String keyword) {
+        if (!hasText(keyword)) {
+            return List.of();
+        }
+        String normalized = keyword.trim().toLowerCase(Locale.ROOT);
+        return switch (normalized) {
+            case "đen", "den", "black" -> List.of("đen", "den", "black");
+            case "trắng", "trang", "white" -> List.of("trắng", "trang", "white");
+            case "xám", "xam", "ghi", "gray", "grey" -> List.of("xám", "xam", "ghi", "gray", "grey");
+            case "xanh", "blue", "green" -> List.of("xanh", "blue", "green");
+            case "xanh dương", "xanh duong" -> List.of("xanh dương", "xanh duong", "blue");
+            case "xanh lá", "xanh la" -> List.of("xanh lá", "xanh la", "green");
+            case "đỏ", "do", "red" -> List.of("đỏ", "do", "red");
+            case "hồng", "hong", "pink" -> List.of("hồng", "hong", "pink");
+            case "vàng", "vang", "yellow" -> List.of("vàng", "vang", "yellow");
+            case "nâu", "nau", "brown" -> List.of("nâu", "nau", "brown");
+            case "be", "beige", "kem", "cream" -> List.of("be", "beige", "kem", "cream");
+            default -> List.of(normalized);
+        };
+    }
+
     private List<ChatProductCard> mapRows(List<?> rows) {
         List<ChatProductCard> cards = new ArrayList<>();
         for (Object row : rows) {
@@ -458,6 +511,7 @@ public class ProductRetrieverService {
                 .displayPrice(displayPrice)
                 .price(basePrice)
                 .salePrice(Boolean.TRUE.equals(isSale) ? salePrice : null)
+                .isSale(Boolean.TRUE.equals(isSale))
                 .colorId(((Number) values[6]).longValue())
                 .colorName((String) values[7])
                 .imageUrl(CloudinaryUrlBuilder.listing((String) values[8]))
@@ -471,7 +525,47 @@ public class ProductRetrieverService {
                 .matchReason("Phù hợp với yêu cầu và còn hàng trong shop")
                 .build());
         }
+        enrichAvailableVariants(cards);
         return cards;
+    }
+
+    private void enrichAvailableVariants(List<ChatProductCard> cards) {
+        for (ChatProductCard card : cards) {
+            if (card.getId() == null || card.getColorId() == null) {
+                card.setAvailableVariants(List.of());
+                continue;
+            }
+            Query query = entityManager.createNativeQuery("""
+                SELECT pv.id, pv.size, pv.stock_quantity
+                FROM product_variants pv
+                WHERE pv.product_id = :productId
+                  AND pv.color_id = :colorId
+                  AND pv.stock_quantity > 0
+                ORDER BY
+                  CASE pv.size
+                    WHEN 'XS' THEN 1
+                    WHEN 'S' THEN 2
+                    WHEN 'M' THEN 3
+                    WHEN 'L' THEN 4
+                    WHEN 'XL' THEN 5
+                    WHEN 'XXL' THEN 6
+                    ELSE 99
+                  END,
+                  pv.size
+                """);
+            query.setParameter("productId", card.getId());
+            query.setParameter("colorId", card.getColorId());
+            List<ChatProductVariantOption> variants = new ArrayList<>();
+            for (Object row : query.getResultList()) {
+                Object[] values = (Object[]) row;
+                variants.add(ChatProductVariantOption.builder()
+                    .variantId(((Number) values[0]).longValue())
+                    .sizeName(values[1] != null ? values[1].toString() : null)
+                    .stockQuantity(values[2] instanceof Number number ? number.intValue() : null)
+                    .build());
+            }
+            card.setAvailableVariants(variants);
+        }
     }
 
     private BigDecimal toBigDecimal(Object value) {
@@ -606,6 +700,11 @@ public class ProductRetrieverService {
         SearchParams withoutColor() {
             return new SearchParams(gender, categoryIds, maxPrice, null, false, saleOnly,
                 keyword, styleTag, occasionTag, null);
+        }
+
+        SearchParams withoutColorKeyword() {
+            return new SearchParams(gender, categoryIds, maxPrice, null, darkColor, saleOnly,
+                keyword, styleTag, occasionTag, colorFamily);
         }
     }
 

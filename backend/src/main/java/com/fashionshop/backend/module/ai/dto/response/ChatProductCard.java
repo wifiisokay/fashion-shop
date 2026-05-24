@@ -19,6 +19,7 @@ public class ChatProductCard {
     private BigDecimal price;
     private BigDecimal salePrice;
     private BigDecimal displayPrice;
+    private Boolean isSale;
     private String imageUrl;
     private String url;
     private String role;
@@ -30,4 +31,5 @@ public class ChatProductCard {
     private String colorFamily;
     private Long totalStock;
     private String matchReason;
+    private java.util.List<ChatProductVariantOption> availableVariants;
 }

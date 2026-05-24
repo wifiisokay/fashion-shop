@@ -50,4 +50,12 @@ export const userApi = {
   getUserStats: () => axiosInstance.get('/api/admin/users/stats'),
   
   toggleUserStatus: (id, status) => axiosInstance.put(`/api/admin/users/${id}/status`, null, { params: { status } }),
+
+  getAdminUserDetail: (id) => axiosInstance.get(`/api/admin/users/${id}`),
+
+  createStaff: (data) => axiosInstance.post('/api/admin/users/staff', data),
+
+  updateUserRole: (id, role) => axiosInstance.patch(`/api/admin/users/${id}/role`, { role }),
+
+  updateUserStatus: (id, status) => axiosInstance.patch(`/api/admin/users/${id}/status`, { status }),
 };

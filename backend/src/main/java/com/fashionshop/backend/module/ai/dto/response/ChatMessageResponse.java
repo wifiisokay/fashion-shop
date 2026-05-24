@@ -1,6 +1,7 @@
 package com.fashionshop.backend.module.ai.dto.response;
 
 import com.fasterxml.jackson.annotation.JsonInclude;
+import com.fashionshop.backend.module.ai.dto.ProductContextDto;
 import lombok.*;
 
 import java.time.LocalDateTime;
@@ -19,6 +20,9 @@ public class ChatMessageResponse {
     private List<ChatProductCard> products;  // nullable — chỉ có khi PRODUCT_SEARCH / OUTFIT_SUGGEST
     private List<OutfitComboResponse> outfitCombos;
     private List<String> suggestedQuestions; // nullable — gợi ý câu hỏi tiếp theo
+    private Integer totalCount;
+    private String countType;
+    private ProductContextDto productContext;
     private String intent;     // nullable — intent đã classify
     private LocalDateTime createdAt;
 }

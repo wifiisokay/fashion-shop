@@ -1,18 +1,23 @@
 import { useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { Search, Shield, ShieldAlert, User, Users, CheckCircle, XCircle } from 'lucide-react';
+import { Search, Shield, ShieldAlert, User, Users, CheckCircle, XCircle, Plus } from 'lucide-react';
 import DataTable from '../../components/admin/DataTable';
 import { formatDate } from '../../utils/format';
 import { userApi } from '../../api/userApi';
 import { toast } from 'sonner';
 import { useAuth } from '../../contexts/AuthContext';
+import Button from '../../components/ui/Button';
 
 const UserManagePage = () => {
   const queryClient = useQueryClient();
   const { user: authUser } = useAuth();
   const [search, setSearch] = useState('');
   const [roleFilter, setRoleFilter] = useState('');
+  const [statusFilter, setStatusFilter] = useState('');
   const [page, setPage] = useState(0);
+  const [isCreateOpen, setIsCreateOpen] = useState(false);
+  const [createForm, setCreateForm] = useState({ fullName: '', email: '', phone: '', password: '' });
+  const [createdTempPassword, setCreatedTempPassword] = useState(null);
 
   // Fetch Stats
   const { data: statsData } = useQuery({
@@ -22,19 +27,45 @@ const UserManagePage = () => {
 
   // Fetch Users
   const { data: usersData, isLoading } = useQuery({
-    queryKey: ['admin-users', page, search, roleFilter],
+    queryKey: ['admin-users', page, search, roleFilter, statusFilter],
     queryFn: () => userApi.getAdminUsers({
       page,
       size: 10,
       keyword: search || undefined,
-      role: roleFilter || undefined
+      role: roleFilter || undefined,
+      status: statusFilter || undefined
     }).then(r => r.data?.data),
     keepPreviousData: true
   });
 
-  // Toggle Status
-  const toggleMutation = useMutation({
-    mutationFn: ({ id, status }) => userApi.toggleUserStatus(id, status),
+  const createStaffMutation = useMutation({
+    mutationFn: (payload) => userApi.createStaff(payload),
+    onSuccess: (res) => {
+      const tempPassword = res.data?.data?.tempPassword || null;
+      setCreatedTempPassword(tempPassword);
+      toast.success(res.data?.message || 'Tạo nhân viên thành công');
+      queryClient.invalidateQueries(['admin-users']);
+      queryClient.invalidateQueries(['admin-user-stats']);
+    },
+    onError: (err) => {
+      toast.error(err.response?.data?.message || 'Có lỗi xảy ra');
+    }
+  });
+
+  const updateRoleMutation = useMutation({
+    mutationFn: ({ id, role }) => userApi.updateUserRole(id, role),
+    onSuccess: (res) => {
+      toast.success(res.data?.message || 'Đổi quyền thành công');
+      queryClient.invalidateQueries(['admin-users']);
+      queryClient.invalidateQueries(['admin-user-stats']);
+    },
+    onError: (err) => {
+      toast.error(err.response?.data?.message || 'Có lỗi xảy ra');
+    }
+  });
+
+  const updateStatusMutation = useMutation({
+    mutationFn: ({ id, status }) => userApi.updateUserStatus(id, status),
     onSuccess: (res) => {
       toast.success(res.data?.message || 'Cập nhật trạng thái thành công');
       queryClient.invalidateQueries(['admin-users']);
@@ -44,6 +75,22 @@ const UserManagePage = () => {
       toast.error(err.response?.data?.message || 'Có lỗi xảy ra');
     }
   });
+
+  const handleOpenCreate = () => {
+    setCreateForm({ fullName: '', email: '', phone: '', password: '' });
+    setCreatedTempPassword(null);
+    setIsCreateOpen(true);
+  };
+
+  const handleCreateStaff = async (e) => {
+    e.preventDefault();
+    await createStaffMutation.mutateAsync({
+      fullName: createForm.fullName,
+      email: createForm.email,
+      phone: createForm.phone || undefined,
+      password: createForm.password || undefined,
+    });
+  };
 
   const columns = [
     { title: 'ID', dataIndex: 'id', key: 'id', render: (val) => <span className="font-medium text-gray-500">#{val}</span> },
@@ -61,7 +108,7 @@ const UserManagePage = () => {
       title: 'Vai trò', 
       dataIndex: 'role', 
       key: 'role',
-      render: (val) => {
+      render: (val, record) => {
         const roleConfig = {
           ADMIN: { icon: ShieldAlert, color: 'text-red-600 bg-red-50 border-red-200' },
           EMPLOYEE: { icon: Shield, color: 'text-blue-600 bg-blue-50 border-blue-200' },
@@ -69,11 +116,30 @@ const UserManagePage = () => {
         };
         const config = roleConfig[val] || roleConfig.CUSTOMER;
         const Icon = config.icon;
+        const isCurrentUser = authUser?.userId === record.id;
         return (
-          <span className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-md text-xs font-medium border ${config.color}`}>
-            <Icon className="w-3.5 h-3.5" />
-            {val}
-          </span>
+          <div className="flex items-center gap-2">
+            <span className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-md text-xs font-medium border ${config.color}`}>
+              <Icon className="w-3.5 h-3.5" />
+              {val}
+            </span>
+            <select
+              className="text-xs border-gray-300 rounded-md py-1 pl-2 pr-8 focus:ring-black focus:border-black disabled:bg-gray-100 disabled:text-gray-400"
+              value={record.role}
+              onChange={(e) => {
+                const nextRole = e.target.value;
+                if (window.confirm('Bạn có chắc muốn đổi quyền người dùng này?')) {
+                  updateRoleMutation.mutate({ id: record.id, role: nextRole });
+                }
+              }}
+              disabled={updateRoleMutation.isLoading || isCurrentUser}
+              title={isCurrentUser ? 'Bạn không thể đổi quyền của chính mình' : ''}
+            >
+              <option value="ADMIN">ADMIN</option>
+              <option value="EMPLOYEE">EMPLOYEE</option>
+              <option value="CUSTOMER">CUSTOMER</option>
+            </select>
+          </div>
         );
       }
     },
@@ -103,10 +169,10 @@ const UserManagePage = () => {
             value={record.status}
             onChange={(e) => {
               if (window.confirm(`Bạn có chắc muốn ${e.target.value === 'LOCKED' ? 'khóa' : 'mở khóa'} tài khoản này?`)) {
-                toggleMutation.mutate({ id, status: e.target.value });
+                updateStatusMutation.mutate({ id, status: e.target.value });
               }
             }}
-            disabled={toggleMutation.isLoading || isCurrentUser}
+            disabled={updateStatusMutation.isLoading || isCurrentUser}
             title={isCurrentUser ? "Bạn không thể khóa tài khoản của chính mình" : ""}
           >
             <option value="ACTIVE">Hoạt động</option>
@@ -121,6 +187,10 @@ const UserManagePage = () => {
     <div className="space-y-6">
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
         <h1 className="text-2xl font-bold text-gray-900">Quản lý Người dùng</h1>
+        <Button onClick={handleOpenCreate} className="inline-flex items-center gap-2">
+          <Plus className="w-4 h-4" />
+          Tạo nhân viên
+        </Button>
       </div>
 
       {/* Summary Cards */}
@@ -202,11 +272,23 @@ const UserManagePage = () => {
             <option value="EMPLOYEE">Nhân viên</option>
             <option value="CUSTOMER">Khách hàng</option>
           </select>
+          <select
+            value={statusFilter}
+            onChange={(e) => {
+              setStatusFilter(e.target.value);
+              setPage(0);
+            }}
+            className="border-gray-300 rounded-lg text-sm focus:ring-black focus:border-black py-2 pl-3 pr-10 border"
+          >
+            <option value="">Tất cả trạng thái</option>
+            <option value="ACTIVE">Hoạt động</option>
+            <option value="LOCKED">Đã khóa</option>
+          </select>
         </div>
         <DataTable 
           columns={columns} 
           data={usersData?.content || []} 
-          isLoading={isLoading}
+          loading={isLoading}
           emptyText="Không tìm thấy người dùng nào"
           pagination={true}
           currentPage={page}
@@ -214,6 +296,80 @@ const UserManagePage = () => {
           onPageChange={setPage}
         />
       </div>
+
+      {isCreateOpen && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4">
+          <div className="w-full max-w-lg rounded-2xl bg-white shadow-xl">
+            <div className="flex items-center justify-between border-b border-gray-200 p-5">
+              <h2 className="text-lg font-bold text-gray-900">Tạo tài khoản nhân viên</h2>
+              <button
+                type="button"
+                className="text-gray-500 hover:text-gray-700"
+                onClick={() => setIsCreateOpen(false)}
+              >
+                ✕
+              </button>
+            </div>
+            <form onSubmit={handleCreateStaff} className="space-y-4 p-5">
+              <div>
+                <label className="block text-sm font-medium text-gray-700">Họ tên</label>
+                <input
+                  type="text"
+                  value={createForm.fullName}
+                  onChange={(e) => setCreateForm((prev) => ({ ...prev, fullName: e.target.value }))}
+                  className="mt-1 w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-black focus:ring-black"
+                  required
+                />
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-gray-700">Email</label>
+                <input
+                  type="email"
+                  value={createForm.email}
+                  onChange={(e) => setCreateForm((prev) => ({ ...prev, email: e.target.value }))}
+                  className="mt-1 w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-black focus:ring-black"
+                  required
+                />
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-gray-700">Số điện thoại</label>
+                <input
+                  type="text"
+                  value={createForm.phone}
+                  onChange={(e) => setCreateForm((prev) => ({ ...prev, phone: e.target.value }))}
+                  className="mt-1 w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-black focus:ring-black"
+                />
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-gray-700">Mật khẩu tạm (tùy chọn)</label>
+                <input
+                  type="text"
+                  value={createForm.password}
+                  onChange={(e) => setCreateForm((prev) => ({ ...prev, password: e.target.value }))}
+                  className="mt-1 w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-black focus:ring-black"
+                />
+              </div>
+              {createdTempPassword && (
+                <div className="rounded-lg border border-amber-200 bg-amber-50 p-3 text-sm text-amber-800">
+                  Mật khẩu tạm: <span className="font-semibold">{createdTempPassword}</span>
+                </div>
+              )}
+              <div className="flex justify-end gap-2">
+                <Button
+                  type="button"
+                  variant="secondary"
+                  onClick={() => setIsCreateOpen(false)}
+                >
+                  Hủy
+                </Button>
+                <Button type="submit" loading={createStaffMutation.isLoading}>
+                  Tạo nhân viên
+                </Button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
     </div>
   );
 };

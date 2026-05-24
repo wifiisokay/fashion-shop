@@ -7,12 +7,15 @@ import com.fashionshop.backend.domain.repository.ChatMessageRepository;
 import com.fashionshop.backend.domain.repository.ChatSessionRepository;
 import com.fashionshop.backend.domain.User;
 import com.fashionshop.backend.domain.repository.UserRepository;
+import com.fashionshop.backend.module.ai.dto.ProductContextDto;
 import com.fashionshop.backend.module.ai.dto.request.GuestChatRequest;
 import com.fashionshop.backend.module.ai.dto.response.*;
 import com.fashionshop.backend.module.ai.nlu.NluSearchParams;
 import com.fashionshop.backend.module.ai.nlu.NluService;
+import com.fasterxml.jackson.databind.node.ArrayNode;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.fasterxml.jackson.databind.node.ObjectNode;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.data.domain.Page;
@@ -20,7 +23,7 @@ import org.springframework.data.domain.Pageable;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
-import java.math.BigDecimal;
+import java.text.Normalizer;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.util.*;
@@ -47,6 +50,7 @@ public class ChatServiceImpl implements ChatService {
     private final OutfitSuggestionService outfitSuggestionService;
     private final UserPreferenceService userPreferenceService;
     private final NluService nluService;
+    private final ProductContextResolver productContextResolver;
     private final ObjectMapper objectMapper;
     private final Map<Long, NluSearchParams> lastNluParams = new ConcurrentHashMap<>();
 
@@ -77,7 +81,10 @@ public class ChatServiceImpl implements ChatService {
 
         // 3. Load recent messages for context
         List<ChatMessage> recentMessages = messageRepository
-                .findTop10BySessionIdOrderByCreatedAtDesc(session.getId());
+                .findTop10BySessionIdOrderByCreatedAtDesc(session.getId())
+                .stream()
+                .limit(6)
+                .toList();
 
         // 4. Classify intent
         ChatIntent intent = intentClassifier.classify(content, recentMessages);
@@ -87,9 +94,14 @@ public class ChatServiceImpl implements ChatService {
         if (intent == ChatIntent.OUTFIT_SUGGEST) {
             // Ưu tiên productId từ context (user đang xem trang SP)
             // Nếu không có → thử detect SP từ nội dung chat
-            Long resolvedProductId = productId;
-            Long resolvedColorId = colorId;
-            if (resolvedProductId == null) {
+            ProductContextDto explicitContext = ProductContextDto.builder()
+                    .productId(productId)
+                    .colorId(colorId)
+                    .build();
+            Optional<ProductContextDto> resolvedContext = productContextResolver.resolve(content, explicitContext, recentMessages);
+            Long resolvedProductId = resolvedContext.map(ProductContextDto::getProductId).orElse(null);
+            Long resolvedColorId = resolvedContext.map(ProductContextDto::getColorId).orElse(colorId);
+            if (resolvedProductId == null && !productContextResolver.hasPronounReference(content)) {
                 NluSearchParams nluParams = extractNlu(session.getId(), content, intent);
                 resolvedProductId = detectProductFromMessage(content, nluParams);
             }
@@ -102,6 +114,7 @@ public class ChatServiceImpl implements ChatService {
                     .session(session)
                     .role(ChatRole.ASSISTANT)
                     .content(serializeAssistantResponse(response))
+                    .metadata(buildAssistantMetadata(response, intent))
                     .intent(intent.name())
                     .hasProducts(response.getOutfitCombos() != null && !response.getOutfitCombos().isEmpty())
                     .build());
@@ -116,24 +129,52 @@ public class ChatServiceImpl implements ChatService {
         String retrievedData;
         if (intent == ChatIntent.PRODUCT_SEARCH) {
             NluSearchParams nluParams = extractNlu(session.getId(), content, intent);
+            try {
             productResult = nluParams != null
-                    ? productRetrieverService.search(nluParams, 6)
-                    : productRetrieverService.search(content, 6);
+                ? productRetrieverService.search(nluParams, 6)
+                : productRetrieverService.search(content, 6);
+            } catch (Exception e) {
+            log.error("[AI_CHAT_RETRIEVE_ERROR] userId={} sessionId={} intent={} reason={}",
+                userId, session.getId(), intent, e.getMessage());
+            ChatMessageResponse response = productRetrieveErrorResponse(intent);
+            messageRepository.save(ChatMessage.builder()
+                .session(session)
+                .role(ChatRole.ASSISTANT)
+                .content(serializeAssistantResponse(response))
+                .metadata(buildAssistantMetadata(response, intent))
+                .intent(intent.name())
+                .hasProducts(false)
+                .build());
+            return response;
+            }
             retrievedData = productResult.contextText();
             log.info("[AI_CHAT_RETRIEVE] userId={} sessionId={} intent={} total={} returned={} contextLength={}",
-                    userId, session.getId(), intent, productResult.total(), productResult.products().size(), retrievedData.length());
+                userId, session.getId(), intent, productResult.total(), productResult.products().size(), retrievedData.length());
+            if (isCountOnlyQuestion(content)) {
+            ChatMessageResponse response = countOnlyResponse(productResult.total(), intent);
+            messageRepository.save(ChatMessage.builder()
+                .session(session)
+                .role(ChatRole.ASSISTANT)
+                .content(serializeAssistantResponse(response))
+                .metadata(buildAssistantMetadata(response, intent))
+                .intent(intent.name())
+                .hasProducts(false)
+                .build());
+            return response;
+            }
             if (productResult.products().isEmpty()) {
-                log.info("[AI_CHAT_NO_PRODUCTS] userId={} sessionId={} message='{}' intent={}",
-                        userId, session.getId(), shorten(content), intent);
-                ChatMessageResponse response = noProductsFoundResponse(intent);
-                messageRepository.save(ChatMessage.builder()
-                        .session(session)
-                        .role(ChatRole.ASSISTANT)
-                        .content(serializeAssistantResponse(response))
-                        .intent(intent.name())
-                        .hasProducts(false)
-                        .build());
-                return response;
+            log.info("[AI_CHAT_NO_PRODUCTS] userId={} sessionId={} message='{}' intent={}",
+                userId, session.getId(), shorten(content), intent);
+            ChatMessageResponse response = noProductsFoundResponse(intent);
+            messageRepository.save(ChatMessage.builder()
+                .session(session)
+                .role(ChatRole.ASSISTANT)
+                .content(serializeAssistantResponse(response))
+                .metadata(buildAssistantMetadata(response, intent))
+                .intent(intent.name())
+                .hasProducts(false)
+                .build());
+            return response;
             }
         } else {
             retrievedData = dataRetriever.retrieveContext(intent, content, userId);
@@ -158,23 +199,20 @@ public class ChatServiceImpl implements ChatService {
 
         // 8. Parse response
         ChatMessageResponse response = parseAiResponse(aiResponse, intent);
-        log.info("[AI_CHAT_PARSED] userId={} sessionId={} intent={} products={} outfits={} suggestions={}",
-                userId, session.getId(), intent,
-                response.getProducts() == null ? 0 : response.getProducts().size(),
-                response.getOutfitCombos() == null ? 0 : response.getOutfitCombos().size(),
-                response.getSuggestedQuestions() == null ? 0 : response.getSuggestedQuestions().size());
         if (productResult != null) {
             response.setProducts(productResult.products());
             response.setSuggestedQuestions(response.getSuggestedQuestions() != null
                     ? response.getSuggestedQuestions()
                     : getDefaultSuggestions(intent));
         }
+        logParsedResponse(userId, session.getId(), intent, response, productResult);
 
         // 9. Save assistant message
         ChatMessage assistantMsg = ChatMessage.builder()
                 .session(session)
                 .role(ChatRole.ASSISTANT)
                 .content(serializeAssistantResponse(response))
+                .metadata(buildAssistantMetadata(response, intent))
                 .intent(intent.name())
                 .hasProducts((response.getProducts() != null && !response.getProducts().isEmpty())
                         || (response.getOutfitCombos() != null && !response.getOutfitCombos().isEmpty()))
@@ -197,15 +235,22 @@ public class ChatServiceImpl implements ChatService {
 
         if (intent == ChatIntent.OUTFIT_SUGGEST) {
             // Ưu tiên productId từ request context, sau đó thử detect từ message
-            Long resolvedProductId = request.getProductId();
-            if (resolvedProductId == null) {
+            Long requestProductId = request.getProductContext() != null && request.getProductContext().getProductId() != null
+                    ? request.getProductContext().getProductId()
+                    : request.getProductId();
+            Long requestColorId = request.getProductContext() != null && request.getProductContext().getColorId() != null
+                    ? request.getProductContext().getColorId()
+                    : request.getColorId();
+            Long resolvedProductId = requestProductId;
+            Long resolvedColorId = requestColorId;
+            if (resolvedProductId == null && !productContextResolver.hasPronounReference(content)) {
                 NluSearchParams nluParams = nluService.extract(content, intent.name(), null);
                 resolvedProductId = detectProductFromMessage(content, nluParams);
             }
             log.info("[AI_CHAT_OUTFIT] guest message='{}' resolvedProductId={} resolvedColorId={}",
-                    shorten(content), resolvedProductId, request.getColorId());
+                    shorten(content), resolvedProductId, resolvedColorId);
             return resolvedProductId != null
-                    ? outfitChatResponse(resolvedProductId, request.getColorId())
+                    ? outfitChatResponse(resolvedProductId, resolvedColorId)
                     : askForMainProductResponse();
         }
 
@@ -225,12 +270,20 @@ public class ChatServiceImpl implements ChatService {
         String retrievedData;
         if (intent == ChatIntent.PRODUCT_SEARCH) {
             NluSearchParams nluParams = nluService.extract(content, intent.name(), null);
-            productResult = nluParams != null
-                    ? productRetrieverService.search(nluParams, 6)
-                    : productRetrieverService.search(content, 6);
+            try {
+                productResult = nluParams != null
+                        ? productRetrieverService.search(nluParams, 6)
+                        : productRetrieverService.search(content, 6);
+            } catch (Exception e) {
+                log.error("[AI_CHAT_RETRIEVE_ERROR] guest intent={} reason={}", intent, e.getMessage());
+                return productRetrieveErrorResponse(intent);
+            }
             retrievedData = productResult.contextText();
             log.info("[AI_CHAT_RETRIEVE] guest intent={} total={} returned={} contextLength={}",
                     intent, productResult.total(), productResult.products().size(), retrievedData.length());
+            if (isCountOnlyQuestion(content)) {
+                return countOnlyResponse(productResult.total(), intent);
+            }
             if (productResult.products().isEmpty()) {
                 log.info("[AI_CHAT_NO_PRODUCTS] guest message='{}' intent={}", shorten(content), intent);
                 return noProductsFoundResponse(intent);
@@ -264,17 +317,13 @@ public class ChatServiceImpl implements ChatService {
         }
 
         ChatMessageResponse response = parseAiResponse(aiResponse, intent);
-        log.info("[AI_CHAT_PARSED] guest intent={} products={} outfits={} suggestions={}",
-                intent,
-                response.getProducts() == null ? 0 : response.getProducts().size(),
-                response.getOutfitCombos() == null ? 0 : response.getOutfitCombos().size(),
-                response.getSuggestedQuestions() == null ? 0 : response.getSuggestedQuestions().size());
         if (productResult != null) {
             response.setProducts(productResult.products());
             response.setSuggestedQuestions(response.getSuggestedQuestions() != null
                     ? response.getSuggestedQuestions()
                     : getDefaultSuggestions(intent));
         }
+        logParsedResponse(null, null, intent, response, productResult);
         return response;
     }
 
@@ -378,6 +427,28 @@ public class ChatServiceImpl implements ChatService {
         return trimmed.length() > 160 ? trimmed.substring(0, 160) + "..." : trimmed;
     }
 
+    private boolean isCountOnlyQuestion(String value) {
+        String normalized = normalizeVi(value);
+        return normalized.contains(" bao nhieu ")
+                || normalized.contains(" may san pham ")
+                || normalized.contains(" so luong ")
+                || normalized.contains(" co bao nhieu ");
+    }
+
+    private String normalizeVi(String input) {
+        if (input == null) {
+            return "";
+        }
+        String normalized = Normalizer.normalize(input, Normalizer.Form.NFD)
+                .replaceAll("\\p{M}+", "")
+                .replace('đ', 'd')
+                .replace('Đ', 'D')
+                .toLowerCase(Locale.ROOT)
+                .replace('-', ' ')
+                .trim();
+        return " " + normalized + " ";
+    }
+
     private ChatMessageResponse loginRequiredResponse(ChatIntent intent) {
         return ChatMessageResponse.builder()
                 .role("assistant")
@@ -395,6 +466,8 @@ public class ChatServiceImpl implements ChatService {
                 .content(outfit.getText() != null ? outfit.getText() : "Mình gợi ý các outfit phù hợp với sản phẩm bạn đang xem.")
                 .intent(ChatIntent.OUTFIT_SUGGEST.name())
                 .outfitCombos(outfit.getCombos())
+                .products(List.of())
+                .productContext(ProductContextDto.builder().productId(productId).colorId(colorId).build())
                 .suggestedQuestions(List.of("Gợi ý outfit khác", "Tìm sản phẩm tương tự"))
                 .createdAt(LocalDateTime.now())
                 .build();
@@ -410,13 +483,40 @@ public class ChatServiceImpl implements ChatService {
                 .build();
     }
 
+    private ChatMessageResponse productRetrieveErrorResponse(ChatIntent intent) {
+        return ChatMessageResponse.builder()
+                .role("assistant")
+                .content("Xin lỗi, mình đang gặp lỗi khi tìm sản phẩm. Bạn thử lại sau ít phút nhé.")
+                .intent(intent.name())
+                .products(List.of())
+                .outfitCombos(List.of())
+                .suggestedQuestions(getDefaultSuggestions(intent))
+                .createdAt(LocalDateTime.now())
+                .build();
+    }
+
     private ChatMessageResponse noProductsFoundResponse(ChatIntent intent) {
         return ChatMessageResponse.builder()
                 .role("assistant")
                 .content("Mình chưa tìm thấy sản phẩm phù hợp trong dữ liệu hiện tại của shop. Bạn thử đổi giới tính, màu hoặc khoảng giá để mình lọc lại chính xác hơn.")
                 .intent(intent.name())
+                .totalCount(0)
                 .products(List.of())
                 .suggestedQuestions(List.of("Tìm áo thun nam màu đen", "Tìm váy nữ đi làm", "Xem sản phẩm đang sale"))
+                .createdAt(LocalDateTime.now())
+                .build();
+    }
+
+    private ChatMessageResponse countOnlyResponse(long total, ChatIntent intent) {
+        return ChatMessageResponse.builder()
+                .role("assistant")
+                .content("Shop hiá»‡n cÃ³ " + total + " sáº£n pháº©m phÃ¹ há»£p vÃ  cÃ²n hÃ ng trong dá»¯ liá»‡u hiá»‡n táº¡i.")
+                .intent(intent.name())
+                .totalCount((int) Math.min(total, Integer.MAX_VALUE))
+                .countType("PRODUCT_COLOR")
+                .products(List.of())
+                .outfitCombos(List.of())
+                .suggestedQuestions(List.of("Xem má»™t vÃ i máº«u phÃ¹ há»£p", "TÃ¬m theo mÃ u khÃ¡c", "TÆ° váº¥n phá»‘i Ä‘á»“"))
                 .createdAt(LocalDateTime.now())
                 .build();
     }
@@ -497,38 +597,12 @@ public class ChatServiceImpl implements ChatService {
         // Thử parse JSON
         if (intent == ChatIntent.PRODUCT_SEARCH || intent == ChatIntent.OUTFIT_SUGGEST) {
             try {
-                // Loại bỏ markdown code fence nếu Gemini trả về ```json ... ```
-                String cleaned = aiResponse.trim();
-                if (cleaned.startsWith("```json")) {
-                    cleaned = cleaned.substring(7);
-                }
-                if (cleaned.startsWith("```")) {
-                    cleaned = cleaned.substring(3);
-                }
-                if (cleaned.endsWith("```")) {
-                    cleaned = cleaned.substring(0, cleaned.length() - 3);
-                }
-                cleaned = cleaned.trim();
+                String cleaned = extractJsonPayload(aiResponse);
 
                 JsonNode json = objectMapper.readTree(cleaned);
 
                 String text = json.has("text") ? json.get("text").asText() : aiResponse;
-                List<ChatProductCard> products = new ArrayList<>();
                 List<String> suggestedQuestions = new ArrayList<>();
-
-                if (json.has("products") && json.get("products").isArray()) {
-                    for (JsonNode p : json.get("products")) {
-                        products.add(ChatProductCard.builder()
-                                .id(p.has("id") ? p.get("id").asLong() : null)
-                                .name(p.has("name") ? p.get("name").asText() : null)
-                                .price(p.has("price") ? new BigDecimal(p.get("price").asText()) : null)
-                                .salePrice(p.has("salePrice") && !p.get("salePrice").isNull()
-                                        ? new BigDecimal(p.get("salePrice").asText()) : null)
-                                .imageUrl(p.has("imageUrl") ? p.get("imageUrl").asText() : null)
-                                .matchReason(p.has("matchReason") ? p.get("matchReason").asText() : null)
-                                .build());
-                    }
-                }
 
                 if (json.has("suggestedQuestions") && json.get("suggestedQuestions").isArray()) {
                     for (JsonNode q : json.get("suggestedQuestions")) {
@@ -536,18 +610,17 @@ public class ChatServiceImpl implements ChatService {
                     }
                 }
 
-                products.clear(); // Product cards must come from database retrieval only.
-
                 return ChatMessageResponse.builder()
                         .role("assistant")
                         .content(text)
-                        .products(products.isEmpty() ? null : products)
                         .suggestedQuestions(suggestedQuestions.isEmpty() ? null : suggestedQuestions)
                         .intent(intent.name())
                         .createdAt(LocalDateTime.now())
                         .build();
             } catch (Exception e) {
-                log.debug("Failed to parse JSON from AI response, using plain text. Error: {}", e.getMessage());
+                log.info("[AI_CHAT_PARSE_FALLBACK] intent={} error={} responsePreview='{}'",
+                        intent, e.getMessage(), shorten(aiResponse));
+                log.debug("[AI_CHAT_RAW_RESPONSE] intent={} raw={}", intent, aiResponse);
                 if (looksLikeJson(aiResponse)) {
                     return ChatMessageResponse.builder()
                             .role("assistant")
@@ -644,6 +717,137 @@ public class ChatServiceImpl implements ChatService {
             log.warn("Failed to serialize assistant response: {}", e.getMessage());
             return response.getContent();
         }
+    }
+
+    private String buildAssistantMetadata(ChatMessageResponse response, ChatIntent intent) {
+        try {
+            ObjectNode root = objectMapper.createObjectNode();
+            root.put("intent", intent.name());
+
+            List<ChatProductCard> products = response.getProducts() != null ? response.getProducts() : List.of();
+            if (!products.isEmpty()) {
+                root.set("primaryProductContext", productContextNode(products.get(0)));
+                ArrayNode items = objectMapper.createArrayNode();
+                for (ChatProductCard product : products) {
+                    items.add(productContextNode(product));
+                }
+                root.set("products", items);
+            }
+
+            if (response.getProductContext() != null) {
+                root.set("baseProductContext", productContextNode(response.getProductContext()));
+            } else if (response.getOutfitCombos() != null && !response.getOutfitCombos().isEmpty()) {
+                List<ChatProductCard> comboProducts = response.getOutfitCombos().get(0).getProducts() != null
+                        ? response.getOutfitCombos().get(0).getProducts()
+                        : response.getOutfitCombos().get(0).getItems();
+                if (comboProducts != null && !comboProducts.isEmpty()) {
+                    root.set("baseProductContext", productContextNode(comboProducts.get(0)));
+                }
+            }
+
+            return root.size() > 1 ? objectMapper.writeValueAsString(root) : null;
+        } catch (Exception e) {
+            log.warn("[AI_CHAT_METADATA] build failed: {}", e.getMessage());
+            return null;
+        }
+    }
+
+    private ObjectNode productContextNode(ChatProductCard product) {
+        ObjectNode node = objectMapper.createObjectNode();
+        if (product.getId() != null) node.put("productId", product.getId());
+        if (product.getColorId() != null) node.put("colorId", product.getColorId());
+        if (product.getName() != null) node.put("name", product.getName());
+        if (product.getColorName() != null) node.put("colorName", product.getColorName());
+        return node;
+    }
+
+    private ObjectNode productContextNode(ProductContextDto context) {
+        ObjectNode node = objectMapper.createObjectNode();
+        if (context.getProductId() != null) node.put("productId", context.getProductId());
+        if (context.getColorId() != null) node.put("colorId", context.getColorId());
+        if (context.getName() != null) node.put("name", context.getName());
+        if (context.getColorName() != null) node.put("colorName", context.getColorName());
+        return node;
+    }
+
+    private void logParsedResponse(Long userId, Long sessionId, ChatIntent intent, ChatMessageResponse response,
+                                   ProductRetrieverService.ProductSearchResult productResult) {
+        int finalProducts = response.getProducts() == null ? 0 : response.getProducts().size();
+        int outfits = response.getOutfitCombos() == null ? 0 : response.getOutfitCombos().size();
+        int suggestions = response.getSuggestedQuestions() == null ? 0 : response.getSuggestedQuestions().size();
+        if (sessionId == null) {
+            log.info("[AI_CHAT_PARSED] guest intent={} finalProducts={} dbProducts={} outfits={} suggestions={}",
+                    intent, finalProducts, productResult == null ? null : productResult.products().size(), outfits, suggestions);
+            return;
+        }
+        log.info("[AI_CHAT_PARSED] userId={} sessionId={} intent={} finalProducts={} dbProducts={} outfits={} suggestions={}",
+                userId, sessionId, intent, finalProducts, productResult == null ? null : productResult.products().size(), outfits, suggestions);
+    }
+
+    private String extractJsonPayload(String value) {
+        if (value == null || value.isBlank()) {
+            throw new IllegalArgumentException("AI response is blank");
+        }
+        String cleaned = value.trim();
+        if (cleaned.startsWith("```json")) {
+            cleaned = cleaned.substring(7);
+        }
+        if (cleaned.startsWith("```")) {
+            cleaned = cleaned.substring(3);
+        }
+        if (cleaned.endsWith("```")) {
+            cleaned = cleaned.substring(0, cleaned.length() - 3);
+        }
+        cleaned = cleaned.trim();
+        return extractFirstBalancedJson(cleaned);
+    }
+
+    private String extractFirstBalancedJson(String value) {
+        int start = -1;
+        char open = 0;
+        char close = 0;
+        for (int i = 0; i < value.length(); i++) {
+            char ch = value.charAt(i);
+            if (ch == '{' || ch == '[') {
+                start = i;
+                open = ch;
+                close = ch == '{' ? '}' : ']';
+                break;
+            }
+        }
+        if (start < 0) {
+            throw new IllegalArgumentException("No JSON object found in AI response");
+        }
+        int depth = 0;
+        boolean inString = false;
+        boolean escaped = false;
+        for (int i = start; i < value.length(); i++) {
+            char ch = value.charAt(i);
+            if (escaped) {
+                escaped = false;
+                continue;
+            }
+            if (ch == '\\') {
+                escaped = true;
+                continue;
+            }
+            if (ch == '"') {
+                inString = !inString;
+                continue;
+            }
+            if (inString) {
+                continue;
+            }
+            if (ch == open) {
+                depth++;
+            } else if (ch == close) {
+                depth--;
+                if (depth == 0) {
+                    return value.substring(start, i + 1);
+                }
+            }
+        }
+        throw new IllegalArgumentException("Unbalanced JSON payload in AI response");
     }
 
     private ChatMessageResponse parseStoredAssistantResponse(String content) {

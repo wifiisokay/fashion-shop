@@ -18,4 +18,7 @@ public interface UserRepository extends JpaRepository<User, Long>, JpaSpecificat
     long countByRole(com.fashionshop.backend.common.enums.Role role);
 
     long countByStatus(com.fashionshop.backend.common.enums.UserStatus status);
+
+    long countByRoleAndStatus(com.fashionshop.backend.common.enums.Role role,
+                              com.fashionshop.backend.common.enums.UserStatus status);
 }
