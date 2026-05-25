@@ -47,6 +47,14 @@ const ChatWidget = () => {
     if (isOpen) scrollToBottom();
   }, [messages, isOpen, isLoading]);
 
+  useEffect(() => {
+    const handleOpenChat = () => setIsOpen(true);
+    window.addEventListener('open-ai-chat', handleOpenChat);
+    return () => {
+      window.removeEventListener('open-ai-chat', handleOpenChat);
+    };
+  }, []);
+
   const handleSubmit = (e) => {
     e.preventDefault();
     if (!input.trim() || isLoading) return;

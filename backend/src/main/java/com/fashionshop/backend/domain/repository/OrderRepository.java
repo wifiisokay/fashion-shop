@@ -70,10 +70,42 @@ public interface OrderRepository extends JpaRepository<Order, Long> {
         Long userId, LocalDateTime after);
 
     // Dashboard Stats
-    @Query("SELECT SUM(o.totalAmount) FROM Order o WHERE o.status = 'COMPLETED'")
+    @Query(value = """
+        SELECT
+            COALESCE((
+                SELECT SUM(o.total_amount)
+                FROM orders o
+                WHERE o.payment_status IN ('PAID', 'REFUNDED')
+                  AND o.status IN ('DELIVERED', 'COMPLETED', 'RETURNED')
+            ), 0)
+            -
+            COALESCE((
+                SELECT SUM(r.refund_amount)
+                FROM returns r
+                WHERE r.status = 'COMPLETED'
+            ), 0)
+        """, nativeQuery = true)
     java.math.BigDecimal getTotalRevenue();
 
-    @Query("SELECT FUNCTION('DATE', o.createdAt) as date, SUM(o.totalAmount) FROM Order o WHERE o.status = 'COMPLETED' AND o.createdAt >= :startDate GROUP BY FUNCTION('DATE', o.createdAt) ORDER BY FUNCTION('DATE', o.createdAt) ASC")
+    @Query(value = """
+        SELECT d.date, COALESCE(SUM(d.gross), 0) - COALESCE(SUM(d.refund), 0) AS revenue
+        FROM (
+            SELECT DATE(o.created_at) AS date, SUM(o.total_amount) AS gross, 0 AS refund
+            FROM orders o
+            WHERE o.created_at >= :startDate
+              AND o.payment_status IN ('PAID', 'REFUNDED')
+              AND o.status IN ('DELIVERED', 'COMPLETED', 'RETURNED')
+            GROUP BY DATE(o.created_at)
+            UNION ALL
+            SELECT DATE(r.updated_at) AS date, 0 AS gross, SUM(COALESCE(r.refund_amount, 0)) AS refund
+            FROM returns r
+            WHERE r.updated_at >= :startDate
+              AND r.status = 'COMPLETED'
+            GROUP BY DATE(r.updated_at)
+        ) d
+        GROUP BY d.date
+        ORDER BY d.date ASC
+        """, nativeQuery = true)
     List<Object[]> getRevenueTrend(@Param("startDate") LocalDateTime startDate);
 
     @Query("SELECT o.status, COUNT(o) FROM Order o GROUP BY o.status")

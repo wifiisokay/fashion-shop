@@ -2,17 +2,16 @@ package com.fashionshop.backend.module.returnrequest;
 
 import com.fashionshop.backend.common.ApiResponse;
 import com.fashionshop.backend.domain.User;
+import com.fashionshop.backend.module.returnrequest.dto.request.CompleteReturnRequest;
 import com.fashionshop.backend.module.returnrequest.dto.response.ReturnDashboardResponse;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.security.SecurityRequirement;
 import io.swagger.v3.oas.annotations.tags.Tag;
+import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.web.bind.annotation.*;
-
-import java.math.BigDecimal;
-import java.util.Map;
 
 @RestController
 @RequestMapping("/api/admin/returns")
@@ -43,16 +42,9 @@ public class AdminReturnController {
     public ResponseEntity<ApiResponse<Void>> complete(
         @AuthenticationPrincipal User user,
         @PathVariable Long id,
-        @RequestBody Map<String, Object> body
+        @Valid @RequestBody CompleteReturnRequest request
     ) {
-        BigDecimal refundAmount = null;
-        if (body.containsKey("refundAmount") && body.get("refundAmount") != null) {
-            refundAmount = new BigDecimal(body.get("refundAmount").toString());
-        }
-        String note = body.containsKey("note") && body.get("note") != null
-            ? body.get("note").toString()
-            : (body.containsKey("adminNote") && body.get("adminNote") != null ? body.get("adminNote").toString() : null);
-        returnService.completeReturn(user.getId(), id, refundAmount, note);
+        returnService.completeReturn(user.getId(), id, request.getRefundAmount(), request.getNote());
         return ResponseEntity.ok(ApiResponse.success("Đã hoàn tất xử lý yêu cầu"));
     }
 }

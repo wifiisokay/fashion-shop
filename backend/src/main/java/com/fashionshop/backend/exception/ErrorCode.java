@@ -101,6 +101,8 @@ public enum ErrorCode {
     RETURN_ITEM_NOT_IN_ORDER("RETURN_008", "Sản phẩm yêu cầu xử lý không thuộc đơn hàng này"),
     RETURN_QUANTITY_EXCEEDED("RETURN_009", "Số lượng yêu cầu xử lý vượt quá số lượng có thể đổi/trả"),
     RETURN_ITEM_REQUIRED("RETURN_010", "Vui lòng chọn ít nhất một sản phẩm cần xử lý"),
+    RETURN_EXCHANGE_REFUND_NOT_ALLOWED("RETURN_011", "Yêu cầu đổi hàng chưa hỗ trợ ghi nhận hoàn tiền trong giai đoạn này"),
+    RETURN_EXCHANGE_NOTE_REQUIRED("RETURN_012", "Vui lòng nhập ghi chú mô tả kết quả đổi hàng"),
 
     REVIEW_NOT_FOUND("REVIEW_001", "Đánh giá không tồn tại"),
     REVIEW_ALREADY_EXISTS("REVIEW_002", "Bạn đã đánh giá sản phẩm này"),

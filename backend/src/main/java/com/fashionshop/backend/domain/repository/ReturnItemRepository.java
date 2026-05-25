@@ -31,6 +31,15 @@ public interface ReturnItemRepository extends JpaRepository<ReturnItem, Long> {
         SELECT COALESCE(SUM(ri.quantity), 0)
         FROM ReturnItem ri
         JOIN ri.returnRequest r
+        WHERE ri.orderItem.id = :orderItemId
+          AND r.status = 'COMPLETED'
+    """)
+    Long sumCompletedQuantityByOrderItemId(@Param("orderItemId") Long orderItemId);
+
+    @Query("""
+        SELECT COALESCE(SUM(ri.quantity), 0)
+        FROM ReturnItem ri
+        JOIN ri.returnRequest r
         WHERE r.status = 'COMPLETED'
           AND r.updatedAt >= :startDate
     """)
@@ -50,6 +59,8 @@ public interface ReturnItemRepository extends JpaRepository<ReturnItem, Long> {
         FROM return_items ri
         JOIN returns r ON r.id = ri.return_id
         WHERE r.created_at >= :startDate
+          AND r.status IN ('APPROVED', 'RECEIVED', 'COMPLETED')
+          AND ri.product_id IS NOT NULL
         GROUP BY ri.product_id, ri.product_name
         ORDER BY SUM(ri.quantity) DESC
         LIMIT 5

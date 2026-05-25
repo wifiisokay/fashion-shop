@@ -4,17 +4,18 @@ import com.fashionshop.backend.common.ApiResponse;
 import com.fashionshop.backend.common.PageResponse;
 import com.fashionshop.backend.common.enums.ReturnStatus;
 import com.fashionshop.backend.domain.User;
+import com.fashionshop.backend.module.returnrequest.dto.request.RejectReturnRequest;
 import com.fashionshop.backend.module.returnrequest.dto.response.ReturnDashboardResponse;
 import com.fashionshop.backend.module.returnrequest.dto.response.ReturnResponse;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.security.SecurityRequirement;
 import io.swagger.v3.oas.annotations.tags.Tag;
+import jakarta.validation.Valid;
+import java.util.Map;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.web.bind.annotation.*;
-
-import java.util.Map;
 
 @RestController
 @RequestMapping("/api/staff/returns")
@@ -64,9 +65,9 @@ public class StaffReturnController {
     public ResponseEntity<ApiResponse<Void>> reject(
         @AuthenticationPrincipal User user,
         @PathVariable Long id,
-        @RequestBody Map<String, String> body
+        @Valid @RequestBody RejectReturnRequest request
     ) {
-        returnService.rejectReturn(user.getId(), id, body.get("note"));
+        returnService.rejectReturn(user.getId(), id, request.getNote());
         return ResponseEntity.ok(ApiResponse.success("Đã từ chối yêu cầu"));
     }
 }

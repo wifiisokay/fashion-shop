@@ -13,6 +13,7 @@ import com.fashionshop.backend.domain.Payment;
 import com.fashionshop.backend.domain.ReturnRequest;
 import com.fashionshop.backend.domain.User;
 import com.fashionshop.backend.domain.repository.OrderRepository;
+import com.fashionshop.backend.domain.repository.PaymentRepository;
 import com.fashionshop.backend.domain.repository.ReturnItemRepository;
 import com.fashionshop.backend.domain.repository.ReturnRequestRepository;
 import com.fashionshop.backend.domain.repository.UserRepository;
@@ -46,6 +47,7 @@ class ReturnServiceImplTest {
     @Mock ReturnRequestRepository returnRepository;
     @Mock ReturnItemRepository returnItemRepository;
     @Mock OrderRepository orderRepository;
+    @Mock PaymentRepository paymentRepository;
     @Mock UserRepository userRepository;
     @Mock ReturnStatusService returnStatusService;
     @Mock StorageService storageService;
@@ -86,6 +88,7 @@ class ReturnServiceImplTest {
 
     private Order mockDeliveredVnpayOrder(Long userId) {
         Order order = mockOrder(OrderStatus.DELIVERED, PaymentMethod.VNPAY, userId);
+        order.setPaymentStatus(OrderPaymentStatus.PAID);
         Payment payment = Payment.builder().id(10L).order(order).status(PaymentStatus.SUCCESS).build();
         order.setPayment(payment);
         return order;
@@ -339,6 +342,9 @@ class ReturnServiceImplTest {
             when(returnRepository.findById(1L)).thenReturn(Optional.of(ret));
             when(userRepository.findById(10L)).thenReturn(Optional.of(admin));
             doNothing().when(returnStatusService).validateTransition(ReturnStatus.RECEIVED, ReturnStatus.COMPLETED);
+            when(returnItemRepository.sumCompletedQuantityByOrderItemId(100L)).thenReturn(1L);
+            when(paymentRepository.findTopByOrderIdAndStatusOrderByCreatedAtDesc(1L, PaymentStatus.SUCCESS))
+                .thenReturn(Optional.of(order.getPayment()));
 
             sut.completeReturn(10L, 1L, BigDecimal.valueOf(200000), "Đã hoàn thủ công");
 
@@ -363,6 +369,60 @@ class ReturnServiceImplTest {
             assertDoesNotThrow(() -> sut.completeReturn(10L, 1L, BigDecimal.valueOf(200000), null));
             assertEquals(ReturnStatus.COMPLETED, ret.getStatus());
             assertEquals(OrderStatus.RETURNED, order.getStatus());
+            assertEquals(PaymentStatus.SUCCESS, order.getPayment().getStatus());
+            assertEquals(OrderPaymentStatus.PAID, order.getPaymentStatus());
+        }
+
+        @Test
+        @DisplayName("Hoàn tất EXCHANGE — refund null -> 0, bắt buộc note, không refund payment")
+        void success_exchange_noRefund() {
+            Order order = mockDeliveredVnpayOrder(1L);
+            order.setStatus(OrderStatus.RETURNING);
+            ReturnRequest ret = mockReturn(1L, ReturnStatus.RECEIVED, order, 1L);
+            ret.setReason("[ĐỔI HÀNG] Đổi size");
+            User admin = mockUser(10L);
+
+            when(returnRepository.findById(1L)).thenReturn(Optional.of(ret));
+            when(userRepository.findById(10L)).thenReturn(Optional.of(admin));
+            doNothing().when(returnStatusService).validateTransition(ReturnStatus.RECEIVED, ReturnStatus.COMPLETED);
+
+            sut.completeReturn(10L, 1L, null, "Đã đổi sang size L");
+
+            assertEquals(ReturnStatus.COMPLETED, ret.getStatus());
+            assertEquals(BigDecimal.ZERO, ret.getRefundAmount());
+            assertEquals("Đã đổi sang size L", ret.getAdminNote());
+            assertEquals(PaymentStatus.SUCCESS, order.getPayment().getStatus());
+            assertEquals(OrderPaymentStatus.PAID, order.getPaymentStatus());
+        }
+
+        @Test
+        @DisplayName("Lỗi — EXCHANGE không cho refundAmount > 0")
+        void fail_exchangeRefundNotAllowed() {
+            Order order = mockDeliveredVnpayOrder(1L);
+            ReturnRequest ret = mockReturn(1L, ReturnStatus.RECEIVED, order, 1L);
+            ret.setReason("[ĐỔI HÀNG] Đổi size");
+
+            when(returnRepository.findById(1L)).thenReturn(Optional.of(ret));
+            doNothing().when(returnStatusService).validateTransition(ReturnStatus.RECEIVED, ReturnStatus.COMPLETED);
+
+            BusinessException ex = assertThrows(BusinessException.class,
+                () -> sut.completeReturn(10L, 1L, BigDecimal.valueOf(100000), "Đổi size"));
+            assertEquals("RETURN_011", ex.getErrorCode().getCode());
+        }
+
+        @Test
+        @DisplayName("Lỗi — EXCHANGE bắt buộc ghi chú kết quả đổi hàng")
+        void fail_exchangeNoteRequired() {
+            Order order = mockDeliveredVnpayOrder(1L);
+            ReturnRequest ret = mockReturn(1L, ReturnStatus.RECEIVED, order, 1L);
+            ret.setReason("[ĐỔI HÀNG] Đổi size");
+
+            when(returnRepository.findById(1L)).thenReturn(Optional.of(ret));
+            doNothing().when(returnStatusService).validateTransition(ReturnStatus.RECEIVED, ReturnStatus.COMPLETED);
+
+            BusinessException ex = assertThrows(BusinessException.class,
+                () -> sut.completeReturn(10L, 1L, null, " "));
+            assertEquals("RETURN_012", ex.getErrorCode().getCode());
         }
 
         @Test

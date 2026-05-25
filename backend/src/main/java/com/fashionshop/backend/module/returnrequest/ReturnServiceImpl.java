@@ -8,11 +8,11 @@ import com.fashionshop.backend.common.enums.ReturnRequestType;
 import com.fashionshop.backend.common.enums.ReturnStatus;
 import com.fashionshop.backend.domain.Order;
 import com.fashionshop.backend.domain.OrderItem;
-import com.fashionshop.backend.domain.Payment;
 import com.fashionshop.backend.domain.ReturnItem;
 import com.fashionshop.backend.domain.ReturnRequest;
 import com.fashionshop.backend.domain.User;
 import com.fashionshop.backend.domain.repository.OrderRepository;
+import com.fashionshop.backend.domain.repository.PaymentRepository;
 import com.fashionshop.backend.domain.repository.ReturnItemRepository;
 import com.fashionshop.backend.domain.repository.ReturnRequestRepository;
 import com.fashionshop.backend.domain.repository.UserRepository;
@@ -56,6 +56,7 @@ public class ReturnServiceImpl implements ReturnService {
     private final ReturnRequestRepository returnRepository;
     private final ReturnItemRepository returnItemRepository;
     private final OrderRepository orderRepository;
+    private final PaymentRepository paymentRepository;
     private final UserRepository userRepository;
     private final ReturnStatusService returnStatusService;
     private final StorageService storageService;
@@ -210,20 +211,34 @@ public class ReturnServiceImpl implements ReturnService {
         if (refundAmount != null && refundAmount.compareTo(BigDecimal.ZERO) < 0) {
             throw new BusinessException(ErrorCode.INVALID_REFUND_AMOUNT, HttpStatus.BAD_REQUEST);
         }
+        ReturnRequestType requestType = resolveRequestType(r.getReason());
+        BigDecimal finalRefundAmount = refundAmount;
+        if (requestType == ReturnRequestType.EXCHANGE) {
+            if (refundAmount != null && refundAmount.compareTo(BigDecimal.ZERO) > 0) {
+                throw new BusinessException(ErrorCode.RETURN_EXCHANGE_REFUND_NOT_ALLOWED, HttpStatus.BAD_REQUEST);
+            }
+            if (note == null || note.isBlank()) {
+                throw new BusinessException(ErrorCode.RETURN_EXCHANGE_NOTE_REQUIRED, HttpStatus.BAD_REQUEST);
+            }
+            finalRefundAmount = BigDecimal.ZERO;
+        }
 
         r.setStatus(ReturnStatus.COMPLETED);
         r.setProcessedBy(findUserOrThrow(adminId));
-        r.setRefundAmount(refundAmount);
+        r.setRefundAmount(finalRefundAmount);
         if (note != null && !note.isBlank()) {
             r.setAdminNote(note.trim());
         }
 
         Order order = r.getOrder();
         order.setStatus(OrderStatus.RETURNED);
-        syncManualRefund(order, refundAmount, r.getAdminNote());
+        if (requestType != ReturnRequestType.EXCHANGE) {
+            syncManualRefundIfFullReturn(order, finalRefundAmount, r.getAdminNote());
+        }
         orderRepository.save(order);
 
-        log.info("Return completed manually returnId={}, adminId={}, refundAmount={}", returnId, adminId, refundAmount);
+        log.info("Return completed manually returnId={}, adminId={}, type={}, refundAmount={}",
+            returnId, adminId, requestType, finalRefundAmount);
     }
 
     @Override
@@ -356,6 +371,18 @@ public class ReturnServiceImpl implements ReturnService {
         };
     }
 
+    private ReturnRequestType resolveRequestType(String reason) {
+        if (reason != null) {
+            if (reason.startsWith("[ĐỔI HÀNG]")) {
+                return ReturnRequestType.EXCHANGE;
+            }
+            if (reason.startsWith("[KHIẾU NẠI]")) {
+                return ReturnRequestType.COMPLAINT;
+            }
+        }
+        return ReturnRequestType.RETURN;
+    }
+
     private OrderStatus resolvePreviousOrderStatus(ReturnRequest request) {
         try {
             if (request.getPreviousOrderStatus() != null && !request.getPreviousOrderStatus().isBlank()) {
@@ -367,17 +394,34 @@ public class ReturnServiceImpl implements ReturnService {
         return OrderStatus.DELIVERED;
     }
 
-    private void syncManualRefund(Order order, BigDecimal refundAmount, String note) {
+    private void syncManualRefundIfFullReturn(Order order, BigDecimal refundAmount, String note) {
         if (refundAmount == null || refundAmount.compareTo(BigDecimal.ZERO) <= 0) {
             return;
         }
-        Payment payment = order.getPayment();
-        if (payment != null && payment.getStatus() == PaymentStatus.SUCCESS) {
-            payment.setStatus(PaymentStatus.REFUNDED);
-            payment.setRefundedAt(LocalDateTime.now());
-            payment.setRefundReason(note);
-            order.setPaymentStatus(OrderPaymentStatus.REFUNDED);
+        if (!isFullReturn(order)) {
+            log.info("Manual refund recorded as partial return orderId={}, refundAmount={}", order.getId(), refundAmount);
+            return;
         }
+        paymentRepository.findTopByOrderIdAndStatusOrderByCreatedAtDesc(order.getId(), PaymentStatus.SUCCESS)
+            .ifPresent(payment -> {
+                payment.setStatus(PaymentStatus.REFUNDED);
+                payment.setRefundedAt(LocalDateTime.now());
+                payment.setRefundReason(note);
+                order.setPaymentStatus(OrderPaymentStatus.REFUNDED);
+            });
+    }
+
+    private boolean isFullReturn(Order order) {
+        if (order.getItems() == null || order.getItems().isEmpty()) {
+            return false;
+        }
+        for (OrderItem orderItem : order.getItems()) {
+            long completedReturnedQty = defaultLong(returnItemRepository.sumCompletedQuantityByOrderItemId(orderItem.getId()));
+            if (completedReturnedQty < orderItem.getQuantity()) {
+                return false;
+            }
+        }
+        return true;
     }
 
     private ReturnDashboardResponse buildDashboard(LocalDateTime monthStart, List<ReturnRequest> queue,
