@@ -1,6 +1,7 @@
 package com.fashionshop.backend.module.ai;
 
 import com.fashionshop.backend.module.ai.dto.response.ChatProductCard;
+import com.fashionshop.backend.module.product.ProductTagLibrary;
 import com.fashionshop.backend.module.storage.CloudinaryUrlBuilder;
 import jakarta.persistence.EntityManager;
 import jakarta.persistence.PersistenceContext;
@@ -11,6 +12,7 @@ import org.springframework.stereotype.Service;
 import java.math.BigDecimal;
 import java.text.Normalizer;
 import java.util.ArrayList;
+import java.util.Comparator;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
@@ -18,6 +20,31 @@ import java.util.Set;
 @Slf4j
 @Service
 public class OutfitCandidateRetriever {
+
+    private static final String EFFECTIVE_PRICE_SQL = """
+        CASE
+          WHEN p.is_sale = 1
+           AND p.sale_price IS NOT NULL
+           AND p.sale_price > 0
+           AND p.sale_price < p.base_price
+           AND (p.sale_start_at IS NULL OR p.sale_start_at <= NOW())
+           AND (p.sale_end_at IS NULL OR p.sale_end_at >= NOW())
+          THEN p.sale_price
+          ELSE p.base_price
+        END
+        """;
+    private static final String CURRENT_SALE_SQL = """
+        CASE
+          WHEN p.is_sale = 1
+           AND p.sale_price IS NOT NULL
+           AND p.sale_price > 0
+           AND p.sale_price < p.base_price
+           AND (p.sale_start_at IS NULL OR p.sale_start_at <= NOW())
+           AND (p.sale_end_at IS NULL OR p.sale_end_at >= NOW())
+          THEN 1
+          ELSE 0
+        END
+        """;
 
     private static final Map<String, Set<String>> COMPATIBLE = Map.of(
         "neutral", Set.of("neutral", "cool", "warm", "earth", "mixed"),
@@ -44,10 +71,10 @@ public class OutfitCandidateRetriever {
             SELECT
               p.id,
               p.name,
-              MIN(COALESCE(p.sale_price, p.base_price) + COALESCE(pv.price_adjustment, 0)) AS display_price,
+              MIN((%s) + COALESCE(pv.price_adjustment, 0)) AS display_price,
               p.base_price,
               p.sale_price,
-              p.is_sale,
+              (%s) AS is_currently_on_sale,
               pc.id AS color_id,
               pc.color_name,
               COALESCE(pi.image_url, pi_any.image_url) AS image_url,
@@ -56,7 +83,8 @@ public class OutfitCandidateRetriever {
               c.name AS category_name,
               p.gender,
               pc.color_code,
-              pc.color_family
+              pc.color_family,
+              p.fit_type
             FROM products p
             LEFT JOIN categories c ON c.id = p.category_id
             JOIN product_colors pc ON pc.product_id = p.id
@@ -68,14 +96,14 @@ public class OutfitCandidateRetriever {
               AND p.id <> :anchorProductId
               AND c.slug IN (:slugs)
               AND pc.color_family IN (:families)
-            """);
+            """.formatted(EFFECTIVE_PRICE_SQL, CURRENT_SALE_SQL));
         if (isStrictGender(anchor.getGender())) {
             sql.append(" AND (p.gender = :gender OR p.gender = 'UNISEX')");
         }
         sql.append("""
-             GROUP BY p.id, p.name, p.base_price, p.sale_price, p.is_sale, p.gender,
-                      pc.id, pc.color_name, pc.color_code, pc.color_family, pi.image_url, pi_any.image_url, c.slug, c.name
-             ORDER BY p.is_sale DESC, p.created_at DESC
+             GROUP BY p.id, p.name, p.base_price, p.sale_price, p.sale_start_at, p.sale_end_at, p.is_sale, p.gender,
+                      pc.id, pc.color_name, pc.color_code, pc.color_family, p.fit_type, pi.image_url, pi_any.image_url, c.slug, c.name
+             ORDER BY p.created_at DESC
              LIMIT 
             """).append(limit);
 
@@ -87,8 +115,13 @@ public class OutfitCandidateRetriever {
             query.setParameter("gender", anchor.getGender());
         }
         List<ChatProductCard> cards = mapRows(query.getResultList());
-        log.info("[OUTFIT_CANDIDATES] anchor={} slot={} colorFamily={} compatible={} count={}",
-            anchor.getId(), slotRole, anchor.getColorFamily(), compatibleFamilies, cards.size());
+        // Fit Balance Scoring: sort candidates so complementary fits rank higher
+        String anchorFit = anchor.getFitType();
+        if (anchorFit != null && !anchorFit.isBlank()) {
+            cards.sort(Comparator.comparingInt((ChatProductCard c) -> fitBalanceScore(anchorFit, c.getFitType())).reversed());
+        }
+        log.info("[OUTFIT_CANDIDATES] anchor={} slot={} colorFamily={} compatible={} anchorFit={} count={}",
+            anchor.getId(), slotRole, anchor.getColorFamily(), compatibleFamilies, anchorFit, cards.size());
         return cards;
     }
 
@@ -99,6 +132,37 @@ public class OutfitCandidateRetriever {
             case "outer" -> List.of("ao-khoac-nam", "ao-khoac-nu");
             default -> List.of();
         };
+    }
+
+    /**
+     * Fit Balance Scoring: anchor loose/oversized → prefer fitted candidates, và ngược lại.
+     * Neutral fits get moderate score with everything.
+     * Returns 0-3: 3 = ideal complement, 2 = good, 1 = neutral, 0 = same group (unbalanced).
+     */
+    private int fitBalanceScore(String anchorFit, String candidateFit) {
+        if (candidateFit == null || candidateFit.isBlank()) {
+            return 1; // unknown fit → neutral score
+        }
+        boolean anchorFitted = ProductTagLibrary.FIT_FITTED_GROUP.contains(anchorFit);
+        boolean anchorLoose = ProductTagLibrary.FIT_LOOSE_GROUP.contains(anchorFit);
+        boolean anchorNeutral = ProductTagLibrary.FIT_NEUTRAL_GROUP.contains(anchorFit);
+        boolean candidateFitted = ProductTagLibrary.FIT_FITTED_GROUP.contains(candidateFit);
+        boolean candidateLoose = ProductTagLibrary.FIT_LOOSE_GROUP.contains(candidateFit);
+        boolean candidateNeutral = ProductTagLibrary.FIT_NEUTRAL_GROUP.contains(candidateFit);
+
+        // Ideal: loose anchor + fitted candidate, or fitted anchor + loose candidate
+        if ((anchorLoose && candidateFitted) || (anchorFitted && candidateLoose)) {
+            return 3;
+        }
+        // Good: neutral pairs well with everything
+        if (anchorNeutral || candidateNeutral) {
+            return 2;
+        }
+        // Same group: unbalanced outfit (both loose or both fitted)
+        if ((anchorLoose && candidateLoose) || (anchorFitted && candidateFitted)) {
+            return 0;
+        }
+        return 1;
     }
 
     private List<ChatProductCard> mapRows(List<?> rows) {
@@ -125,6 +189,7 @@ public class OutfitCandidateRetriever {
                 .gender(values[12] != null ? values[12].toString() : null)
                 .colorCode(values[13] != null ? values[13].toString() : null)
                 .colorFamily(values[14] != null ? values[14].toString() : null)
+                .fitType(values[15] != null ? values[15].toString() : null)
                 .role(resolveRole(categorySlug, categoryName, productName))
                 .build());
         }

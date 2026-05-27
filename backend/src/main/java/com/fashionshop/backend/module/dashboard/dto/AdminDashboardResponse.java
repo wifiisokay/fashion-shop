@@ -11,6 +11,8 @@ import java.time.LocalDateTime;
 import java.util.List;
 import java.util.Map;
 
+import com.fashionshop.backend.module.product.dto.response.StockAlertResponse;
+
 @Data
 @Builder
 @NoArgsConstructor
@@ -24,6 +26,7 @@ public class AdminDashboardResponse {
     private ReturnSummary returns;
     private ProductAnalytics products;
     private DashboardCharts charts;
+    private StockAlertResponse stockAlerts;
 
     @Data
     @Builder

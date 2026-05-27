@@ -21,6 +21,7 @@ import com.fashionshop.backend.module.cart.dto.request.AddToCartRequest;
 import com.fashionshop.backend.module.cart.dto.request.UpdateCartRequest;
 import com.fashionshop.backend.module.cart.dto.response.CartItemResponse;
 import com.fashionshop.backend.module.cart.dto.response.CartSummaryResponse;
+import com.fashionshop.backend.module.product.ProductPriceService;
 
 import lombok.RequiredArgsConstructor;
 
@@ -32,6 +33,7 @@ public class CartServiceImpl implements CartService {
     private final ProductVariantRepository variantRepository;
     private final ProductImageRepository imageRepository;
     private final UserRepository userRepository;
+    private final ProductPriceService productPriceService;
 
     // ===================== PUBLIC =====================
 
@@ -118,7 +120,7 @@ public class CartServiceImpl implements CartService {
         List<CartItemResponse> responseItems = items.stream()
             .map(item -> {
                 String imageUrl = resolveVariantImageUrl(item.getVariant());
-                return CartItemResponse.from(item, imageUrl);
+                return CartItemResponse.from(item, imageUrl, productPriceService);
             })
             .toList();
 

@@ -43,6 +43,12 @@ public class Product {
     @Column(name = "sale_price", precision = 12, scale = 0)
     private BigDecimal salePrice;
 
+    @Column(name = "sale_start_at")
+    private LocalDateTime saleStartAt;
+
+    @Column(name = "sale_end_at")
+    private LocalDateTime saleEndAt;
+
     @Column(name = "is_sale", nullable = false)
     @Builder.Default
     private Boolean isSale = false;
@@ -56,6 +62,10 @@ public class Product {
     @Column(name = "estimated_weight", nullable = false)
     @Builder.Default
     private Integer estimatedWeight = 300; // gram
+
+    @Column(name = "low_stock_threshold", nullable = false)
+    @Builder.Default
+    private Integer lowStockThreshold = 10;
 
     @JdbcTypeCode(SqlTypes.JSON)
     @Column(name = "style_tags", columnDefinition = "json")

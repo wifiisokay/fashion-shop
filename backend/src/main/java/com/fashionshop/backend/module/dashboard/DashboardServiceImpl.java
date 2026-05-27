@@ -43,6 +43,8 @@ import com.fashionshop.backend.module.dashboard.dto.DashboardStatsResponse.Packi
 import com.fashionshop.backend.module.dashboard.dto.DashboardStatsResponse.RevenuePoint;
 import com.fashionshop.backend.module.dashboard.dto.DashboardStatsResponse.ReturnStats;
 import com.fashionshop.backend.module.dashboard.dto.DashboardStatsResponse.Totals;
+import com.fashionshop.backend.module.product.StockAlertService;
+import com.fashionshop.backend.module.product.dto.response.StockAlertResponse;
 
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -57,6 +59,7 @@ public class DashboardServiceImpl implements DashboardService {
     private final ProductRepository productRepository;
     private final ReturnRequestRepository returnRequestRepository;
     private final NamedParameterJdbcTemplate jdbc;
+    private final StockAlertService stockAlertService;
 
     private static final String FINALIZED_ORDER_WHERE = """
         WHERE o.status IN ('COMPLETED', 'RETURNED')
@@ -195,14 +198,8 @@ public class DashboardServiceImpl implements DashboardService {
               AND created_at < :toDateExclusive
             """, params);
         long pendingReturnCount = queryLong("SELECT COUNT(*) FROM returns WHERE status = 'PENDING'", params);
-        long lowStockProductCount = queryLong("""
-            SELECT COUNT(DISTINCT p.id)
-            FROM products p
-            JOIN product_variants pv ON pv.product_id = p.id
-            WHERE p.status = 'ACTIVE'
-              AND pv.stock_quantity > 0
-              AND pv.stock_quantity <= 5
-            """, params);
+        StockAlertResponse stockAlerts = stockAlertService.getStockAlerts(5);
+        long lowStockProductCount = stockAlerts.getLowStockCount();
         long activeProductCount = queryLong("SELECT COUNT(*) FROM products WHERE status = 'ACTIVE'", params);
         Map<String, Long> orderStatusDistribution = countMap("""
             SELECT o.status AS label, COUNT(*) AS total
@@ -303,6 +300,7 @@ public class DashboardServiceImpl implements DashboardService {
             .returns(returns)
             .products(products)
             .charts(charts)
+            .stockAlerts(stockAlerts)
             .build();
     }
 

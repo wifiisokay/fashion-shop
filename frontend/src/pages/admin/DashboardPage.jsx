@@ -17,7 +17,8 @@ import {
   Eye,
   TrendingUp,
   RefreshCw,
-  ArrowRight
+  ArrowRight,
+  Edit
 } from 'lucide-react';
 import { formatPrice } from '../../utils/format';
 import dashboardApi from '../../api/dashboardApi';
@@ -452,20 +453,23 @@ const DashboardPage = () => {
           <p className="text-[11px] text-gray-400 mt-2 font-medium">Yêu cầu hoàn trả mới</p>
         </StatCard>
 
-        {/* Sản phẩm sắp hết hàng */}
+        {/* Cảnh báo tồn kho */}
         <StatCard
-          title="Sắp hết hàng"
-          value={overview?.lowStockProductCount || 0}
+          title="Cảnh báo tồn kho"
+          value={(data?.stockAlerts?.lowStockCount !== undefined ? data.stockAlerts.lowStockCount : (overview?.lowStockProductCount || 0)) + (data?.stockAlerts?.outOfStockCount || 0)}
           icon={AlertTriangle}
-          className={clsx(overview?.lowStockProductCount > 0 && "border-orange-200 bg-orange-50/10 shadow-orange-50/5")}
+          className={clsx(((data?.stockAlerts?.lowStockCount !== undefined ? data.stockAlerts.lowStockCount : (overview?.lowStockProductCount || 0)) + (data?.stockAlerts?.outOfStockCount || 0)) > 0 && "border-orange-200 bg-orange-50/10 shadow-orange-50/5")}
           iconClassName={clsx(
-            overview?.lowStockProductCount > 0 
+            ((data?.stockAlerts?.lowStockCount !== undefined ? data.stockAlerts.lowStockCount : (overview?.lowStockProductCount || 0)) + (data?.stockAlerts?.outOfStockCount || 0)) > 0 
               ? "bg-orange-50 text-orange-600 border border-orange-100" 
               : "bg-gray-50 text-gray-600"
           )}
-          valueClassName={clsx(overview?.lowStockProductCount > 0 && "text-orange-700")}
+          valueClassName={clsx(((data?.stockAlerts?.lowStockCount !== undefined ? data.stockAlerts.lowStockCount : (overview?.lowStockProductCount || 0)) + (data?.stockAlerts?.outOfStockCount || 0)) > 0 && "text-orange-700")}
         >
-          <p className="text-[11px] text-gray-400 mt-2 font-medium">Sản phẩm tồn kho &le; 5</p>
+          <div className="text-[11px] text-gray-400 mt-2 font-medium flex flex-wrap gap-x-2 gap-y-0.5">
+            <span>Sắp hết: <span className="font-bold text-amber-600">{data?.stockAlerts?.lowStockCount !== undefined ? data.stockAlerts.lowStockCount : (overview?.lowStockProductCount || 0)}</span></span>
+            <span>Hết hàng: <span className="font-bold text-rose-600">{data?.stockAlerts?.outOfStockCount || 0}</span></span>
+          </div>
         </StatCard>
 
         {/* Sản phẩm đang bán */}
@@ -724,6 +728,102 @@ const DashboardPage = () => {
           </div>
         </div>
 
+      </div>
+
+      {/* 5. Cảnh báo tồn kho biến thể */}
+      <div className="bg-white rounded-2xl border border-gray-200 shadow-sm overflow-hidden flex flex-col">
+        <div className="p-5 border-b border-gray-150 flex justify-between items-center">
+          <div className="flex items-center gap-2">
+            <AlertTriangle className="w-5 h-5 text-orange-500" />
+            <h2 className="text-base font-bold text-gray-900 tracking-tight">Biến thể sắp hết hàng & hết hàng</h2>
+          </div>
+          <Link to="/admin/products" className="text-xs font-semibold text-indigo-600 hover:text-indigo-800 transition-colors flex items-center gap-1">
+            <span>Tất cả sản phẩm</span>
+            <ArrowRight className="w-3.5 h-3.5" />
+          </Link>
+        </div>
+        <div className="overflow-x-auto">
+          {((data?.stockAlerts?.lowStockItems || []).length > 0 || (data?.stockAlerts?.outOfStockItems || []).length > 0) ? (
+            <table className="w-full text-left text-sm">
+              <thead className="bg-gray-50/50 text-gray-400 border-b border-gray-100">
+                <tr>
+                  <th className="px-5 py-3 font-bold text-[10px] uppercase tracking-wider">Sản phẩm</th>
+                  <th className="px-5 py-3 font-bold text-[10px] uppercase tracking-wider text-center">Màu sắc</th>
+                  <th className="px-5 py-3 font-bold text-[10px] uppercase tracking-wider text-center">Kích thước</th>
+                  <th className="px-5 py-3 font-bold text-[10px] uppercase tracking-wider text-center">Tồn kho</th>
+                  <th className="px-5 py-3 font-bold text-[10px] uppercase tracking-wider text-center">Ngưỡng cảnh báo</th>
+                  <th className="px-5 py-3 font-bold text-[10px] uppercase tracking-wider text-center">Trạng thái</th>
+                  <th className="px-5 py-3 font-bold text-[10px] uppercase tracking-wider text-right">Thao tác</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-gray-100">
+                {/* Out of Stock Items First */}
+                {(data?.stockAlerts?.outOfStockItems || []).slice(0, 5).map((item, idx) => (
+                  <tr key={`oos-${item.variantId || idx}`} className="hover:bg-rose-50/15 transition-colors group">
+                    <td className="px-5 py-3.5">
+                      <Link to={`/admin/products/form?id=${item.productId}`} className="font-bold text-gray-800 hover:text-indigo-600 transition-colors line-clamp-1">
+                        {item.productName}
+                      </Link>
+                      <span className="text-[10px] text-gray-400 font-semibold block">Mã SP: #{item.productId}</span>
+                    </td>
+                    <td className="px-5 py-3.5 text-center font-medium text-gray-650">{item.colorName || '—'}</td>
+                    <td className="px-5 py-3.5 text-center font-bold text-gray-600">{item.size}</td>
+                    <td className="px-5 py-3.5 text-center font-black text-red-650">0</td>
+                    <td className="px-5 py-3.5 text-center text-gray-450 font-semibold">{item.threshold || 10}</td>
+                    <td className="px-5 py-3.5 text-center">
+                      <span className="px-2.5 py-0.5 rounded-full text-[10px] font-bold border bg-red-50 text-red-700 border-red-200">
+                        Hết hàng
+                      </span>
+                    </td>
+                    <td className="px-5 py-3.5 text-right">
+                      <Link
+                        to={`/admin/products/form?id=${item.productId}`}
+                        className="inline-flex items-center gap-1 text-xs font-bold text-indigo-600 hover:text-indigo-800 transition-colors bg-indigo-50/50 hover:bg-indigo-50 px-2.5 py-1.5 rounded-lg border border-indigo-100/50"
+                      >
+                        <Edit className="w-3.5 h-3.5" />
+                        <span>Nhập hàng</span>
+                      </Link>
+                    </td>
+                  </tr>
+                ))}
+                {/* Low Stock Items Second */}
+                {(data?.stockAlerts?.lowStockItems || []).slice(0, 5).map((item, idx) => (
+                  <tr key={`low-${item.variantId || idx}`} className="hover:bg-amber-50/15 transition-colors group">
+                    <td className="px-5 py-3.5">
+                      <Link to={`/admin/products/form?id=${item.productId}`} className="font-bold text-gray-800 hover:text-indigo-600 transition-colors line-clamp-1">
+                        {item.productName}
+                      </Link>
+                      <span className="text-[10px] text-gray-400 font-semibold block">Mã SP: #{item.productId}</span>
+                    </td>
+                    <td className="px-5 py-3.5 text-center font-medium text-gray-650">{item.colorName || '—'}</td>
+                    <td className="px-5 py-3.5 text-center font-bold text-gray-600">{item.size}</td>
+                    <td className="px-5 py-3.5 text-center font-black text-amber-600">{item.stockQuantity}</td>
+                    <td className="px-5 py-3.5 text-center text-gray-450 font-semibold">{item.threshold || 10}</td>
+                    <td className="px-5 py-3.5 text-center">
+                      <span className="px-2.5 py-0.5 rounded-full text-[10px] font-bold border bg-amber-50 text-amber-700 border-amber-200">
+                        Sắp hết hàng
+                      </span>
+                    </td>
+                    <td className="px-5 py-3.5 text-right">
+                      <Link
+                        to={`/admin/products/form?id=${item.productId}`}
+                        className="inline-flex items-center gap-1 text-xs font-bold text-indigo-600 hover:text-indigo-800 transition-colors bg-indigo-50/50 hover:bg-indigo-50 px-2.5 py-1.5 rounded-lg border border-indigo-100/50"
+                      >
+                        <Edit className="w-3.5 h-3.5" />
+                        <span>Nhập hàng</span>
+                      </Link>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          ) : (
+            <div className="p-8 text-center text-sm font-medium text-gray-400 flex flex-col items-center gap-2">
+              <CheckCircle className="w-7 h-7 text-emerald-400" />
+              <span>Tuyệt vời! Tất cả biến thể sản phẩm đều có số lượng tồn kho dồi dào.</span>
+            </div>
+          )}
+        </div>
       </div>
 
     </div>

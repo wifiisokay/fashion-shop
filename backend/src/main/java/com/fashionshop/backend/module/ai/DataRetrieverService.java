@@ -7,6 +7,7 @@ import com.fashionshop.backend.domain.repository.CategoryRepository;
 import com.fashionshop.backend.domain.repository.OrderRepository;
 import com.fashionshop.backend.domain.repository.ProductRepository;
 import com.fashionshop.backend.domain.repository.ReturnRequestRepository;
+import com.fashionshop.backend.module.product.ProductPriceService;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.data.domain.PageRequest;
@@ -16,6 +17,8 @@ import jakarta.persistence.criteria.JoinType;
 
 import java.util.Collections;
 import java.util.Comparator;
+import java.math.BigDecimal;
+import java.time.LocalDateTime;
 import java.util.List;
 import java.util.Map;
 import java.util.Random;
@@ -33,6 +36,7 @@ public class DataRetrieverService {
     private final CategoryRepository categoryRepository;
     private final OrderRepository orderRepository;
     private final ReturnRequestRepository returnRequestRepository;
+    private final ProductPriceService productPriceService;
 
     /**
      * Retrieve context data dựa trên intent.
@@ -48,7 +52,7 @@ public class DataRetrieverService {
             case OUTFIT_SUGGEST -> retrieveForOutfit(message);
             case ORDER_INQUIRY -> retrieveOrders(userId);
             case RETURN_SUPPORT -> retrieveReturns(userId);
-            case GENERAL_SUPPORT, CHITCHAT -> ""; // Handled by static system prompt
+            case GENERAL_SUPPORT, CHITCHAT, OUT_OF_SCOPE -> ""; // Handled by static system prompt
         };
     }
 
@@ -161,8 +165,8 @@ public class DataRetrieverService {
     // === Format helpers ===
 
     private String formatProduct(Product p) {
-        String price = p.getIsSale() && p.getSalePrice() != null
-            ? String.format("%s (giảm từ %s)", p.getSalePrice(), p.getBasePrice())
+        String price = productPriceService.isOnSale(p)
+            ? String.format("%s (giảm từ %s)", productPriceService.getEffectivePrice(p), p.getBasePrice())
             : p.getBasePrice().toString();
 
         String primaryImage = "";
@@ -257,7 +261,17 @@ public class DataRetrieverService {
         }
 
         if (lowerMsg.contains("sale") || lowerMsg.contains("giảm giá") || lowerMsg.contains("khuyến mãi")) {
-            spec = spec.and((root, query, cb) -> cb.equal(root.get("isSale"), true));
+            spec = spec.and((root, query, cb) -> {
+                LocalDateTime now = LocalDateTime.now();
+                return cb.and(
+                    cb.isTrue(root.<Boolean>get("isSale")),
+                    cb.isNotNull(root.get("salePrice")),
+                    cb.greaterThan(root.<BigDecimal>get("salePrice"), BigDecimal.ZERO),
+                    cb.lessThan(root.<BigDecimal>get("salePrice"), root.<BigDecimal>get("basePrice")),
+                    cb.or(cb.isNull(root.get("saleStartAt")), cb.lessThanOrEqualTo(root.<LocalDateTime>get("saleStartAt"), now)),
+                    cb.or(cb.isNull(root.get("saleEndAt")), cb.greaterThanOrEqualTo(root.<LocalDateTime>get("saleEndAt"), now))
+                );
+            });
         }
 
         return spec;

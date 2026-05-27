@@ -27,7 +27,8 @@ import java.text.Normalizer;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.util.*;
-import java.util.concurrent.ConcurrentHashMap;
+import com.github.benmanes.caffeine.cache.Cache;
+import com.github.benmanes.caffeine.cache.Caffeine;
 import java.util.stream.Collectors;
 
 /**
@@ -52,7 +53,10 @@ public class ChatServiceImpl implements ChatService {
     private final NluService nluService;
     private final ProductContextResolver productContextResolver;
     private final ObjectMapper objectMapper;
-    private final Map<Long, NluSearchParams> lastNluParams = new ConcurrentHashMap<>();
+    private final Cache<Long, NluSearchParams> lastNluParams = Caffeine.newBuilder()
+        .maximumSize(10_000)
+        .expireAfterAccess(java.time.Duration.ofHours(24))
+        .build();
 
     // ========================
     // Customer
@@ -192,6 +196,9 @@ public class ChatServiceImpl implements ChatService {
             aiResponse = aiClientRouter.generate(systemPrompt, history, content);
             log.info("[AI_CHAT_AI_RESPONSE] userId={} sessionId={} intent={} responseLength={} responsePreview='{}'",
                     userId, session.getId(), intent, aiResponse == null ? 0 : aiResponse.length(), shorten(aiResponse));
+            log.debug("[AI_RAW_RESPONSE] intent={} length={} preview={}",
+                    intent, aiResponse == null ? 0 : aiResponse.length(),
+                    aiResponse == null ? "" : aiResponse.substring(0, Math.min(300, aiResponse.length())));
         } catch (Exception e) {
             log.error("AI call failed for user {}: {}", userId, e.getMessage());
             aiResponse = fallbackByIntent(intent);
@@ -311,6 +318,9 @@ public class ChatServiceImpl implements ChatService {
             aiResponse = aiClientRouter.generate(systemPrompt, history, content);
             log.info("[AI_CHAT_AI_RESPONSE] guest intent={} responseLength={} responsePreview='{}'",
                     intent, aiResponse == null ? 0 : aiResponse.length(), shorten(aiResponse));
+            log.debug("[AI_RAW_RESPONSE] guest intent={} length={} preview={}",
+                    intent, aiResponse == null ? 0 : aiResponse.length(),
+                    aiResponse == null ? "" : aiResponse.substring(0, Math.min(300, aiResponse.length())));
         } catch (Exception e) {
             log.error("AI call failed for guest: {}", e.getMessage());
             aiResponse = fallbackByIntent(intent);
@@ -527,7 +537,7 @@ public class ChatServiceImpl implements ChatService {
      * Trả null nếu không tìm thấy SP nào.
      */
     private NluSearchParams extractNlu(Long sessionId, String content, ChatIntent intent) {
-        NluSearchParams previous = lastNluParams.get(sessionId);
+        NluSearchParams previous = lastNluParams.getIfPresent(sessionId);
         String previousIntent = previous != null && previous.getIntent() != null ? previous.getIntent() : intent.name();
         NluSearchParams current = nluService.extract(content, previousIntent, previous);
         if (current == null) {
@@ -572,6 +582,7 @@ public class ChatServiceImpl implements ChatService {
             case OUTFIT_SUGGEST  -> "Xin lỗi, mình chưa gợi ý được outfit lúc này. Bạn thử lại sau ít giây nhé!";
             case ORDER_INQUIRY   -> "Xin lỗi, mình không tra được. Bạn vào trang Đơn hàng kiểm tra nhé.";
             case RETURN_SUPPORT  -> "Xin lỗi, mình đang bận. Bạn vào trang Đơn hàng → Yêu cầu đổi trả để thực hiện nhé.";
+            case OUT_OF_SCOPE    -> "Fashi chỉ tư vấn về sản phẩm và phong cách trong Fashion Shop thôi bạn ơi. Bạn muốn mình giúp tìm outfit hay sản phẩm nào không?";
             default              -> "Xin lỗi, mình đang bận. Bạn thử lại sau ít giây nhé!";
         };
     }
@@ -592,6 +603,7 @@ public class ChatServiceImpl implements ChatService {
 
     /**
      * Parse AI response: thử parse JSON (cho PRODUCT_SEARCH/OUTFIT_SUGGEST), fallback plain text.
+     * Fix products=0: extract products[] từ AI JSON và hydrate từ DB.
      */
     private ChatMessageResponse parseAiResponse(String aiResponse, ChatIntent intent) {
         // Thử parse JSON
@@ -610,13 +622,42 @@ public class ChatServiceImpl implements ChatService {
                     }
                 }
 
-                return ChatMessageResponse.builder()
+                // Extract products[] từ AI JSON response — fix products=0 bug
+                List<ChatProductCard> aiProducts = new ArrayList<>();
+                if (json.has("products") && json.get("products").isArray()) {
+                    for (JsonNode p : json.get("products")) {
+                        Long pid = null;
+                        Long cid = null;
+                        if (p.has("id")) pid = p.get("id").asLong();
+                        else if (p.has("productId")) pid = p.get("productId").asLong();
+                        if (p.has("colorId")) cid = p.get("colorId").asLong();
+                        if (pid != null) {
+                            try {
+                                productRetrieverService.findProductCard(pid, cid)
+                                    .ifPresent(aiProducts::add);
+                            } catch (Exception ignored) {
+                                log.debug("[AI_CHAT_PARSE] skip productId={} reason=not_found", pid);
+                            }
+                        }
+                    }
+                    log.info("[AI_CHAT_PARSED] intent={} ai_products_parsed={} hydrated={}",
+                        intent, json.get("products").size(), aiProducts.size());
+                }
+
+                ChatMessageResponse resp = ChatMessageResponse.builder()
                         .role("assistant")
                         .content(text)
                         .suggestedQuestions(suggestedQuestions.isEmpty() ? null : suggestedQuestions)
                         .intent(intent.name())
                         .createdAt(LocalDateTime.now())
                         .build();
+
+                // Nếu AI trả products[] → dùng products từ AI (đã hydrate)
+                if (!aiProducts.isEmpty()) {
+                    resp.setProducts(aiProducts);
+                }
+
+                return resp;
             } catch (Exception e) {
                 log.info("[AI_CHAT_PARSE_FALLBACK] intent={} error={} responsePreview='{}'",
                         intent, e.getMessage(), shorten(aiResponse));
@@ -643,6 +684,7 @@ public class ChatServiceImpl implements ChatService {
                 .build();
     }
 
+
     private boolean looksLikeJson(String value) {
         if (value == null) return false;
         String cleaned = value.trim();
@@ -665,6 +707,7 @@ public class ChatServiceImpl implements ChatService {
             case RETURN_SUPPORT -> "Mình đã kiểm tra thông tin đổi trả và chính sách hỗ trợ phù hợp.";
             case GENERAL_SUPPORT -> "Mình có thể hỗ trợ bạn về chính sách, size, thanh toán và vận chuyển.";
             case CHITCHAT -> "Mình có thể hỗ trợ bạn tìm sản phẩm, phối đồ hoặc kiểm tra đơn hàng.";
+            case OUT_OF_SCOPE -> "Fashi chỉ tư vấn về sản phẩm và phong cách trong Fashion Shop. Bạn muốn mình giúp gì không?";
         };
     }
 
@@ -676,6 +719,7 @@ public class ChatServiceImpl implements ChatService {
             case RETURN_SUPPORT -> List.of("Hướng dẫn đổi/trả hoặc khiếu nại", "Liên hệ hỗ trợ");
             case GENERAL_SUPPORT -> List.of("Tìm sản phẩm", "Tư vấn size");
             case CHITCHAT -> List.of("Tìm áo thun nam", "Gợi ý outfit đi chơi", "Xem đơn hàng");
+            case OUT_OF_SCOPE -> List.of("Tìm sản phẩm mới", "Tư vấn phối đồ", "Xem chính sách shop");
         };
     }
 

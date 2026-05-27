@@ -29,6 +29,7 @@ public class ChatProductCard {
     private String colorName;
     private String colorCode;
     private String colorFamily;
+    private String fitType;
     private Long totalStock;
     private String matchReason;
     private java.util.List<ChatProductVariantOption> availableVariants;

@@ -1,7 +1,8 @@
-import { useState, useRef, useEffect } from 'react';
+import { useState, useRef, useEffect, useMemo } from 'react';
 import { X, Send, Bot, User, ExternalLink, History, AlertCircle, ShoppingCart, Sparkles } from 'lucide-react';
 import { useChatMessages } from '../../hooks/useChatMessages';
 import { useCart } from '../../hooks/useCart';
+import { useProduct } from '../../hooks/useProduct';
 import { clsx } from 'clsx';
 import ReactMarkdown from 'react-markdown';
 import { formatPrice } from '../../utils/format';
@@ -14,11 +15,17 @@ const COLOR_FAMILY_LABELS = {
   mixed: 'Phoi mau',
 };
 
+const SLOT_ROLE_LABELS = {
+  top: 'Áo',
+  bottom: 'Quần/Váy',
+  outer: 'Khoác',
+};
+
 const uniqueProducts = (items = []) => {
   const seen = new Set();
   return items.filter((item) => {
     if (!item?.id) return false;
-    const key = String(item.id);
+    const key = `${item.id}-${item.colorId || 'default'}`;
     if (seen.has(key)) return false;
     seen.add(key);
     return true;
@@ -28,6 +35,130 @@ const uniqueProducts = (items = []) => {
 const colorLabel = (item) => {
   if (!item?.colorName && !item?.colorFamily) return null;
   return [item.colorName, COLOR_FAMILY_LABELS[item.colorFamily] || item.colorFamily].filter(Boolean).join(' / ');
+};
+
+const ChatOutfitItemCardSkeleton = ({ role, optional }) => {
+  return (
+    <div className="w-24 shrink-0 block relative">
+      <div className="relative aspect-4/5 overflow-hidden rounded-lg bg-gray-100 border border-gray-100 animate-pulse">
+        {role && SLOT_ROLE_LABELS[role] && (
+          <span className="absolute left-1 top-1 rounded bg-black/75 px-1 py-0.25 text-[8px] font-bold text-white uppercase backdrop-blur-xs">
+            {SLOT_ROLE_LABELS[role]}
+          </span>
+        )}
+        {role === 'outer' && optional && (
+          <span className="absolute right-1 top-1 rounded bg-amber-400 px-1 py-0.25 text-[7px] font-extrabold text-black uppercase">
+            T.Chọn
+          </span>
+        )}
+      </div>
+      <div className="mt-1 h-3 w-full bg-gray-100 rounded animate-pulse" />
+      <div className="mt-1 h-3 w-2/3 bg-gray-100 rounded animate-pulse" />
+      <div className="mt-1 h-2.5 w-1/2 bg-gray-100 rounded animate-pulse" />
+    </div>
+  );
+};
+
+const ChatOutfitItemCard = ({ item, combo, comboIdx, idx }) => {
+  const { data: productDetail, isLoading } = useProduct(item?.id);
+  const productData = productDetail;
+
+  const colors = useMemo(
+    () => (productData?.colors || []).slice().sort((a, b) => (a.displayOrder || 0) - (b.displayOrder || 0) || a.id - b.id),
+    [productData?.colors]
+  );
+
+  const selectedColor = useMemo(() => {
+    if (!productData) return null;
+    const preferred = item?.colorId;
+    return colors.find((c) => c.id === preferred) || colors[0] || null;
+  }, [colors, item?.colorId, productData]);
+
+  const lookupProduct = useMemo(() => {
+    return (combo?.products || combo?.items || [])?.find(p => String(p.id) === String(item.id));
+  }, [combo, item?.id]);
+
+  const previewImage = selectedColor?.thumbnailUrl || item?.imageUrl || lookupProduct?.imageUrl || (productData?.images && productData.images[0]?.imageUrl) || null;
+  const fullName = productData?.name || item?.name || lookupProduct?.name || 'Sản phẩm';
+
+  const resolvedPrice = useMemo(() => {
+    if (item.displayPrice || item.salePrice || item.price) {
+      return item.displayPrice || item.salePrice || item.price;
+    }
+    if (lookupProduct?.displayPrice || lookupProduct?.salePrice || lookupProduct?.price) {
+      return lookupProduct.displayPrice || lookupProduct.salePrice || lookupProduct.price;
+    }
+    if (productData) {
+      const hasActiveSale = productData.isCurrentlyOnSale !== undefined ? productData.isCurrentlyOnSale : (productData.isSale && productData.salePrice);
+      return hasActiveSale ? productData.salePrice : (productData.basePrice || productData.price);
+    }
+    return null;
+  }, [item.displayPrice, item.salePrice, item.price, lookupProduct, productData]);
+
+  if (isLoading) {
+    return <ChatOutfitItemCardSkeleton role={item.role} optional={item.optional} />;
+  }
+
+  const colorCode = selectedColor?.colorCode || item.colorCode || lookupProduct?.colorCode;
+  const colorName = selectedColor?.colorName || item.colorName || lookupProduct?.colorName;
+
+  return (
+    <a
+      href={`/products/${item.id}`}
+      className="w-24 shrink-0 block relative group"
+    >
+      <div className="relative aspect-4/5 overflow-hidden rounded-lg bg-gray-100 border border-gray-100">
+        {previewImage ? (
+          <img
+            src={previewImage}
+            alt={fullName}
+            className="h-full w-full object-cover transition-transform group-hover:scale-105"
+          />
+        ) : (
+          <div className="h-full w-full flex items-center justify-center bg-gray-50 text-[10px] text-gray-400">
+            Không có ảnh
+          </div>
+        )}
+        {item.role && SLOT_ROLE_LABELS[item.role] && (
+          <span className="absolute left-1 top-1 rounded bg-black/75 px-1 py-0.25 text-[8px] font-bold text-white uppercase backdrop-blur-xs">
+            {SLOT_ROLE_LABELS[item.role]}
+          </span>
+        )}
+        {item.role === 'outer' && item.optional && (
+          <span className="absolute right-1 top-1 rounded bg-amber-400 px-1 py-0.25 text-[7px] font-extrabold text-black uppercase">
+            T.Chọn
+          </span>
+        )}
+      </div>
+      <p
+        className="mt-1 text-xs font-semibold text-gray-900 leading-tight line-clamp-2 min-h-7 flex items-center animate-fadeIn"
+        title={fullName}
+      >
+        {fullName}
+      </p>
+
+      {/* Swatch and Color Name */}
+      {(colorName || item.colorFamily || colorCode) && (
+        <div className="mt-0.5 flex items-center gap-1 text-[10px] text-gray-500">
+          {colorCode && (
+            <span
+              className="h-2 w-2 rounded-full border border-gray-200 shrink-0"
+              style={{ backgroundColor: colorCode }}
+            />
+          )}
+          <span className="truncate">
+            {colorName || COLOR_FAMILY_LABELS[item.colorFamily] || item.colorFamily || 'Màu sắc'}
+          </span>
+        </div>
+      )}
+
+      {resolvedPrice ? (
+        <p className="text-[11px] font-semibold text-gray-700 mt-0.5">
+          {formatPrice(resolvedPrice)}
+        </p>
+      ) : null}
+    </a>
+  );
 };
 
 const ChatWidget = () => {
@@ -160,121 +291,213 @@ const ChatWidget = () => {
                 {/* Product Cards */}
                 {msg.products && msg.products.length > 0 && (
                   <div className="mt-2 ml-11 space-y-2">
-                    {uniqueProducts(msg.products).map((product) => (
-                      <div key={product.id} className="bg-white border border-gray-200 rounded-xl p-2.5 shadow-sm">
-                        <div className="flex items-center gap-3">
-                          {product.imageUrl && (
-                            <img src={product.imageUrl} alt={product.name} className="w-14 h-14 rounded-lg object-cover flex-shrink-0" />
-                          )}
-                          <div className="flex-1 min-w-0">
-                            <p className="text-sm font-medium text-gray-900 truncate">{product.name}</p>
-                            <div className="flex items-center gap-2 mt-0.5">
-                              {product.salePrice ? (
-                                <>
-                                  <span className="text-sm font-semibold text-red-600">{formatPrice(product.displayPrice || product.salePrice)}</span>
-                                  <span className="text-xs text-gray-400 line-through">{formatPrice(product.price)}</span>
-                                </>
-                              ) : (
-                                <span className="text-sm font-semibold text-gray-900">{formatPrice(product.displayPrice || product.price)}</span>
+                    {uniqueProducts(msg.products).map((product) => {
+                      const productId = product.id || product.productId;
+                      const productName = product.name || product.productName || 'Sản phẩm';
+                      const productImg = product.imageUrl || product.primaryImageUrl || product.image || `https://picsum.photos/seed/${productId}/200/200`;
+                      const productPrice = product.displayPrice || product.salePrice || product.price || 0;
+                      const originalPrice = product.price || product.basePrice || productPrice;
+                      const isSale = product.isSale || !!product.salePrice || productPrice < originalPrice;
+                      const variants = product.availableVariants || product.variants || [];
+
+                      return (
+                        <div key={productId} className="bg-white border border-gray-200 rounded-xl p-2.5 shadow-sm">
+                          <div className="flex items-center gap-3">
+                            {productImg && (
+                              <img src={productImg} alt={productName} className="w-14 h-14 rounded-lg object-cover flex-shrink-0" />
+                            )}
+                            <div className="flex-1 min-w-0">
+                              <p className="text-sm font-medium text-gray-900 line-clamp-2 min-h-10 flex items-center" title={productName}>{productName}</p>
+                              <div className="flex items-center gap-2 mt-0.5">
+                                {isSale ? (
+                                  <>
+                                    <span className="text-sm font-semibold text-red-600">{formatPrice(productPrice)}</span>
+                                    <span className="text-xs text-gray-400 line-through">{formatPrice(originalPrice)}</span>
+                                  </>
+                                ) : (
+                                  <span className="text-sm font-semibold text-gray-900">{formatPrice(productPrice)}</span>
+                                )}
+                              </div>
+                              {product.matchReason && <p className="text-xs text-gray-500 mt-0.5 truncate">{product.matchReason}</p>}
+                              {colorLabel(product) && (
+                                <div className="mt-1 flex items-center gap-1.5 text-xs text-gray-500">
+                                  {product.colorCode && (
+                                    <span className="h-3 w-3 rounded-full border border-gray-200" style={{ backgroundColor: product.colorCode }} />
+                                  )}
+                                  <span className="truncate">{colorLabel(product)}</span>
+                                </div>
                               )}
                             </div>
-                            {product.matchReason && <p className="text-xs text-gray-500 mt-0.5 truncate">{product.matchReason}</p>}
-                            {colorLabel(product) && (
-                              <div className="mt-1 flex items-center gap-1.5 text-xs text-gray-500">
-                                {product.colorCode && (
-                                  <span className="h-3 w-3 rounded-full border border-gray-200" style={{ backgroundColor: product.colorCode }} />
-                                )}
-                                <span className="truncate">{colorLabel(product)}</span>
-                              </div>
+                          </div>
+                          <div className="mt-2 flex flex-wrap items-center gap-1.5">
+                            {variants.length > 0 && (
+                              <select
+                                value={variantSelections[productKey(product)] || ''}
+                                onChange={(event) => setVariantSelections((prev) => ({
+                                  ...prev,
+                                  [productKey(product)]: event.target.value,
+                                }))}
+                                className="h-8 min-w-16 rounded-lg border border-gray-200 bg-white px-2 text-xs text-gray-700"
+                              >
+                                <option value="">Size</option>
+                                {variants.map((variant) => {
+                                  const variantId = variant.variantId || variant.id;
+                                  const sizeName = variant.sizeName || variant.size || 'Size';
+                                  return (
+                                    <option key={variantId} value={variantId}>{sizeName}</option>
+                                  );
+                                })}
+                              </select>
                             )}
+                            <button
+                              type="button"
+                              disabled={!isAuthenticated || !variantSelections[productKey(product)] || addToCart.isPending}
+                              onClick={() => handleAddProduct(product)}
+                              className="inline-flex h-8 items-center gap-1 rounded-lg border border-gray-200 px-2 text-xs text-gray-700 hover:bg-gray-50 disabled:cursor-not-allowed disabled:opacity-50"
+                              title={isAuthenticated ? 'Thêm vào giỏ hàng' : 'Đăng nhập để thêm vào giỏ'}
+                            >
+                              <ShoppingCart className="h-3.5 w-3.5" />
+                              Thêm
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => handleOutfitForProduct(product)}
+                              disabled={isLoading}
+                              className="inline-flex h-8 items-center gap-1 rounded-lg border border-gray-200 px-2 text-xs text-gray-700 hover:bg-gray-50 disabled:opacity-50"
+                            >
+                              <Sparkles className="h-3.5 w-3.5" />
+                              Phối đồ
+                            </button>
+                            <a
+                              href={`/products/${productId}`}
+                              target="_blank"
+                              rel="noopener noreferrer"
+                              className="inline-flex h-8 items-center gap-1 rounded-lg border border-gray-200 px-2 text-xs text-gray-700 hover:bg-gray-50"
+                            >
+                              <ExternalLink className="h-3.5 w-3.5" />
+                              Xem
+                            </a>
                           </div>
                         </div>
-                        <div className="mt-2 flex flex-wrap items-center gap-1.5">
-                          {product.availableVariants?.length > 0 && (
-                            <select
-                              value={variantSelections[productKey(product)] || ''}
-                              onChange={(event) => setVariantSelections((prev) => ({
-                                ...prev,
-                                [productKey(product)]: event.target.value,
-                              }))}
-                              className="h-8 min-w-16 rounded-lg border border-gray-200 bg-white px-2 text-xs text-gray-700"
-                            >
-                              <option value="">Size</option>
-                              {product.availableVariants.map((variant) => (
-                                <option key={variant.variantId} value={variant.variantId}>{variant.sizeName}</option>
-                              ))}
-                            </select>
-                          )}
-                          <button
-                            type="button"
-                            disabled={!isAuthenticated || !variantSelections[productKey(product)] || addToCart.isPending}
-                            onClick={() => handleAddProduct(product)}
-                            className="inline-flex h-8 items-center gap-1 rounded-lg border border-gray-200 px-2 text-xs text-gray-700 hover:bg-gray-50 disabled:cursor-not-allowed disabled:opacity-50"
-                            title={isAuthenticated ? 'Thêm vào giỏ hàng' : 'Đăng nhập để thêm vào giỏ'}
-                          >
-                            <ShoppingCart className="h-3.5 w-3.5" />
-                            Thêm
-                          </button>
-                          <button
-                            type="button"
-                            onClick={() => handleOutfitForProduct(product)}
-                            disabled={isLoading}
-                            className="inline-flex h-8 items-center gap-1 rounded-lg border border-gray-200 px-2 text-xs text-gray-700 hover:bg-gray-50 disabled:opacity-50"
-                          >
-                            <Sparkles className="h-3.5 w-3.5" />
-                            Phối đồ
-                          </button>
-                          <a
-                            href={`/products/${product.id}`}
-                            target="_blank"
-                            rel="noopener noreferrer"
-                            className="inline-flex h-8 items-center gap-1 rounded-lg border border-gray-200 px-2 text-xs text-gray-700 hover:bg-gray-50"
-                          >
-                            <ExternalLink className="h-3.5 w-3.5" />
-                            Xem
-                          </a>
-                        </div>
-                      </div>
-                    ))}
+                      );
+                    })}
                   </div>
                 )}
 
                 {/* Outfit Combos */}
                 {msg.outfitCombos && msg.outfitCombos.length > 0 && (
                   <div className="mt-2 ml-11 space-y-2">
-                    {msg.outfitCombos.map((combo, comboIdx) => (
-                      <div key={comboIdx} className="rounded-xl border border-gray-200 bg-white p-3 shadow-sm">
-                        <div className="mb-2 flex items-center justify-between gap-2">
-                          <span className="rounded-full bg-gray-900 px-2 py-0.5 text-xs font-medium text-white">
-                            {combo.label || combo.outfitType || combo.style}
-                          </span>
-                        </div>
-                        {(combo.description || combo.reason) && <p className="mb-2 text-xs text-gray-600">{combo.description || combo.reason}</p>}
-                        {(combo.colorStory || combo.occasion) && (
-                          <div className="mb-2 flex flex-wrap gap-1.5 text-[11px] text-gray-600">
-                            {combo.colorStory && <span className="rounded-full bg-gray-100 px-2 py-0.5">{combo.colorStory}</span>}
-                            {combo.occasion && <span className="rounded-full bg-blue-50 px-2 py-0.5 text-blue-700">{combo.occasion}</span>}
+                    {msg.outfitCombos.map((combo, comboIdx) => {
+                      const hasSlots = combo.topSlot || combo.bottomSlot;
+                      let comboItems = [];
+                      if (hasSlots) {
+                        const topItem = combo.topSlot ? {
+                          id: combo.topSlot.productId,
+                          name: combo.topSlot.productName,
+                          colorId: combo.topSlot.colorId,
+                          colorName: combo.topSlot.colorName,
+                          colorCode: combo.topSlot.colorCode,
+                          colorFamily: combo.topSlot.colorFamily,
+                          imageUrl: combo.topSlot.imageUrl,
+                          role: 'top',
+                          optional: combo.topSlot.isOptional || combo.topSlot.optional || false,
+                        } : null;
+
+                        const bottomItem = combo.bottomSlot ? {
+                          id: combo.bottomSlot.productId,
+                          name: combo.bottomSlot.productName,
+                          colorId: combo.bottomSlot.colorId,
+                          colorName: combo.bottomSlot.colorName,
+                          colorCode: combo.bottomSlot.colorCode,
+                          colorFamily: combo.bottomSlot.colorFamily,
+                          imageUrl: combo.bottomSlot.imageUrl,
+                          role: 'bottom',
+                          optional: combo.bottomSlot.isOptional || combo.bottomSlot.optional || false,
+                        } : null;
+
+                        const outerItem = combo.outerSlot ? {
+                          id: combo.outerSlot.productId,
+                          name: combo.outerSlot.productName,
+                          colorId: combo.outerSlot.colorId,
+                          colorName: combo.outerSlot.colorName,
+                          colorCode: combo.outerSlot.colorCode,
+                          colorFamily: combo.outerSlot.colorFamily,
+                          imageUrl: combo.outerSlot.imageUrl,
+                          role: 'outer',
+                          optional: combo.outerSlot.isOptional || combo.outerSlot.optional || false,
+                        } : null;
+
+                        comboItems = [topItem, bottomItem, outerItem].filter(Boolean);
+                      } else {
+                        comboItems = uniqueProducts(combo.products || combo.items || []);
+                      }
+
+                      const occasions = combo.occasion ? combo.occasion.split(',').map(s => s.trim()).filter(Boolean) : [];
+
+                      return (
+                        <div key={comboIdx} className="rounded-xl border border-gray-200 bg-white p-3.5 shadow-sm hover:border-gray-300 transition-colors">
+                          <div className="mb-2 flex flex-wrap items-center gap-1.5 border-b border-gray-100 pb-2">
+                            <span className="rounded-full bg-black px-2 py-0.5 text-[10px] font-bold text-white shadow-2xs">
+                              {combo.label || combo.outfitType || combo.style || 'Bộ phối'}
+                            </span>
+                            {combo.score !== undefined && combo.score !== null && combo.score > 0 && (
+                              <span className="inline-flex items-center gap-0.5 rounded-full bg-amber-50 border border-amber-200 px-1.5 py-0.25 text-[9px] font-extrabold text-amber-700 shadow-2xs">
+                                ✨ Match: {Math.round(combo.score * 100)}%
+                              </span>
+                            )}
+                            {combo.provider && (
+                              <span className="rounded bg-gray-100 px-1 py-0.25 text-[8px] font-semibold text-gray-500 uppercase tracking-wider">
+                                {combo.provider}
+                              </span>
+                            )}
                           </div>
-                        )}
-                        <div className="flex gap-2 overflow-x-auto pb-1">
-                          {uniqueProducts(combo.products || combo.items || []).map((item) => (
-                            <a key={`${comboIdx}-${item.id}`} href={`/products/${item.id}`} className="w-24 shrink-0">
-                              {item.imageUrl && <img src={item.imageUrl} alt={item.name} className="h-28 w-24 rounded-lg object-cover" />}
-                              <p className="mt-1 truncate text-xs font-medium text-gray-900">{item.name}</p>
-                              {colorLabel(item) && (
-                                <div className="mt-0.5 flex items-center gap-1 text-[11px] text-gray-500">
-                                  {item.colorCode && (
-                                    <span className="h-2.5 w-2.5 rounded-full border border-gray-200" style={{ backgroundColor: item.colorCode }} />
-                                  )}
-                                  <span className="truncate">{item.colorName || COLOR_FAMILY_LABELS[item.colorFamily] || item.colorFamily}</span>
-                                </div>
+
+                          {/* Description */}
+                          {combo.description && (
+                            <p className="mb-2 text-xs text-gray-600 leading-relaxed font-normal">{combo.description}</p>
+                          )}
+
+                          {/* Reason stylized card */}
+                          {combo.reason && (
+                            <div className="mb-2 p-2 bg-gray-50 border border-gray-100/50 rounded-lg flex gap-1.5 items-start">
+                              <span className="text-xs shrink-0">💡</span>
+                              <div>
+                                <p className="text-[9px] font-bold text-gray-400 uppercase tracking-wider">Stylist AI khuyên dùng</p>
+                                <p className="text-[11px] text-gray-600 mt-0.5 leading-relaxed">{combo.reason}</p>
+                              </div>
+                            </div>
+                          )}
+
+                          {/* Chips & Tags */}
+                          {(combo.colorStory || occasions.length > 0) && (
+                            <div className="mb-3 flex flex-wrap gap-1.5 items-center">
+                              {combo.colorStory && (
+                                <span className="inline-flex items-center gap-1 rounded-full bg-indigo-50 border border-indigo-100 px-2 py-0.5 text-[10px] font-semibold text-indigo-700">
+                                  🎨 {combo.colorStory}
+                                </span>
                               )}
-                              <p className="text-xs text-gray-600">{formatPrice(item.displayPrice || item.salePrice || item.price)}</p>
-                            </a>
-                          ))}
+                              {occasions.map((occ) => (
+                                <span key={occ} className="inline-flex items-center rounded-full bg-emerald-50 border border-emerald-100 px-2 py-0.5 text-[10px] font-semibold text-emerald-700">
+                                  📍 {occ}
+                                </span>
+                              ))}
+                            </div>
+                          )}
+
+                          <div className="flex gap-2 overflow-x-auto pb-1">
+                            {comboItems.map((item, idx) => (
+                              <ChatOutfitItemCard
+                                key={`${comboIdx}-${item.id}-${idx}`}
+                                item={item}
+                                combo={combo}
+                                comboIdx={comboIdx}
+                                idx={idx}
+                              />
+                            ))}
+                          </div>
                         </div>
-                      </div>
-                    ))}
+                      );
+                    })}
                   </div>
                 )}
 

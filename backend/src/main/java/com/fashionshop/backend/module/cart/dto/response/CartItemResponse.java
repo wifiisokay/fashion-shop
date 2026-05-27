@@ -3,6 +3,7 @@ package com.fashionshop.backend.module.cart.dto.response;
 import com.fashionshop.backend.domain.CartItem;
 import com.fashionshop.backend.domain.Product;
 import com.fashionshop.backend.domain.ProductVariant;
+import com.fashionshop.backend.module.product.ProductPriceService;
 import lombok.Builder;
 import lombok.Getter;
 
@@ -45,10 +46,14 @@ public class CartItemResponse {
     // ============ Static factory ============
 
     public static CartItemResponse from(CartItem item, String primaryImageUrl) {
+        return from(item, primaryImageUrl, new ProductPriceService());
+    }
+
+    public static CartItemResponse from(CartItem item, String primaryImageUrl, ProductPriceService priceService) {
         ProductVariant variant = item.getVariant();
         Product product = variant.getProduct();
 
-        BigDecimal unitPrice = resolveUnitPrice(product, variant);
+        BigDecimal unitPrice = priceService.getFinalUnitPrice(product, variant);
         boolean available = variant.getStockQuantity() > 0;
 
         return CartItemResponse.builder()
@@ -67,20 +72,10 @@ public class CartItemResponse {
             .build();
     }
 
-    /**
+    /*
      * Tính đơn giá theo thứ tự ưu tiên:
      * 1. isSale=true + salePrice != null → salePrice
      * 2. priceAdjustment != null && != 0  → basePrice + priceAdjustment
      * 3. Mặc định                         → basePrice
      */
-    private static BigDecimal resolveUnitPrice(Product product, ProductVariant variant) {
-        if (Boolean.TRUE.equals(product.getIsSale()) && product.getSalePrice() != null) {
-            return product.getSalePrice();
-        }
-        if (variant.getPriceAdjustment() != null
-            && variant.getPriceAdjustment().compareTo(BigDecimal.ZERO) != 0) {
-            return product.getBasePrice().add(variant.getPriceAdjustment());
-        }
-        return product.getBasePrice();
-    }
 }

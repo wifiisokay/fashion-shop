@@ -23,6 +23,8 @@ public class OutfitComboResponse {
     private String reason;
     private String colorStory;
     private String occasion;
+    private Double score;          // AI confidence score 0-1 (null nếu rule-based)
+    private String provider;       // "GEMINI" hoặc "RULE"
     private OutfitSlot topSlot;
     private OutfitSlot bottomSlot;
     private OutfitSlot outerSlot;

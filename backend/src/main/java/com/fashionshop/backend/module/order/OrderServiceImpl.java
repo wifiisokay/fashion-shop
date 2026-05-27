@@ -51,6 +51,7 @@ import com.fashionshop.backend.module.order.dto.response.OrderSummaryResponse;
 import com.fashionshop.backend.module.order.shipping.PackingShippingEstimate;
 import com.fashionshop.backend.module.order.shipping.ShippingFeeEstimator;
 import com.fashionshop.backend.module.payment.PaymentService;
+import com.fashionshop.backend.module.product.ProductPriceService;
 import com.fashionshop.backend.module.returnrequest.ReturnStatusService;
 
 import lombok.RequiredArgsConstructor;
@@ -78,6 +79,7 @@ public class OrderServiceImpl implements OrderService {
     private final PaymentService paymentService;
     private final ReturnStatusService returnStatusService;
     private final ShippingFeeEstimator shippingFeeEstimator;
+    private final ProductPriceService productPriceService;
 
     // ================================================================
     // Customer — Tạo đơn hàng
@@ -151,7 +153,7 @@ public class OrderServiceImpl implements OrderService {
 
             // Tính giá tại thời điểm mua
             Product product = variant.getProduct();
-            BigDecimal unitPrice = calculateUnitPrice(product, variant);
+            BigDecimal unitPrice = productPriceService.getFinalUnitPrice(product, variant);
             BigDecimal itemSubtotal = unitPrice.multiply(BigDecimal.valueOf(cartItem.getQuantity()));
 
                 String imageUrl = resolveVariantImageUrl(variant);
@@ -552,17 +554,6 @@ public class OrderServiceImpl implements OrderService {
             throw new BusinessException(ErrorCode.ORDER_PAYMENT_NOT_PAID, HttpStatus.BAD_REQUEST,
                 "Đơn VNPay chưa thanh toán thành công, không thể xử lý đơn.");
         }
-    }
-
-    private BigDecimal calculateUnitPrice(Product product, ProductVariant variant) {
-        BigDecimal basePrice = Boolean.TRUE.equals(product.getIsSale()) && product.getSalePrice() != null
-            ? product.getSalePrice()
-            : product.getBasePrice();
-
-        if (variant.getPriceAdjustment() != null) {
-            basePrice = basePrice.add(variant.getPriceAdjustment());
-        }
-        return basePrice;
     }
 
     private Map<String, Object> buildAddressSnapshot(Address address) {

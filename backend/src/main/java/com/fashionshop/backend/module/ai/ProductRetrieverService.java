@@ -258,7 +258,11 @@ public class ProductRetrieverService {
         if (params.saleOnly) {
             sql.append(" AND p.is_sale = 1");
         }
-        if (useColorKeyword) {
+        // Ưu tiên colorFamily (chính xác hơn, từ auto-derive) khi có.
+        // colorKeyword LIKE chỉ dùng khi không có colorFamily.
+        if (useColorFamily) {
+            sql.append(" AND pc.color_family = :colorFamily");
+        } else if (useColorKeyword) {
             sql.append(" AND (");
             for (int i = 0; i < colorKeywords.size(); i++) {
                 if (i > 0) {
@@ -267,8 +271,6 @@ public class ProductRetrieverService {
                 sql.append(" LOWER(pc.color_name) LIKE :colorKeyword").append(i);
             }
             sql.append(")");
-        } else if (useColorFamily) {
-            sql.append(" AND pc.color_family = :colorFamily");
         }
         if (params.darkColor) {
             sql.append(" AND (LOWER(pc.color_name) LIKE '%đen%' OR LOWER(pc.color_name) LIKE '%black%' OR LOWER(pc.color_name) LIKE '%navy%' OR LOWER(pc.color_family) IN ('cool','neutral'))");
@@ -298,13 +300,12 @@ public class ProductRetrieverService {
         if (params.maxPrice != null) {
             query.setParameter("maxPrice", params.maxPrice);
         }
-        if (useColorKeyword) {
+        if (useColorFamily) {
+            query.setParameter("colorFamily", params.colorFamily);
+        } else if (useColorKeyword) {
             for (int i = 0; i < colorKeywords.size(); i++) {
                 query.setParameter("colorKeyword" + i, normalizeLike(colorKeywords.get(i)));
             }
-        }
-        if (!useColorKeyword && useColorFamily) {
-            query.setParameter("colorFamily", params.colorFamily);
         }
         if (hasText(params.keyword)) {
             query.setParameter("keyword", normalizeLike(params.keyword));
@@ -420,6 +421,7 @@ public class ProductRetrieverService {
         if (normalized.contains(" vang ")) return "vàng";
         if (containsWord(lower, "tím") || containsColorToken(normalized, "tim")) return "tím";
         if (containsWord(lower, "be") || containsColorToken(normalized, "be")) return "be";
+        if (normalized.contains(" cam ") || normalized.contains(" orange ")) return "cam";
         return null;
     }
 
@@ -489,6 +491,8 @@ public class ProductRetrieverService {
             case "vàng", "vang", "yellow" -> List.of("vàng", "vang", "yellow");
             case "nâu", "nau", "brown" -> List.of("nâu", "nau", "brown");
             case "be", "beige", "kem", "cream" -> List.of("be", "beige", "kem", "cream");
+            case "tím", "tim", "purple", "lilac", "lavender" -> List.of("tím", "tim", "purple", "lilac", "lavender");
+            case "cam", "orange" -> List.of("cam", "orange");
             default -> List.of(normalized);
         };
     }
