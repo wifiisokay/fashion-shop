@@ -61,7 +61,7 @@ public class OrderStatusService {
 
     /** Customer chỉ hủy được: AWAITING_PAYMENT, PENDING */
     public boolean canCustomerCancel(OrderStatus status) {
-        return status == AWAITING_PAYMENT || status == PENDING;
+        return status == PENDING;
     }
 
     /** Staff hủy được: AWAITING_PAYMENT, PENDING, CONFIRMED */

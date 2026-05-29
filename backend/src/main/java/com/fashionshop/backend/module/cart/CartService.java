@@ -31,6 +31,9 @@ public interface CartService {
      */
     void clearCart(Long userId);
 
+    /** Xoa cac variant da checkout khoi gio hang. */
+    void clearByVariantIds(Long userId, List<Long> variantIds);
+
     /**
      * Lấy danh sách CartItem entity — dùng cho OrderService tạo order_items.
      * Không dùng DTO để OrderService có thể snapshot đầy đủ data.

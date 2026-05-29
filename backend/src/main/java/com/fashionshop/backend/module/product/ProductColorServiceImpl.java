@@ -34,16 +34,22 @@ public class ProductColorServiceImpl implements ProductColorService {
     public ProductColorResponse create(Long productId, ProductColorRequest request) {
         Product product = findProductOrThrow(productId);
 
-        if (colorRepository.existsByProductIdAndColorName(productId, request.getColorName().trim())) {
+        String trimmedName = request.getColorName() != null ? request.getColorName().trim() : "";
+        if (colorRepository.existsByProductIdAndColorName(productId, trimmedName)) {
             throw new BusinessException(ErrorCode.PRODUCT_NOT_FOUND, HttpStatus.CONFLICT,
                 "Đã tồn tại màu '" + request.getColorName() + "' cho sản phẩm này");
         }
 
+        String trimmedCode = request.getColorCode() != null ? request.getColorCode().trim() : null;
+        if (trimmedCode != null && trimmedCode.isEmpty()) {
+            trimmedCode = null;
+        }
+
         ProductColor color = ProductColor.builder()
             .product(product)
-            .colorName(request.getColorName().trim())
-            .colorCode(request.getColorCode())
-            .colorFamily(ColorFamilyDeriver.derive(request.getColorCode()))
+            .colorName(trimmedName)
+            .colorCode(trimmedCode)
+            .colorFamily(ColorFamilyDeriver.derive(trimmedCode))
             .displayOrder(request.getDisplayOrder() != null ? request.getDisplayOrder() : 0)
             .build();
 
@@ -55,14 +61,20 @@ public class ProductColorServiceImpl implements ProductColorService {
     @Transactional
     public ProductColorResponse update(Long productId, Long colorId, ProductColorRequest request) {
         ProductColor color = findColorOrThrow(colorId, productId);
-        if (colorRepository.existsByProductIdAndColorNameAndIdNot(productId, request.getColorName().trim(), colorId)) {
+        String trimmedName = request.getColorName() != null ? request.getColorName().trim() : "";
+        if (colorRepository.existsByProductIdAndColorNameAndIdNot(productId, trimmedName, colorId)) {
             throw new BusinessException(ErrorCode.PRODUCT_NOT_FOUND, HttpStatus.CONFLICT,
                 "Đã tồn tại màu '" + request.getColorName() + "' cho sản phẩm này");
         }
 
-        color.setColorName(request.getColorName().trim());
-        color.setColorCode(request.getColorCode());
-        color.setColorFamily(ColorFamilyDeriver.derive(request.getColorCode()));
+        String trimmedCode = request.getColorCode() != null ? request.getColorCode().trim() : null;
+        if (trimmedCode != null && trimmedCode.isEmpty()) {
+            trimmedCode = null;
+        }
+
+        color.setColorName(trimmedName);
+        color.setColorCode(trimmedCode);
+        color.setColorFamily(ColorFamilyDeriver.derive(trimmedCode));
         color.setDisplayOrder(request.getDisplayOrder() != null ? request.getDisplayOrder() : 0);
 
         ProductColor saved = colorRepository.save(color);

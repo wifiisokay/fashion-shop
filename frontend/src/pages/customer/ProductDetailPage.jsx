@@ -93,7 +93,22 @@ const OutfitItemCard = ({
     () => colors.find((color) => color.id === selectedColorId) || null,
     [colors, selectedColorId]
   );
-  const sizes = useMemo(() => selectedColor?.sizes || [], [selectedColor]);
+  const sizes = useMemo(() => {
+    if (selectedColor?.sizes && selectedColor.sizes.length > 0) {
+      return selectedColor.sizes;
+    }
+    if (productData?.variants && productData.variants.length > 0 && selectedColorId) {
+      return productData.variants
+        .filter((v) => Number(v.colorId) === Number(selectedColorId))
+        .map((v) => ({
+          variantId: v.id,
+          size: v.size,
+          stockQuantity: v.stockQuantity,
+          priceAdjustment: v.priceAdjustment || 0,
+        }));
+    }
+    return [];
+  }, [selectedColor, productData?.variants, selectedColorId]);
   const selectedVariant = sizes.find((size) => size.size === selectedSize && size.stockQuantity > 0) || null;
 
   const resolvedPrice = useMemo(() => {
@@ -359,10 +374,22 @@ const ProductDetailPage = () => {
     const firstImage = selectedColor?.thumbnailUrl || galleryImages[0] || null;
     return Array.from(new Set([firstImage, ...galleryImages].filter(Boolean)));
   }, [selectedColor, product.images]);
-  const availableSizes = useMemo(
-    () => selectedColor?.sizes || [],
-    [selectedColor]
-  );
+  const availableSizes = useMemo(() => {
+    if (selectedColor?.sizes && selectedColor.sizes.length > 0) {
+      return selectedColor.sizes;
+    }
+    if (product?.variants && product.variants.length > 0 && effectiveSelectedColorId) {
+      return product.variants
+        .filter((v) => Number(v.colorId) === Number(effectiveSelectedColorId))
+        .map((v) => ({
+          variantId: v.id,
+          size: v.size,
+          stockQuantity: v.stockQuantity,
+          priceAdjustment: v.priceAdjustment || 0,
+        }));
+    }
+    return [];
+  }, [selectedColor, product?.variants, effectiveSelectedColorId]);
 
   // Handle color change — reset gallery and size
   const handleColorSelect = (colorId) => {
@@ -548,8 +575,14 @@ const ProductDetailPage = () => {
         {/* Size buttons */}
         {availableSizes.length > 0 && (
           <div className="space-y-3">
-            <h3 className="text-sm font-medium text-gray-900 uppercase tracking-wider">
-              Kích thước: <span className="text-gray-500 font-normal">{selectedSize || '—'}</span>
+            <h3 className="text-sm font-medium text-gray-900 uppercase tracking-wider flex items-center gap-2">
+              <span>Kích thước:</span>
+              <span className="text-gray-500 font-normal">{selectedSize || '—'}</span>
+              {selectedVariant && (
+                <span className="ml-2 text-xs font-semibold px-2 py-0.5 rounded-full bg-gray-100 text-gray-600 border border-gray-200">
+                  Kho: {selectedVariant.stockQuantity}
+                </span>
+              )}
             </h3>
             <div className="flex flex-wrap gap-3">
               {availableSizes.map((s) => {

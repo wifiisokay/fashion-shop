@@ -65,11 +65,15 @@ const CheckoutPage = () => {
     setError(null);
     try {
       const res = await createOrder.mutateAsync({
-        addressId: formData.addressId,
+        addressId: Number(formData.addressId),
         paymentMethod: formData.paymentMethod,
         shippingFee: shippingFee,
         note: formData.note || null,
         estimatedDays: shippingData?.estimatedDays || null,
+        items: cartItems.map((item) => ({
+          variantId: item.variantId,
+          quantity: item.quantity,
+        })),
       });
 
       const result = res?.data?.data;

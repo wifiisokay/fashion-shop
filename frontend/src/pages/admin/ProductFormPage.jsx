@@ -47,6 +47,15 @@ const SEASON_LABELS = {
   'FALL_WINTER': 'Thu/Đông'
 };
 
+const normalizeSeason = (val) => {
+  if (!val) return 'ALL_SEASON';
+  const clean = val.toString().trim().toUpperCase();
+  if (clean === 'ALL_SEASON' || clean === '4 MÙA' || clean === '4MUA' || clean === 'MÙA') return 'ALL_SEASON';
+  if (clean === 'SPRING_SUMMER' || clean === 'XUÂN/HÈ' || clean === 'XUAN/HE' || clean === 'XUÂN HÈ') return 'SPRING_SUMMER';
+  if (clean === 'FALL_WINTER' || clean === 'THU/ĐÔNG' || clean === 'THU/DONG' || clean === 'THU ĐÔNG') return 'FALL_WINTER';
+  return 'ALL_SEASON';
+};
+
 const COLOR_FAMILY_LABELS = {
   neutral: 'Trung tinh',
   cool: 'Tong lanh',
@@ -84,7 +93,7 @@ const ProductFormPage = () => {
     name: '', description: '', basePrice: '', salePrice: '',
     isSale: false, gender: 'MALE', material: '', estimatedWeight: '300', colorFamily: '',
     categoryId: '', styleTags: [], occasionTags: [],
-    fitType: '', season: '',
+    fitType: '', season: 'ALL_SEASON',
     saleStartAt: '', saleEndAt: '', lowStockThreshold: '10',
     aiSuggestedStyleTags: [], aiSuggestedOccasionTags: []
   });
@@ -128,7 +137,7 @@ const ProductFormPage = () => {
         styleTags: product.styleTags || [],
         occasionTags: product.occasionTags || [],
         fitType: product.fitType || '',
-        season: product.season || '',
+        season: normalizeSeason(product.season),
         saleStartAt: product.saleStartAt ? dayjs(product.saleStartAt).format('YYYY-MM-DDTHH:mm') : '',
         saleEndAt: product.saleEndAt ? dayjs(product.saleEndAt).format('YYYY-MM-DDTHH:mm') : '',
         lowStockThreshold: product.lowStockThreshold?.toString() || '10',
@@ -289,7 +298,12 @@ const ProductFormPage = () => {
 
   const handleColorSubmit = async (e) => {
     e.preventDefault();
-    const payload = { productId: parseInt(productId), ...colorForm };
+    const payload = {
+      productId: parseInt(productId),
+      colorName: colorForm.colorName.trim(),
+      colorCode: colorForm.colorCode ? colorForm.colorCode.trim() : null,
+      displayOrder: colorForm.displayOrder
+    };
     try {
       if (editColor) {
         await updateColorMutation.mutateAsync({ ...payload, colorId: editColor.id });
@@ -436,7 +450,7 @@ const ProductFormPage = () => {
               </div>
               <div className="space-y-2">
                 <Label>Danh mục *</Label>
-                <Select value={form.categoryId} onValueChange={(val) => setForm({ ...form, categoryId: val })}>
+                <Select key={form.categoryId} value={form.categoryId} onValueChange={(val) => setForm({ ...form, categoryId: val })}>
                   <SelectTrigger><SelectValue placeholder="Chọn danh mục" /></SelectTrigger>
                   <SelectContent>
                     {categoryOptions.map((opt) => (
@@ -452,7 +466,7 @@ const ProductFormPage = () => {
               </div>
               <div className="space-y-2">
                 <Label>Giới tính *</Label>
-                <Select value={form.gender} onValueChange={(val) => setForm({ ...form, gender: val })}>
+                <Select key={form.gender} value={form.gender} onValueChange={(val) => setForm({ ...form, gender: val })}>
                   <SelectTrigger><SelectValue /></SelectTrigger>
                   <SelectContent>
                     {GENDER_OPTIONS.map((opt) => (
@@ -557,7 +571,7 @@ const ProductFormPage = () => {
 
               <div className="space-y-2">
                 <Label>Kiểu dáng (Fit Type)</Label>
-                <Select value={form.fitType} onValueChange={(val) => setForm({ ...form, fitType: val })}>
+                <Select key={form.fitType} value={form.fitType} onValueChange={(val) => setForm({ ...form, fitType: val })}>
                   <SelectTrigger><SelectValue placeholder="Chọn kiểu dáng" /></SelectTrigger>
                   <SelectContent>
                     {(tagLibrary?.fitTypes || []).map((f) => <SelectItem key={f} value={f}>{f}</SelectItem>)}
@@ -566,11 +580,11 @@ const ProductFormPage = () => {
               </div>
               <div className="space-y-2">
                 <Label>Mùa (Season)</Label>
-                <Select value={form.season} onValueChange={(val) => setForm({ ...form, season: val })}>
+                <Select key={form.season} value={form.season} onValueChange={(val) => setForm({ ...form, season: val })}>
                   <SelectTrigger><SelectValue placeholder="Chọn mùa" /></SelectTrigger>
                   <SelectContent>
-                    {(tagLibrary?.seasons || []).map((s) => (
-                      <SelectItem key={s} value={s}>{SEASON_LABELS[s] || s}</SelectItem>
+                    {Object.keys(SEASON_LABELS).map((s) => (
+                      <SelectItem key={s} value={s}>{SEASON_LABELS[s]}</SelectItem>
                     ))}
                   </SelectContent>
                 </Select>

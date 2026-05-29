@@ -40,7 +40,7 @@ const OrderDetailPage = () => {
   if (isError || !order) return <div className="text-center py-20 text-red-500">Lỗi tải chi tiết đơn hàng</div>;
 
   const address = order.addressSnapshot || {};
-  const canCancel = order.status === 'PENDING' || order.status === 'AWAITING_PAYMENT';
+  const canCancel = order.status === 'PENDING';
   const canShowReviews = order.status === 'COMPLETED';
 
   // Return window: 7 days from deliveredAt

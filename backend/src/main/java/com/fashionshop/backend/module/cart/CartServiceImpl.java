@@ -101,6 +101,15 @@ public class CartServiceImpl implements CartService {
     }
 
     @Override
+    @Transactional
+    public void clearByVariantIds(Long userId, List<Long> variantIds) {
+        if (variantIds == null || variantIds.isEmpty()) {
+            return;
+        }
+        cartItemRepository.deleteByUserIdAndVariantIds(userId, variantIds);
+    }
+
+    @Override
     @Transactional(readOnly = true)
     public List<CartItem> getCartItems(Long userId) {
         return cartItemRepository.findByUserIdWithDetails(userId);
