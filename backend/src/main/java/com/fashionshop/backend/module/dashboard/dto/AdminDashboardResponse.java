@@ -49,6 +49,7 @@ public class AdminDashboardResponse {
         private long finalizedOrderCount;
         private long pendingOrderCount;
         private long shippingOrderCount;
+        private long completedOrderCount;
         private long pendingReturnCount;
         private long lowStockProductCount;
         private long activeProductCount;

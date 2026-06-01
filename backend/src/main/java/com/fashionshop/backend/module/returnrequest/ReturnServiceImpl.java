@@ -3,8 +3,6 @@ package com.fashionshop.backend.module.returnrequest;
 import com.fashionshop.backend.common.PageResponse;
 import com.fashionshop.backend.common.enums.OrderPaymentStatus;
 import com.fashionshop.backend.common.enums.OrderStatus;
-import com.fashionshop.backend.common.enums.PaymentStatus;
-import com.fashionshop.backend.common.enums.ReturnRequestType;
 import com.fashionshop.backend.common.enums.ReturnStatus;
 import com.fashionshop.backend.domain.Order;
 import com.fashionshop.backend.domain.OrderItem;
@@ -12,13 +10,13 @@ import com.fashionshop.backend.domain.ReturnItem;
 import com.fashionshop.backend.domain.ReturnRequest;
 import com.fashionshop.backend.domain.User;
 import com.fashionshop.backend.domain.repository.OrderRepository;
-import com.fashionshop.backend.domain.repository.PaymentRepository;
+import com.fashionshop.backend.domain.repository.ProductVariantRepository;
 import com.fashionshop.backend.domain.repository.ReturnItemRepository;
 import com.fashionshop.backend.domain.repository.ReturnRequestRepository;
 import com.fashionshop.backend.domain.repository.UserRepository;
 import com.fashionshop.backend.exception.BusinessException;
 import com.fashionshop.backend.exception.ErrorCode;
-import com.fashionshop.backend.module.returnrequest.dto.request.CreateReturnItemRequest;
+import com.fashionshop.backend.module.returnrequest.dto.request.CreateReturnRequest;
 import com.fashionshop.backend.module.returnrequest.dto.response.ReturnDashboardResponse;
 import com.fashionshop.backend.module.returnrequest.dto.response.ReturnDashboardResponse.Alerts;
 import com.fashionshop.backend.module.returnrequest.dto.response.ReturnDashboardResponse.ChartPoint;
@@ -34,7 +32,6 @@ import org.springframework.data.domain.PageRequest;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
-import org.springframework.web.multipart.MultipartFile;
 
 import java.math.BigDecimal;
 import java.time.LocalDate;
@@ -43,10 +40,6 @@ import java.util.ArrayList;
 import java.util.Collection;
 import java.util.Comparator;
 import java.util.List;
-import java.util.Map;
-import java.util.Set;
-import java.util.function.Function;
-import java.util.stream.Collectors;
 
 @Slf4j
 @Service
@@ -56,68 +49,87 @@ public class ReturnServiceImpl implements ReturnService {
     private final ReturnRequestRepository returnRepository;
     private final ReturnItemRepository returnItemRepository;
     private final OrderRepository orderRepository;
-    private final PaymentRepository paymentRepository;
+    private final ProductVariantRepository variantRepository;
     private final UserRepository userRepository;
     private final ReturnStatusService returnStatusService;
     private final StorageService storageService;
 
-    private static final Set<ReturnStatus> ACTIVE_STATUSES = Set.of(
-        ReturnStatus.PENDING, ReturnStatus.APPROVED, ReturnStatus.RECEIVED
-    );
-    private static final Set<ReturnStatus> QUANTITY_STATUSES = Set.of(
-        ReturnStatus.PENDING, ReturnStatus.APPROVED, ReturnStatus.RECEIVED, ReturnStatus.COMPLETED
-    );
-
     @Override
     @Transactional
-    public ReturnResponse createReturn(Long userId, Long orderId, ReturnRequestType requestType, String reason,
-                                       List<CreateReturnItemRequest> items, List<MultipartFile> images) {
-        Order order = orderRepository.findByIdAndUserId(orderId, userId)
+    public ReturnResponse createReturn(Long userId, CreateReturnRequest request) {
+        if (request == null || request.getOrderId() == null) {
+            throw new BusinessException(ErrorCode.VALIDATION_ERROR, HttpStatus.BAD_REQUEST);
+        }
+        if (request.getItems() == null || request.getItems().isEmpty()) {
+            throw new BusinessException(ErrorCode.RETURN_ITEM_REQUIRED, HttpStatus.BAD_REQUEST);
+        }
+
+        Order order = orderRepository.findByIdAndUserId(request.getOrderId(), userId)
             .orElseThrow(() -> new BusinessException(ErrorCode.ORDER_NOT_FOUND, HttpStatus.NOT_FOUND));
 
-        if (order.getStatus() != OrderStatus.DELIVERED && order.getStatus() != OrderStatus.COMPLETED) {
+        if (order.getStatus() != OrderStatus.COMPLETED) {
             throw new BusinessException(ErrorCode.RETURN_NOT_ELIGIBLE, HttpStatus.BAD_REQUEST);
         }
-        if (order.getDeliveredAt() == null || order.getDeliveredAt().plusDays(7).isBefore(LocalDateTime.now())) {
+        if (order.getCompletedAt() == null || order.getCompletedAt().plusDays(7).isBefore(LocalDateTime.now())) {
             throw new BusinessException(ErrorCode.RETURN_WINDOW_EXPIRED, HttpStatus.BAD_REQUEST);
         }
-        if (returnRepository.existsByOrderIdAndStatusIn(orderId, ACTIVE_STATUSES)) {
+        if (order.getPaymentStatus() == OrderPaymentStatus.REFUNDED) {
+            throw new BusinessException(ErrorCode.RETURN_NOT_ELIGIBLE, HttpStatus.BAD_REQUEST,
+                "Don hang da hoan tien");
+        }
+        if (returnRepository.existsByOrderId(order.getId())) {
             throw new BusinessException(ErrorCode.RETURN_ALREADY_EXISTS, HttpStatus.CONFLICT);
         }
 
-        User user = userRepository.findById(userId)
-            .orElseThrow(() -> new BusinessException(ErrorCode.USER_NOT_FOUND, HttpStatus.NOT_FOUND));
-
-        List<CreateReturnItemRequest> requestedItems = normalizeRequestedItems(order, items);
-        validateReturnItems(order, requestedItems);
+        List<String> evidenceImages = request.getEvidenceImages() != null
+            ? new ArrayList<>(request.getEvidenceImages())
+            : new ArrayList<>();
 
         ReturnRequest returnRequest = ReturnRequest.builder()
             .order(order)
-            .user(user)
-            .reason(buildReason(requestType != null ? requestType : ReturnRequestType.RETURN, reason))
-            .status(ReturnStatus.PENDING)
-            .previousOrderStatus(order.getStatus().name())
+            .user(order.getUser())
+            .reason(request.getReason().trim())
+            .status(ReturnStatus.REQUESTED)
+            .refundAmount(BigDecimal.ZERO)
+            .evidenceImages(evidenceImages)
+            .items(new ArrayList<>())
             .build();
-        requestedItems.stream()
-            .map(item -> buildReturnItem(returnRequest, order, item))
-            .forEach(returnRequest.getItems()::add);
 
-        returnRepository.save(returnRequest);
+        BigDecimal totalRefund = BigDecimal.ZERO;
+        for (CreateReturnRequest.ReturnItemRequest itemReq : request.getItems()) {
+            OrderItem matchedItem = order.getItems().stream()
+                .filter(oi -> oi.getId().equals(itemReq.getOrderItemId()))
+                .findFirst()
+                .orElseThrow(() -> new BusinessException(ErrorCode.RETURN_ITEM_NOT_IN_ORDER, HttpStatus.BAD_REQUEST));
 
-        if (images != null && !images.isEmpty()) {
-            List<String> imageUrls = new ArrayList<>();
-            String folder = "fashion-shop/returns/" + returnRequest.getId();
-            for (MultipartFile image : images) {
-                UploadResult result = storageService.uploadImage(image, folder);
-                imageUrls.add(result.url());
+            if (itemReq.getQuantity() <= 0 || itemReq.getQuantity() > matchedItem.getQuantity()) {
+                throw new BusinessException(ErrorCode.RETURN_QUANTITY_EXCEEDED, HttpStatus.BAD_REQUEST);
             }
-            returnRequest.setEvidenceImages(imageUrls);
+
+            BigDecimal subtotal = matchedItem.getUnitPrice().multiply(BigDecimal.valueOf(itemReq.getQuantity()));
+            totalRefund = totalRefund.add(subtotal);
+
+            ReturnItem returnItem = ReturnItem.builder()
+                .returnRequest(returnRequest)
+                .orderItem(matchedItem)
+                .productId(matchedItem.getProductId())
+                .variantId(matchedItem.getVariant() != null ? matchedItem.getVariant().getId() : null)
+                .productName(matchedItem.getProductName())
+                .colorName(matchedItem.getColorName())
+                .size(matchedItem.getSize())
+                .imageUrl(matchedItem.getImageUrl())
+                .quantity(itemReq.getQuantity())
+                .unitPrice(matchedItem.getUnitPrice())
+                .subtotal(subtotal)
+                .build();
+
+            returnRequest.getItems().add(returnItem);
         }
 
-        order.setStatus(OrderStatus.RETURN_REQUESTED);
-        orderRepository.save(order);
+        returnRequest.setRefundAmount(totalRefund);
+        returnRepository.save(returnRequest);
 
-        log.info("Return created userId={}, orderId={}, returnId={}", userId, orderId, returnRequest.getId());
+        log.info("Return created userId={}, orderId={}, returnId={}, refundAmount={}", userId, order.getId(), returnRequest.getId(), totalRefund);
         return ReturnResponse.from(returnRequest, returnStatusService.getLabel(returnRequest.getStatus()));
     }
 
@@ -163,9 +175,6 @@ public class ReturnServiceImpl implements ReturnService {
         if (note != null && !note.isBlank()) {
             r.setAdminNote(note);
         }
-
-        r.getOrder().setStatus(OrderStatus.RETURNING);
-        orderRepository.save(r.getOrder());
         log.info("Return approved returnId={}, staffId={}", returnId, staffId);
     }
 
@@ -183,62 +192,40 @@ public class ReturnServiceImpl implements ReturnService {
         r.setProcessedBy(findUserOrThrow(staffId));
         r.setAdminNote(note);
 
-        if (r.getOrder().getStatus() == OrderStatus.RETURN_REQUESTED) {
-            r.getOrder().setStatus(resolvePreviousOrderStatus(r));
-            orderRepository.save(r.getOrder());
-        }
-
         log.info("Return rejected returnId={}, staffId={}", returnId, staffId);
     }
 
     @Override
     @Transactional
-    public void receiveReturn(Long adminId, Long returnId) {
+    public void markReceived(Long adminId, Long returnId) {
         ReturnRequest r = findReturnOrThrow(returnId);
         returnStatusService.validateTransition(r.getStatus(), ReturnStatus.RECEIVED);
 
+        increaseStockFromReturnItems(r);
+
         r.setStatus(ReturnStatus.RECEIVED);
         r.setProcessedBy(findUserOrThrow(adminId));
+        r.setReceivedAt(LocalDateTime.now());
         log.info("Return received returnId={}, adminId={}", returnId, adminId);
     }
 
     @Override
     @Transactional
-    public void completeReturn(Long adminId, Long returnId, BigDecimal refundAmount, String note) {
+    public void completeReturn(Long adminId, Long returnId, String note) {
         ReturnRequest r = findReturnOrThrow(returnId);
         returnStatusService.validateTransition(r.getStatus(), ReturnStatus.COMPLETED);
 
-        if (refundAmount != null && refundAmount.compareTo(BigDecimal.ZERO) < 0) {
-            throw new BusinessException(ErrorCode.INVALID_REFUND_AMOUNT, HttpStatus.BAD_REQUEST);
-        }
-        ReturnRequestType requestType = resolveRequestType(r.getReason());
-        BigDecimal finalRefundAmount = refundAmount;
-        if (requestType == ReturnRequestType.EXCHANGE) {
-            if (refundAmount != null && refundAmount.compareTo(BigDecimal.ZERO) > 0) {
-                throw new BusinessException(ErrorCode.RETURN_EXCHANGE_REFUND_NOT_ALLOWED, HttpStatus.BAD_REQUEST);
-            }
-            if (note == null || note.isBlank()) {
-                throw new BusinessException(ErrorCode.RETURN_EXCHANGE_NOTE_REQUIRED, HttpStatus.BAD_REQUEST);
-            }
-            finalRefundAmount = BigDecimal.ZERO;
-        }
-
         r.setStatus(ReturnStatus.COMPLETED);
         r.setProcessedBy(findUserOrThrow(adminId));
-        r.setRefundAmount(finalRefundAmount);
+        r.setRefundedAt(LocalDateTime.now());
         if (note != null && !note.isBlank()) {
             r.setAdminNote(note.trim());
         }
 
         Order order = r.getOrder();
-        order.setStatus(OrderStatus.RETURNED);
-        if (requestType != ReturnRequestType.EXCHANGE) {
-            syncManualRefundIfFullReturn(order, finalRefundAmount, r.getAdminNote());
-        }
-        orderRepository.save(order);
+        order.setPaymentStatus(OrderPaymentStatus.REFUNDED);
 
-        log.info("Return completed manually returnId={}, adminId={}, type={}, refundAmount={}",
-            returnId, adminId, requestType, finalRefundAmount);
+        log.info("Return completed returnId={}, adminId={}", returnId, adminId);
     }
 
     @Override
@@ -251,9 +238,9 @@ public class ReturnServiceImpl implements ReturnService {
 
         return buildDashboard(
             monthStart,
-            returnRepository.findTop5ByStatusInOrderByCreatedAtAsc(List.of(ReturnStatus.PENDING, ReturnStatus.APPROVED, ReturnStatus.RECEIVED)),
+            returnRepository.findTop5ByStatusInOrderByCreatedAtAsc(List.of(ReturnStatus.REQUESTED, ReturnStatus.APPROVED, ReturnStatus.RECEIVED)),
             Alerts.builder()
-                .pendingOver24h(returnRepository.countByStatusAndCreatedAtBefore(ReturnStatus.PENDING, over24h))
+                .pendingOver24h(returnRepository.countByStatusAndCreatedAtBefore(ReturnStatus.REQUESTED, over24h))
                 .approvedOver3Days(returnRepository.countByStatusAndCreatedAtBefore(ReturnStatus.APPROVED, over3Days))
                 .receivedNotCompleted(returnRepository.countByStatus(ReturnStatus.RECEIVED))
                 .build(),
@@ -270,9 +257,9 @@ public class ReturnServiceImpl implements ReturnService {
 
         return buildDashboard(
             monthStart,
-            returnRepository.findTop5ByStatusOrderByCreatedAtAsc(ReturnStatus.PENDING),
+            returnRepository.findTop5ByStatusOrderByCreatedAtAsc(ReturnStatus.REQUESTED),
             Alerts.builder()
-                .pendingOver24h(returnRepository.countByStatusAndCreatedAtBefore(ReturnStatus.PENDING, over24h))
+                .pendingOver24h(returnRepository.countByStatusAndCreatedAtBefore(ReturnStatus.REQUESTED, over24h))
                 .approvedOver3Days(0)
                 .receivedNotCompleted(0)
                 .build(),
@@ -297,131 +284,25 @@ public class ReturnServiceImpl implements ReturnService {
         return PageResponse.from(content, page);
     }
 
-    private List<CreateReturnItemRequest> normalizeRequestedItems(Order order, List<CreateReturnItemRequest> requestedItems) {
-        if (requestedItems != null && !requestedItems.isEmpty()) {
-            return requestedItems;
-        }
-        if (order.getItems() == null || order.getItems().isEmpty()) {
+    private void increaseStockFromReturnItems(ReturnRequest returnRequest) {
+        List<ReturnItem> items = returnItemRepository.findByReturnRequestId(returnRequest.getId());
+        if (items == null || items.isEmpty()) {
             throw new BusinessException(ErrorCode.RETURN_ITEM_REQUIRED, HttpStatus.BAD_REQUEST);
         }
-        return order.getItems().stream()
-            .map(item -> {
-                CreateReturnItemRequest request = new CreateReturnItemRequest();
-                request.setOrderItemId(item.getId());
-                request.setQuantity(item.getQuantity());
-                return request;
-            })
-            .toList();
-    }
 
-    private void validateReturnItems(Order order, List<CreateReturnItemRequest> requestedItems) {
-        if (requestedItems == null || requestedItems.isEmpty()) {
-            throw new BusinessException(ErrorCode.RETURN_ITEM_REQUIRED, HttpStatus.BAD_REQUEST);
-        }
-        Map<Long, OrderItem> orderItems = order.getItems().stream()
-            .collect(Collectors.toMap(OrderItem::getId, Function.identity()));
-
-        for (CreateReturnItemRequest request : requestedItems) {
-            if (request.getOrderItemId() == null || request.getQuantity() == null || request.getQuantity() < 1) {
-                throw new BusinessException(ErrorCode.INVALID_QUANTITY, HttpStatus.BAD_REQUEST);
+        for (ReturnItem item : items) {
+            Long variantId = item.getVariantId();
+            if (variantId == null && item.getOrderItem() != null && item.getOrderItem().getVariant() != null) {
+                variantId = item.getOrderItem().getVariant().getId();
             }
-            OrderItem orderItem = orderItems.get(request.getOrderItemId());
-            if (orderItem == null) {
-                throw new BusinessException(ErrorCode.RETURN_ITEM_NOT_IN_ORDER, HttpStatus.BAD_REQUEST);
+            if (variantId == null) {
+                throw new BusinessException(ErrorCode.VARIANT_NOT_FOUND, HttpStatus.BAD_REQUEST);
             }
-            long alreadyReturned = defaultLong(returnItemRepository.sumQuantityByOrderItemAndStatuses(orderItem.getId(), QUANTITY_STATUSES));
-            long available = orderItem.getQuantity() - alreadyReturned;
-            if (request.getQuantity() > available) {
-                throw new BusinessException(ErrorCode.RETURN_QUANTITY_EXCEEDED, HttpStatus.BAD_REQUEST);
+            int updated = variantRepository.increaseStock(variantId, item.getQuantity());
+            if (updated == 0) {
+                throw new BusinessException(ErrorCode.VARIANT_NOT_FOUND, HttpStatus.BAD_REQUEST);
             }
         }
-    }
-
-    private ReturnItem buildReturnItem(ReturnRequest returnRequest, Order order, CreateReturnItemRequest request) {
-        OrderItem orderItem = order.getItems().stream()
-            .filter(item -> item.getId().equals(request.getOrderItemId()))
-            .findFirst()
-            .orElseThrow(() -> new BusinessException(ErrorCode.RETURN_ITEM_NOT_IN_ORDER, HttpStatus.BAD_REQUEST));
-        BigDecimal unitPrice = orderItem.getUnitPrice();
-        return ReturnItem.builder()
-            .returnRequest(returnRequest)
-            .orderItem(orderItem)
-            .productId(orderItem.getProductId())
-            .variantId(orderItem.getVariant() != null ? orderItem.getVariant().getId() : null)
-            .productName(orderItem.getProductName())
-            .colorName(orderItem.getColorName())
-            .size(orderItem.getSize())
-            .imageUrl(orderItem.getImageUrl())
-            .quantity(request.getQuantity())
-            .unitPrice(unitPrice)
-            .subtotal(unitPrice.multiply(BigDecimal.valueOf(request.getQuantity())))
-            .build();
-    }
-
-    private String buildReason(ReturnRequestType requestType, String reason) {
-        String trimmed = reason != null ? reason.trim() : "";
-        return toReasonPrefix(requestType) + (trimmed.isBlank() ? "" : " " + trimmed);
-    }
-
-    private String toReasonPrefix(ReturnRequestType requestType) {
-        return switch (requestType) {
-            case EXCHANGE -> "[ĐỔI HÀNG]";
-            case COMPLAINT -> "[KHIẾU NẠI]";
-            case RETURN -> "[TRẢ HÀNG]";
-        };
-    }
-
-    private ReturnRequestType resolveRequestType(String reason) {
-        if (reason != null) {
-            if (reason.startsWith("[ĐỔI HÀNG]")) {
-                return ReturnRequestType.EXCHANGE;
-            }
-            if (reason.startsWith("[KHIẾU NẠI]")) {
-                return ReturnRequestType.COMPLAINT;
-            }
-        }
-        return ReturnRequestType.RETURN;
-    }
-
-    private OrderStatus resolvePreviousOrderStatus(ReturnRequest request) {
-        try {
-            if (request.getPreviousOrderStatus() != null && !request.getPreviousOrderStatus().isBlank()) {
-                return OrderStatus.valueOf(request.getPreviousOrderStatus());
-            }
-        } catch (IllegalArgumentException ignored) {
-            log.warn("Invalid previousOrderStatus returnId={}, value={}", request.getId(), request.getPreviousOrderStatus());
-        }
-        return OrderStatus.DELIVERED;
-    }
-
-    private void syncManualRefundIfFullReturn(Order order, BigDecimal refundAmount, String note) {
-        if (refundAmount == null || refundAmount.compareTo(BigDecimal.ZERO) <= 0) {
-            return;
-        }
-        if (!isFullReturn(order)) {
-            log.info("Manual refund recorded as partial return orderId={}, refundAmount={}", order.getId(), refundAmount);
-            return;
-        }
-        paymentRepository.findTopByOrderIdAndStatusOrderByCreatedAtDesc(order.getId(), PaymentStatus.SUCCESS)
-            .ifPresent(payment -> {
-                payment.setStatus(PaymentStatus.REFUNDED);
-                payment.setRefundedAt(LocalDateTime.now());
-                payment.setRefundReason(note);
-                order.setPaymentStatus(OrderPaymentStatus.REFUNDED);
-            });
-    }
-
-    private boolean isFullReturn(Order order) {
-        if (order.getItems() == null || order.getItems().isEmpty()) {
-            return false;
-        }
-        for (OrderItem orderItem : order.getItems()) {
-            long completedReturnedQty = defaultLong(returnItemRepository.sumCompletedQuantityByOrderItemId(orderItem.getId()));
-            if (completedReturnedQty < orderItem.getQuantity()) {
-                return false;
-            }
-        }
-        return true;
     }
 
     private ReturnDashboardResponse buildDashboard(LocalDateTime monthStart, List<ReturnRequest> queue,
@@ -429,7 +310,7 @@ public class ReturnServiceImpl implements ReturnService {
         LocalDateTime todayStart = LocalDate.now().atStartOfDay();
         List<ReturnStatus> processingStatuses = List.of(ReturnStatus.APPROVED, ReturnStatus.RECEIVED);
         Summary summary = Summary.builder()
-            .pending(returnRepository.countByStatus(ReturnStatus.PENDING))
+            .pending(returnRepository.countByStatus(ReturnStatus.REQUESTED))
             .processing(returnRepository.countByStatusIn(processingStatuses))
             .rejectedThisMonth(returnRepository.countByStatusAndUpdatedAtAfter(ReturnStatus.REJECTED, monthStart))
             .completedThisMonth(returnRepository.countByStatusAndUpdatedAtAfter(ReturnStatus.COMPLETED, monthStart))
@@ -477,5 +358,11 @@ public class ReturnServiceImpl implements ReturnService {
 
     private long defaultLong(Long value) {
         return value != null ? value : 0;
+    }
+
+    @Override
+    public String uploadEvidenceImage(org.springframework.web.multipart.MultipartFile file) {
+        UploadResult result = storageService.uploadImage(file, "fashion-shop/returns");
+        return result.url();
     }
 }

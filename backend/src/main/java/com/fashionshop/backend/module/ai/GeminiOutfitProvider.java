@@ -10,17 +10,12 @@ import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
 
 import java.util.ArrayList;
+import java.util.HashMap;
+import java.util.HashSet;
 import java.util.List;
+import java.util.Map;
 import java.util.Set;
-import java.util.stream.Collectors;
 
-/**
- * Gemini rerank provider cho outfit suggestion.
- *
- * Phase C trong outfit pipeline:
- *   Nhận shortlist đã score → gửi cho Gemini → Gemini chọn 3 combo + viết label/reason/colorStory/occasion
- *   Backend validate kết quả AI (Phase D) → trả combos
- */
 @Slf4j
 @Service
 @RequiredArgsConstructor
@@ -30,19 +25,7 @@ public class GeminiOutfitProvider {
 
     private final AiClientRouter aiClientRouter;
     private final ObjectMapper objectMapper;
-    private final UserPreferenceService userPreferenceService;
 
-    /**
-     * Gọi Gemini để rerank và chọn 3 combo outfit tốt nhất.
-     *
-     * @param base           sản phẩm gốc
-     * @param anchorRole     vai trò slot của sản phẩm gốc
-     * @param topCandidates  shortlist top slot candidates
-     * @param bottomCandidates shortlist bottom slot candidates
-     * @param outerCandidates  shortlist outer slot candidates
-     * @param userId         userId để inject preference (nullable)
-     * @return danh sách combo đã validate, empty nếu Gemini fail
-     */
     public List<OutfitComboResponse> generateCombos(
             ChatProductCard base,
             String anchorRole,
@@ -50,327 +33,189 @@ public class GeminiOutfitProvider {
             List<ChatProductCard> bottomCandidates,
             List<ChatProductCard> outerCandidates,
             Long userId) {
-
-        // Build allowed set để validate kết quả AI
-        Set<String> allowedKeys = buildAllowedKeys(base, topCandidates, bottomCandidates, outerCandidates);
-
-        // Build prompt
-        String userPrefHint = buildPrefHint(userId);
-        String prompt = buildRerankPrompt(base, anchorRole, topCandidates, bottomCandidates, outerCandidates, userPrefHint);
-
-        long t0 = System.currentTimeMillis();
-        String rawResponse;
+        Map<String, ChatProductCard> pool = buildPool(base, topCandidates, bottomCandidates, outerCandidates);
+        String prompt = buildPrompt(base, anchorRole, topCandidates, bottomCandidates, outerCandidates);
         try {
-            rawResponse = aiClientRouter.generate(prompt, List.of(), "Hãy chọn 3 combo outfit tốt nhất và trả JSON.");
-            log.info("[OUTFIT_AI] provider=GEMINI phase=rerank candidates=top:{}/bottom:{}/outer:{} latencyMs={}",
-                topCandidates.size(), bottomCandidates.size(), outerCandidates.size(),
-                System.currentTimeMillis() - t0);
+            String raw = aiClientRouter.generate(prompt, List.of(), "Chon toi da 3 combo va tra JSON.");
+            return parseAndValidate(raw, base, anchorRole, pool);
         } catch (Exception e) {
-            log.warn("[OUTFIT_AI] provider=GEMINI phase=rerank failed reason={}", e.getMessage());
-            return List.of();
-        }
-
-        // Parse và validate
-        List<OutfitComboResponse> combos = parseAndValidate(rawResponse, base, anchorRole, allowedKeys);
-        log.info("[OUTFIT_AI] provider=GEMINI success combos={} latencyMs={}",
-            combos.size(), System.currentTimeMillis() - t0);
-        return combos;
-    }
-
-    // ==========================================
-    // Prompt building
-    // ==========================================
-
-    private String buildRerankPrompt(
-            ChatProductCard base,
-            String anchorRole,
-            List<ChatProductCard> tops,
-            List<ChatProductCard> bottoms,
-            List<ChatProductCard> outers,
-            String prefHint) {
-
-        return """
-            Bạn là AI stylist cho shop thời trang Việt Nam. Nhiệm vụ: từ sản phẩm gốc và danh sách candidates đã được hệ thống lọc còn hàng, hãy chọn %d outfit combo đẹp nhất.
-            
-            LUẬT BẮT BUỘC:
-            - Chỉ dùng productId/colorId có trong danh sách candidates bên dưới
-            - KHÔNG tự tạo sản phẩm mới ngoài danh sách
-            - outer slot là OPTIONAL — chỉ thêm khi thực sự phù hợp, không bắt buộc
-            - label phải ngắn gọn, tự nhiên tiếng Việt (vd: 'Dạo phố mùa hè', 'Công sở lịch lãm', 'Chill cuối tuần')
-            - KHÔNG dùng label cố định Casual/Smart-casual/Streetwear — phải sáng tạo
-            - score là số từ 0.0 đến 1.0 phản ánh độ phù hợp của combo
-            - Trả JSON hợp lệ, không markdown, không preamble, không giải thích ngoài JSON
-            
-            %s
-            
-            SẢN PHẨM GỐC (role=%s):
-            %s
-            
-            TOP CANDIDATES:
-            %s
-            
-            BOTTOM CANDIDATES:
-            %s
-            
-            OUTER CANDIDATES (OPTIONAL):
-            %s
-            
-            JSON SCHEMA TRẢ VỀ (trả đúng schema này, không thêm field khác):
-            {
-              "combos": [
-                {
-                  "label": "...",
-                  "score": 0.0,
-                  "reason": "giải thích 1 câu tại sao combo này phù hợp",
-                  "colorStory": "tổng màu ... + ... — ghi chú ngắn",
-                  "occasion": ["daily", "school"],
-                  "top": {"productId": 1, "colorId": 2},
-                  "bottom": {"productId": 3, "colorId": 4},
-                  "outer": null
-                }
-              ]
-            }
-            """.formatted(
-                MAX_COMBOS,
-                prefHint,
-                anchorRole,
-                serializeCard(base),
-                serializeCards(tops),
-                serializeCards(bottoms),
-                serializeCards(outers)
-            );
-    }
-
-    private String buildPrefHint(Long userId) {
-        if (userId == null) return "";
-        String prefs = userPreferenceService.formatForPrompt(userId);
-        if (prefs.isBlank()) return "";
-        return "USER PREFERENCE (học từ lịch sử chat — ưu tiên combo phù hợp):\n" + prefs;
-    }
-
-    private String serializeCard(ChatProductCard card) {
-        if (card == null) return "null";
-        return String.format("{productId:%d, colorId:%d, name:\"%s\", colorFamily:\"%s\", fitType:\"%s\", role:\"%s\"}",
-            card.getId(), card.getColorId(), safe(card.getName()),
-            safe(card.getColorFamily()), safe(card.getFitType()), safe(card.getRole()));
-    }
-
-    private String serializeCards(List<ChatProductCard> cards) {
-        if (cards == null || cards.isEmpty()) return "[]";
-        StringBuilder sb = new StringBuilder("[");
-        for (ChatProductCard c : cards) {
-            sb.append(serializeCard(c)).append(",");
-        }
-        if (sb.length() > 1) sb.setLength(sb.length() - 1);
-        sb.append("]");
-        return sb.toString();
-    }
-
-    private String safe(String s) {
-        return s != null ? s : "";
-    }
-
-    // ==========================================
-    // Parse + Phase D Validate
-    // ==========================================
-
-    private List<OutfitComboResponse> parseAndValidate(
-            String rawResponse,
-            ChatProductCard base,
-            String anchorRole,
-            Set<String> allowedKeys) {
-        try {
-            // Strip markdown wrapper if present
-            String cleaned = rawResponse.trim();
-            if (cleaned.startsWith("```json")) cleaned = cleaned.substring(7);
-            if (cleaned.startsWith("```"))     cleaned = cleaned.substring(3);
-            if (cleaned.endsWith("```"))       cleaned = cleaned.substring(0, cleaned.length() - 3);
-            cleaned = cleaned.trim();
-
-            // Find first JSON object
-            int jsonStart = cleaned.indexOf('{');
-            if (jsonStart < 0) {
-                log.warn("[OUTFIT_AI] provider=GEMINI parse_error: no JSON object in response");
-                return List.of();
-            }
-            cleaned = cleaned.substring(jsonStart);
-
-            JsonNode root = objectMapper.readTree(cleaned);
-            JsonNode combosNode = root.path("combos");
-            if (!combosNode.isArray()) {
-                log.warn("[OUTFIT_AI] provider=GEMINI parse_error: 'combos' field missing or not array");
-                return List.of();
-            }
-
-            List<OutfitComboResponse> result = new ArrayList<>();
-            for (JsonNode comboNode : combosNode) {
-                OutfitComboResponse combo = validateAndBuildCombo(comboNode, base, anchorRole, allowedKeys);
-                if (combo != null) {
-                    result.add(combo);
-                }
-                if (result.size() >= MAX_COMBOS) break;
-            }
-            return result;
-        } catch (Exception e) {
-            log.warn("[OUTFIT_AI] provider=GEMINI parse_failed reason={}", e.getMessage());
+            log.warn("[OUTFIT_AI] provider=GEMINI failed fallback=RULE reason={}", e.getMessage());
             return List.of();
         }
     }
 
-    /**
-     * Phase D: Validate một combo từ AI.
-     * - top/bottom bắt buộc (trừ khi anchor là top/bottom)
-     * - productId:colorId phải nằm trong allowedKeys
-     * - outer: nếu sai → bỏ outer, giữ combo
-     * - score: clamp về [0,1]
-     */
-    private OutfitComboResponse validateAndBuildCombo(
-            JsonNode node,
+    private String buildPrompt(
             ChatProductCard base,
             String anchorRole,
-            Set<String> allowedKeys) {
-        try {
-            String label = node.path("label").asText("Gợi ý outfit");
-            double score = node.path("score").asDouble(0.5);
-            if (score < 0 || score > 1) score = 0.5;
-            String reason = node.path("reason").asText("");
-            String colorStory = node.path("colorStory").asText("");
-
-            List<String> occasion = new ArrayList<>();
-            for (JsonNode o : node.path("occasion")) {
-                occasion.add(o.asText());
-            }
-
-            // Resolve slots — anchor counts as its slot
-            JsonNode topNode    = node.path("top");
-            JsonNode bottomNode = node.path("bottom");
-            JsonNode outerNode  = node.path("outer");
-
-            OutfitSlot topSlot    = resolveSlot(topNode,    "top",    base, anchorRole, allowedKeys);
-            OutfitSlot bottomSlot = resolveSlot(bottomNode, "bottom", base, anchorRole, allowedKeys);
-            OutfitSlot outerSlot  = resolveSlot(outerNode,  "outer",  base, anchorRole, allowedKeys);
-
-            // Validate: top hoặc bottom phải có (không thể cả hai đều null)
-            boolean hasTop    = topSlot != null;
-            boolean hasBottom = bottomSlot != null;
-            boolean anchorIsTop    = "top".equals(anchorRole);
-            boolean anchorIsBottom = "bottom".equals(anchorRole) || "skirt".equals(anchorRole);
-
-            if (!hasTop && !anchorIsTop) {
-                log.debug("[OUTFIT_VALIDATE] skip combo label='{}' reason=missing_top", label);
-                return null;
-            }
-            if (!hasBottom && !anchorIsBottom && !"dress".equals(anchorRole)) {
-                log.debug("[OUTFIT_VALIDATE] skip combo label='{}' reason=missing_bottom", label);
-                return null;
-            }
-
-            // Build products list
-            List<ChatProductCard> products = new ArrayList<>();
-            addBaseToProducts(products, base);
-
-            return OutfitComboResponse.builder()
-                .label(label)
-                .style(label)
-                .outfitType(label)
-                .score(score)
-                .reason(reason)
-                .colorStory(colorStory)
-                .occasion(occasion.isEmpty() ? null : String.join(", ", occasion))
-                .provider("GEMINI")
-                .topSlot(topSlot)
-                .bottomSlot(bottomSlot)
-                .outerSlot(outerSlot)
-                .products(products)
-                .items(products)
-                .build();
-        } catch (Exception e) {
-            log.warn("[OUTFIT_VALIDATE] skip combo reason={}", e.getMessage());
-            return null;
-        }
-    }
-
-    private OutfitSlot resolveSlot(
-            JsonNode slotNode,
-            String slotRole,
-            ChatProductCard base,
-            String anchorRole,
-            Set<String> allowedKeys) {
-
-        // Nếu anchor là slot này → dùng base
-        boolean anchorIsThisSlot = switch (slotRole) {
-            case "top"    -> "top".equals(anchorRole);
-            case "bottom" -> "bottom".equals(anchorRole) || "skirt".equals(anchorRole);
-            case "outer"  -> "outerwear".equals(anchorRole);
-            default -> false;
-        };
-        if (anchorIsThisSlot) {
-            return slotFrom(base, slotRole, false);
-        }
-
-        // Parse AI slot
-        if (slotNode == null || slotNode.isMissingNode() || slotNode.isNull()) {
-            return null;
-        }
-        if (!slotNode.has("productId") && !slotNode.has("id")) {
-            return null;
-        }
-        long pid = slotNode.has("productId") ? slotNode.get("productId").asLong()
-                                              : slotNode.get("id").asLong();
-        long cid = slotNode.path("colorId").asLong(0);
-
-        String key = pid + ":" + cid;
-        if (!allowedKeys.contains(key)) {
-            // Thử với colorId=0 (bất kỳ màu nào)
-            boolean pidAllowed = allowedKeys.stream().anyMatch(k -> k.startsWith(pid + ":"));
-            if (!pidAllowed) {
-                log.debug("[OUTFIT_VALIDATE] slot={} productId={} colorId={} not in allowedSet", slotRole, pid, cid);
-                return null;
-            }
-        }
-
-        return OutfitSlot.builder()
-            .productId(pid)
-            .colorId(cid > 0 ? cid : null)
-            .slotRole(slotRole)
-            .optional("outer".equals(slotRole))
-            .build();
-    }
-
-    private OutfitSlot slotFrom(ChatProductCard product, String slotRole, boolean optional) {
-        if (product == null) return null;
-        return OutfitSlot.builder()
-            .productId(product.getId())
-            .colorId(product.getColorId())
-            .productName(product.getName())
-            .colorName(product.getColorName())
-            .colorCode(product.getColorCode())
-            .colorFamily(product.getColorFamily())
-            .slotRole(slotRole)
-            .optional(optional)
-            .imageUrl(product.getImageUrl())
-            .productUrl(product.getUrl())
-            .build();
-    }
-
-    private void addBaseToProducts(List<ChatProductCard> products, ChatProductCard base) {
-        if (base != null && products.stream().noneMatch(p -> p.getId().equals(base.getId()))) {
-            products.add(base);
-        }
-    }
-
-    private Set<String> buildAllowedKeys(
-            ChatProductCard base,
             List<ChatProductCard> tops,
             List<ChatProductCard> bottoms,
             List<ChatProductCard> outers) {
+        return """
+            Ban la stylist cho shop thoi trang Viet Nam.
+            Chi chon productId/colorId trong candidate pool. Khong tu tao san pham.
+            Moi combo phai dung slot rules: %s
+            Outer la optional tru khi san pham goc la OUTER.
+            Tra JSON thuan: {"combos":[{"label":"...","score":0.9,"reason":"...","colorStory":"...","occasion":["daily"],"top":{"productId":1,"colorId":2},"bottom":{"productId":3,"colorId":4},"outer":null}]}
+            BASE role=%s: %s
+            TOP: %s
+            BOTTOM: %s
+            OUTER: %s
+            """.formatted(slotRules(anchorRole), anchorRole, serialize(base), serialize(tops), serialize(bottoms), serialize(outers));
+    }
 
-        Set<String> keys = new java.util.HashSet<>();
-        if (base != null) keys.add(base.getId() + ":" + base.getColorId());
+    private String slotRules(String anchorRole) {
+        return switch (anchorRole == null ? "" : anchorRole) {
+            case "top" -> "TOP base requires BOTTOM; OUTER optional";
+            case "bottom" -> "BOTTOM base requires TOP; OUTER optional";
+            case "outer" -> "OUTER base requires TOP and BOTTOM";
+            case "dress" -> "DRESS base allows optional OUTER only";
+            default -> "requires TOP and BOTTOM; OUTER optional";
+        };
+    }
 
-        for (ChatProductCard c : tops)    keys.add(c.getId() + ":" + c.getColorId());
-        for (ChatProductCard c : bottoms) keys.add(c.getId() + ":" + c.getColorId());
-        for (ChatProductCard c : outers)  keys.add(c.getId() + ":" + c.getColorId());
-        return keys;
+    private String serialize(List<ChatProductCard> cards) {
+        return cards == null ? "[]" : cards.stream().map(this::serialize).toList().toString();
+    }
+
+    private String serialize(ChatProductCard card) {
+        if (card == null) return "null";
+        return "{productId:%s,colorId:%s,name:\"%s\",role:%s,gender:%s}".formatted(
+            card.getId(), card.getColorId(), safe(card.getName()), card.getRole(), card.getGender());
+    }
+
+    private List<OutfitComboResponse> parseAndValidate(
+            String raw,
+            ChatProductCard base,
+            String anchorRole,
+            Map<String, ChatProductCard> pool) {
+        try {
+            String json = stripToJson(raw);
+            JsonNode combos = objectMapper.readTree(json).path("combos");
+            if (!combos.isArray()) return List.of();
+            List<OutfitComboResponse> valid = new ArrayList<>();
+            for (JsonNode node : combos) {
+                OutfitComboResponse combo = validateCombo(node, base, anchorRole, pool);
+                if (combo != null) valid.add(combo);
+                if (valid.size() >= MAX_COMBOS) break;
+            }
+            return valid;
+        } catch (Exception e) {
+            log.warn("[OUTFIT_AI] provider=GEMINI parse_failed fallback=RULE reason={}", e.getMessage());
+            return List.of();
+        }
+    }
+
+    private OutfitComboResponse validateCombo(
+            JsonNode node,
+            ChatProductCard base,
+            String anchorRole,
+            Map<String, ChatProductCard> pool) {
+        ChatProductCard top = resolve(node.path("top"), "top", base, anchorRole, pool);
+        ChatProductCard bottom = resolve(node.path("bottom"), "bottom", base, anchorRole, pool);
+        ChatProductCard outer = resolve(node.path("outer"), "outer", base, anchorRole, pool);
+        if (!validStructure(anchorRole, top, bottom, outer) || duplicateIds(top, bottom, outer)) {
+            return null;
+        }
+        List<ChatProductCard> products = new ArrayList<>();
+        add(products, base);
+        add(products, top);
+        add(products, bottom);
+        add(products, outer);
+        List<String> occasions = new ArrayList<>();
+        node.path("occasion").forEach(value -> occasions.add(value.asText()));
+        return OutfitComboResponse.builder()
+            .label(node.path("label").asText("Goi y outfit"))
+            .style(node.path("label").asText("outfit"))
+            .outfitType(node.path("label").asText("outfit"))
+            .score(clamp(node.path("score").asDouble(0.5)))
+            .reason(node.path("reason").asText(""))
+            .colorStory(node.path("colorStory").asText(""))
+            .occasion(occasions.isEmpty() ? null : String.join(", ", occasions))
+            .provider("GEMINI")
+            .topSlot(slot(top, "top", false))
+            .bottomSlot(slot(bottom, "bottom", false))
+            .outerSlot(slot(outer, "outer", true))
+            .products(products)
+            .items(products)
+            .build();
+    }
+
+    private ChatProductCard resolve(
+            JsonNode node,
+            String slotRole,
+            ChatProductCard base,
+            String anchorRole,
+            Map<String, ChatProductCard> pool) {
+        if (slotRole.equals(anchorRole)) return base;
+        if (node == null || node.isMissingNode() || node.isNull()) return null;
+        long productId = node.has("productId") ? node.path("productId").asLong() : node.path("id").asLong();
+        long colorId = node.path("colorId").asLong();
+        ChatProductCard card = pool.get(productId + ":" + colorId);
+        if (card == null || !slotRole.equals(card.getRole()) || !genderCompatible(base, card)) return null;
+        return card;
+    }
+
+    private boolean validStructure(String anchorRole, ChatProductCard top, ChatProductCard bottom, ChatProductCard outer) {
+        return switch (anchorRole == null ? "" : anchorRole) {
+            case "top" -> top != null && bottom != null;
+            case "bottom" -> top != null && bottom != null;
+            case "outer" -> top != null && bottom != null && outer != null;
+            case "dress" -> top == null && bottom == null;
+            default -> top != null && bottom != null;
+        };
+    }
+
+    private boolean duplicateIds(ChatProductCard... cards) {
+        Set<Long> ids = new HashSet<>();
+        for (ChatProductCard card : cards) {
+            if (card != null && !ids.add(card.getId())) return true;
+        }
+        return false;
+    }
+
+    private boolean genderCompatible(ChatProductCard base, ChatProductCard candidate) {
+        if (base == null || candidate == null || base.getGender() == null) return false;
+        return base.getGender().equalsIgnoreCase(candidate.getGender()) || "UNISEX".equalsIgnoreCase(candidate.getGender());
+    }
+
+    private Map<String, ChatProductCard> buildPool(ChatProductCard base, List<ChatProductCard> tops,
+                                                   List<ChatProductCard> bottoms, List<ChatProductCard> outers) {
+        Map<String, ChatProductCard> pool = new HashMap<>();
+        add(pool, base);
+        tops.forEach(card -> add(pool, card));
+        bottoms.forEach(card -> add(pool, card));
+        outers.forEach(card -> add(pool, card));
+        return pool;
+    }
+
+    private void add(Map<String, ChatProductCard> pool, ChatProductCard card) {
+        if (card != null) pool.put(card.getId() + ":" + card.getColorId(), card);
+    }
+
+    private void add(List<ChatProductCard> products, ChatProductCard card) {
+        if (card != null && products.stream().noneMatch(item -> item.getId().equals(card.getId()))) products.add(card);
+    }
+
+    private OutfitSlot slot(ChatProductCard card, String role, boolean optional) {
+        if (card == null) return null;
+        return OutfitSlot.builder()
+            .productId(card.getId()).colorId(card.getColorId()).productName(card.getName())
+            .colorName(card.getColorName()).colorCode(card.getColorCode()).colorFamily(card.getColorFamily())
+            .slotRole(role).optional(optional).imageUrl(card.getImageUrl()).productUrl(card.getUrl()).build();
+    }
+
+    private String stripToJson(String raw) {
+        String cleaned = raw == null ? "" : raw.replace("```json", "").replace("```", "").trim();
+        int start = cleaned.indexOf('{');
+        if (start < 0) throw new IllegalArgumentException("Gemini output has no JSON object");
+        return cleaned.substring(start);
+    }
+
+    private double clamp(double score) {
+        return score < 0 || score > 1 ? 0.5 : score;
+    }
+
+    private String safe(String value) {
+        return value == null ? "" : value.replace("\"", "'");
     }
 }

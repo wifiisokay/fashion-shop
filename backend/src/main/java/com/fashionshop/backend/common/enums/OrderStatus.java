@@ -5,7 +5,6 @@ package com.fashionshop.backend.common.enums;
  * AWAITING_PAYMENT → (VNPay paid / COD) → PENDING
  * PENDING → CONFIRMED (admin) → SHIPPING (GHN) → DELIVERED → COMPLETED
  * Any non-COMPLETED → CANCELLED
- * DELIVERED/COMPLETED → RETURN_REQUESTED → RETURNING → RETURNED
  */
 public enum OrderStatus {
     AWAITING_PAYMENT,

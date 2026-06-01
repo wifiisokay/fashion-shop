@@ -3,7 +3,6 @@ import { useParams, Link } from 'react-router-dom';
 import { useMyOrder } from '../../hooks/useMyOrder';
 import { useCancelOrder } from '../../hooks/useCancelOrder';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
-import { orderApi } from '../../api/orderApi';
 import { reviewApi } from '../../api/reviewApi';
 import Spinner from '../../components/ui/Spinner';
 import OrderStatusBadge from '../../components/order/OrderStatusBadge';
@@ -12,7 +11,7 @@ import ReviewModal from '../../components/review/ReviewModal';
 import StarRating from '../../components/review/StarRating';
 import { formatPrice, formatDate } from '../../utils/format';
 import { ROUTES } from '../../constants/routes';
-import { ArrowLeft, PackageCheck, Star, Pencil, Trash2, RotateCcw } from 'lucide-react';
+import { ArrowLeft, Star, Pencil, Trash2, RotateCcw } from 'lucide-react';
 import { toast } from 'sonner';
 import ReturnRequestModal from '../../components/return/ReturnRequestModal';
 
@@ -22,7 +21,6 @@ const OrderDetailPage = () => {
   const cancelOrder = useCancelOrder();
   const [cancelReason, setCancelReason] = useState('');
   const [showCancelDialog, setShowCancelDialog] = useState(false);
-  const [confirmingReceived, setConfirmingReceived] = useState(false);
   const [reviewTarget, setReviewTarget] = useState(null); // { item, existingReview? }
   const [showReturnModal, setShowReturnModal] = useState(false);
   const queryClient = useQueryClient();
@@ -43,19 +41,20 @@ const OrderDetailPage = () => {
   const canCancel = order.status === 'PENDING';
   const canShowReviews = order.status === 'COMPLETED';
 
-  // Return window: 7 days from deliveredAt
+  // Return window: 7 days from completedAt
   const canRequestReturn = (() => {
-    if (!['DELIVERED', 'COMPLETED'].includes(order.status)) return false;
-    if (order.returnStatus && ['PENDING', 'APPROVED', 'RECEIVED'].includes(order.returnStatus)) return false;
-    if (!order.deliveredAt) return false;
-    const deadline = new Date(order.deliveredAt);
+    if (order.status !== 'COMPLETED') return false;
+    if (order.paymentStatus === 'REFUNDED') return false;
+    if (order.returnStatus && ['REQUESTED', 'APPROVED', 'RECEIVED'].includes(order.returnStatus)) return false;
+    if (!order.completedAt) return false;
+    const deadline = new Date(order.completedAt);
     deadline.setDate(deadline.getDate() + 7);
     return new Date() < deadline;
   })();
 
   const returnDaysLeft = (() => {
-    if (!order.deliveredAt) return 0;
-    const deadline = new Date(order.deliveredAt);
+    if (!order.completedAt) return 0;
+    const deadline = new Date(order.completedAt);
     deadline.setDate(deadline.getDate() + 7);
     const diff = Math.ceil((deadline - new Date()) / (1000 * 60 * 60 * 24));
     return Math.max(0, diff);
@@ -161,7 +160,7 @@ const OrderDetailPage = () => {
               'text-blue-800'
             }`}>
               <RotateCcw className="w-4 h-4 inline mr-1.5" />
-              Yêu cầu đổi/trả hoặc khiếu nại
+              Yêu cầu trả hàng
             </h3>
             <p className={`text-sm ${
               order.returnStatus === 'REJECTED' ? 'text-red-700' :
@@ -279,54 +278,18 @@ const OrderDetailPage = () => {
         </div>
       )}
 
-      {order.status === 'DELIVERED' && (
-        <div className="space-y-3">
-          {canRequestReturn && returnDaysLeft > 0 && (
-            <p className="text-xs text-gray-500 text-right">
-              ⏳ Còn {returnDaysLeft} ngày để tạo yêu cầu đổi/trả hoặc khiếu nại
-            </p>
-          )}
-          <div className="flex gap-3 justify-end">
-            <Button
-              onClick={async () => {
-                if (!window.confirm('Xác nhận bạn đã nhận được hàng?')) return;
-                setConfirmingReceived(true);
-                try {
-                  await orderApi.confirmReceived(id);
-                  window.location.reload();
-                } catch (err) {
-                  alert(err?.response?.data?.message || 'Lỗi xác nhận nhận hàng');
-                } finally {
-                  setConfirmingReceived(false);
-                }
-              }}
-              loading={confirmingReceived}
-            >
-              <PackageCheck className="w-4 h-4 mr-2" />
-              Đã nhận hàng
-            </Button>
-            {canRequestReturn && (
-              <Button variant="secondary" onClick={() => setShowReturnModal(true)}>
-                <RotateCcw className="w-4 h-4 mr-2" />
-                Yêu cầu đổi/trả hoặc khiếu nại
-              </Button>
-            )}
-          </div>
-        </div>
-      )}
-
       {/* Return for COMPLETED orders within window */}
       {order.status === 'COMPLETED' && canRequestReturn && (
         <div className="space-y-3">
           {returnDaysLeft > 0 && (
             <p className="text-xs text-gray-500 text-right">
-              ⏳ Còn {returnDaysLeft} ngày để tạo yêu cầu đổi/trả hoặc khiếu nại
+              ⏳ Còn {returnDaysLeft} ngày để tạo yêu cầu trả hàng
             </p>
           )}
           <div className="flex gap-3 justify-end">
             <Button variant="secondary" onClick={() => setShowReturnModal(true)}>
               <RotateCcw className="w-4 h-4 mr-2" />
-              Yêu cầu đổi/trả hoặc khiếu nại
+               Yêu cầu trả hàng
             </Button>
           </div>
         </div>

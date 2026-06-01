@@ -30,12 +30,18 @@ public class OutfitScoringService {
      * @return score 0.0 – 100.0
      */
     public double score(ChatProductCard base, ChatProductCard candidate) {
-        double total = 0;
-        total += colorFamilyScore(base, candidate);
-        total += fitBalanceScore(base, candidate);
-        total += stockScore(candidate);
-        // styleTagScore và occasionTagScore: reserved cho khi có tag data
-        return total;
+        return scoreWithBreakdown(base, candidate, null, null).total();
+    }
+
+    public ScoreBreakdown scoreWithBreakdown(ChatProductCard base, ChatProductCard candidate,
+                                             String targetStyle, String targetOccasion) {
+        double color = colorFamilyScore(base, candidate);
+        double fit = fitBalanceScore(base, candidate);
+        double stock = stockScore(candidate);
+        double style = styleTagScore(base, candidate, targetStyle);
+        double occasion = occasionTagScore(base, candidate, targetOccasion);
+        double total = color + fit + stock + style + occasion;
+        return new ScoreBreakdown(total, color, fit, stock, style, occasion);
     }
 
     // =====================
@@ -97,5 +103,44 @@ public class OutfitScoringService {
         if (stock >= 5) return 10;
         if (stock >= 1) return 5;
         return 0;
+    }
+
+    private double styleTagScore(ChatProductCard base, ChatProductCard candidate, String targetStyle) {
+        if (candidate.getStyleTags() == null || candidate.getStyleTags().isEmpty()) {
+            return 0;
+        }
+        if (targetStyle != null && candidate.getStyleTags().contains(targetStyle)) {
+            return 20;
+        }
+        if (base != null && base.getStyleTags() != null && !base.getStyleTags().isEmpty()) {
+            return overlapScore(base.getStyleTags(), candidate.getStyleTags(), 12);
+        }
+        return 0;
+    }
+
+    private double occasionTagScore(ChatProductCard base, ChatProductCard candidate, String targetOccasion) {
+        if (candidate.getOccasionTags() == null || candidate.getOccasionTags().isEmpty()) {
+            return 0;
+        }
+        if (targetOccasion != null && candidate.getOccasionTags().contains(targetOccasion)) {
+            return 15;
+        }
+        if (base != null && base.getOccasionTags() != null && !base.getOccasionTags().isEmpty()) {
+            return overlapScore(base.getOccasionTags(), candidate.getOccasionTags(), 8);
+        }
+        return 0;
+    }
+
+    private double overlapScore(java.util.List<String> a, java.util.List<String> b, double maxScore) {
+        for (String value : a) {
+            if (b.contains(value)) {
+                return maxScore;
+            }
+        }
+        return 0;
+    }
+
+    public record ScoreBreakdown(double total, double colorFamily, double fitBalance, double stock,
+                                  double styleTag, double occasionTag) {
     }
 }

@@ -62,16 +62,16 @@ public class DashboardServiceImpl implements DashboardService {
     private final StockAlertService stockAlertService;
 
     private static final String FINALIZED_ORDER_WHERE = """
-        WHERE o.status IN ('COMPLETED', 'RETURNED')
-          AND o.payment_status IN ('PAID', 'REFUNDED')
-          AND o.created_at >= :fromDate
-          AND o.created_at < :toDateExclusive
-          AND NOT EXISTS (
-              SELECT 1
-              FROM returns r
-              WHERE r.order_id = o.id
-                AND r.status IN ('PENDING', 'APPROVED', 'RECEIVED')
-          )
+                WHERE o.status = 'COMPLETED'
+                    AND (o.payment_status IS NULL OR o.payment_status <> 'REFUNDED')
+                    AND o.created_at >= :fromDate
+                    AND o.created_at < :toDateExclusive
+                    AND NOT EXISTS (
+                            SELECT 1
+                            FROM returns r
+                            WHERE r.order_id = o.id
+                                AND r.status IN ('REQUESTED', 'APPROVED', 'RECEIVED')
+                    )
         """;
 
     @Override
@@ -130,7 +130,7 @@ public class DashboardServiceImpl implements DashboardService {
             .build();
 
         ReturnStats returnStats = ReturnStats.builder()
-            .pending(returnRequestRepository.countByStatus(ReturnStatus.PENDING))
+            .pending(returnRequestRepository.countByStatus(ReturnStatus.REQUESTED))
             .processing(returnRequestRepository.countByStatusIn(List.of(ReturnStatus.APPROVED, ReturnStatus.RECEIVED)))
             .completedThisMonth(returnRequestRepository.countByStatusAndUpdatedAtAfter(ReturnStatus.COMPLETED, monthStart))
             .refundAmountThisMonth(returnRequestRepository.sumCompletedRefundAmountSince(monthStart))
@@ -163,9 +163,9 @@ public class DashboardServiceImpl implements DashboardService {
             FROM orders o
             """ + FINALIZED_ORDER_WHERE, params);
         BigDecimal processedRefundAmount = queryBigDecimal("""
-            SELECT COALESCE(SUM(r.refund_amount), 0)
-            FROM returns r
-            WHERE r.status = 'COMPLETED'
+                        SELECT COALESCE(SUM(r.refund_amount), 0)
+                        FROM returns r
+                                                WHERE r.status = 'COMPLETED'
               AND r.updated_at >= :fromDate
               AND r.updated_at < :toDateExclusive
             """, params);
@@ -193,11 +193,18 @@ public class DashboardServiceImpl implements DashboardService {
         long shippingOrderCount = queryLong("""
             SELECT COUNT(*)
             FROM orders
-            WHERE status IN ('SHIPPING', 'DELIVERED')
+            WHERE status = 'SHIPPING'
               AND created_at >= :fromDate
               AND created_at < :toDateExclusive
             """, params);
-        long pendingReturnCount = queryLong("SELECT COUNT(*) FROM returns WHERE status = 'PENDING'", params);
+        long completedOrderCount = queryLong("""
+            SELECT COUNT(*)
+            FROM orders
+            WHERE status = 'COMPLETED'
+              AND created_at >= :fromDate
+              AND created_at < :toDateExclusive
+            """, params);
+        long pendingReturnCount = queryLong("SELECT COUNT(*) FROM returns WHERE status = 'REQUESTED'", params);
         StockAlertResponse stockAlerts = stockAlertService.getStockAlerts(5);
         long lowStockProductCount = stockAlerts.getLowStockCount();
         long activeProductCount = queryLong("SELECT COUNT(*) FROM products WHERE status = 'ACTIVE'", params);
@@ -223,6 +230,7 @@ public class DashboardServiceImpl implements DashboardService {
             .finalizedOrderCount(finalizedOrderCount)
             .pendingOrderCount(pendingOrderCount)
             .shippingOrderCount(shippingOrderCount)
+            .completedOrderCount(completedOrderCount)
             .pendingReturnCount(pendingReturnCount)
             .lowStockProductCount(lowStockProductCount)
             .activeProductCount(activeProductCount)
@@ -239,7 +247,7 @@ public class DashboardServiceImpl implements DashboardService {
             .build();
 
         ReturnSummary returns = ReturnSummary.builder()
-            .pendingReturns(queryLong("SELECT COUNT(*) FROM returns WHERE status = 'PENDING'", params))
+            .pendingReturns(queryLong("SELECT COUNT(*) FROM returns WHERE status = 'REQUESTED'", params))
             .processingReturns(queryLong("SELECT COUNT(*) FROM returns WHERE status IN ('APPROVED', 'RECEIVED')", params))
             .rejectedReturns(queryLong("""
                 SELECT COUNT(*) FROM returns
@@ -251,7 +259,7 @@ public class DashboardServiceImpl implements DashboardService {
                 """, params))
             .pendingOver24h(queryLong("""
                 SELECT COUNT(*) FROM returns
-                WHERE status = 'PENDING' AND created_at < DATE_SUB(NOW(), INTERVAL 24 HOUR)
+                WHERE status = 'REQUESTED' AND created_at < DATE_SUB(NOW(), INTERVAL 24 HOUR)
                 """, params))
             .approvedOver3Days(queryLong("""
                 SELECT COUNT(*) FROM returns
@@ -263,7 +271,7 @@ public class DashboardServiceImpl implements DashboardService {
                 SELECT COALESCE(SUM(ri.quantity), 0)
                 FROM return_items ri
                 JOIN returns r ON r.id = ri.return_id
-                WHERE r.status IN ('APPROVED', 'RECEIVED', 'COMPLETED')
+                                                                WHERE r.status IN ('APPROVED', 'RECEIVED', 'COMPLETED')
                   AND r.created_at >= :fromDate
                   AND r.created_at < :toDateExclusive
                 """, params))
@@ -271,7 +279,7 @@ public class DashboardServiceImpl implements DashboardService {
                 SELECT COALESCE(SUM(ri.subtotal), 0)
                 FROM return_items ri
                 JOIN returns r ON r.id = ri.return_id
-                WHERE r.status IN ('APPROVED', 'RECEIVED', 'COMPLETED')
+                                                                WHERE r.status IN ('APPROVED', 'RECEIVED', 'COMPLETED')
                   AND r.created_at >= :fromDate
                   AND r.created_at < :toDateExclusive
                 """, params))
@@ -377,14 +385,14 @@ public class DashboardServiceImpl implements DashboardService {
                        WHEN r.reason LIKE '[TRẢ HÀNG]%' THEN 'Trả hàng'
                        WHEN r.reason LIKE '[ĐỔI HÀNG]%' THEN 'Đổi hàng'
                        WHEN r.reason LIKE '[KHIẾU NẠI]%' THEN 'Khiếu nại'
-                       ELSE 'Khác'
+                       ELSE 'Trả hàng'
                    END AS request_type_label,
                    r.status,
                    r.created_at
             FROM returns r
             JOIN users u ON u.id = r.user_id
-            WHERE r.status IN ('PENDING', 'APPROVED', 'RECEIVED')
-            ORDER BY CASE r.status WHEN 'PENDING' THEN 0 WHEN 'APPROVED' THEN 1 ELSE 2 END,
+            WHERE r.status IN ('REQUESTED', 'APPROVED', 'RECEIVED')
+            ORDER BY CASE r.status WHEN 'REQUESTED' THEN 0 WHEN 'APPROVED' THEN 1 ELSE 2 END,
                      r.created_at ASC
             LIMIT 10
             """, new MapSqlParameterSource(), (rs, rowNum) -> ReturnQueueItem.builder()

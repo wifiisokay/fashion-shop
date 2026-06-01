@@ -35,6 +35,8 @@ public enum ErrorCode {
     CATEGORY_HAS_ACTIVE_PRODUCTS("CATEGORY_004", "Danh mục đang có sản phẩm đang hoạt động"),
     CATEGORY_HAS_CHILDREN("CATEGORY_005", "Danh mục đang có danh mục con"),
 
+    CATEGORY_ROLE_REQUIRED("CATEGORY_006", "Danh muc con bat buoc phai co role cho AI"),
+
     // ORDER
     ORDER_NOT_FOUND("ORDER_001", "Đơn hàng không tồn tại"),
     ORDER_CANNOT_CANCEL("ORDER_002", "Không thể huỷ đơn hàng ở trạng thái này"),
@@ -93,7 +95,7 @@ public enum ErrorCode {
     // RETURN / REVIEW
     RETURN_NOT_FOUND("RETURN_001", "Yêu cầu đổi/trả hoặc khiếu nại không tồn tại"),
     RETURN_NOT_ELIGIBLE("RETURN_002", "Đơn hàng chưa đủ điều kiện tạo yêu cầu đổi/trả hoặc khiếu nại"),
-    RETURN_WINDOW_EXPIRED("RETURN_003", "Đã quá 7 ngày kể từ khi giao hàng, không thể tạo yêu cầu đổi/trả hoặc khiếu nại"),
+    RETURN_WINDOW_EXPIRED("RETURN_003", "Đã quá 7 ngày kể từ khi hoàn thành đơn, không thể tạo yêu cầu đổi/trả hoặc khiếu nại"),
     RETURN_ALREADY_EXISTS("RETURN_004", "Đã có yêu cầu đổi/trả hoặc khiếu nại đang xử lý cho đơn này"),
     RETURN_INVALID_STATUS("RETURN_005", "Không thể chuyển trạng thái yêu cầu đổi/trả hoặc khiếu nại"),
     RETURN_REJECT_NOTE_REQUIRED("RETURN_006", "Vui lòng nhập lý do từ chối"),

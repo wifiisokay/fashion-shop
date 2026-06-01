@@ -29,6 +29,7 @@ public class OrderDetailResponse {
     private Map<String, Object> addressSnapshot;
     private List<OrderItemResponse> items;
     private LocalDateTime deliveredAt;
+    private LocalDateTime completedAt;
     private LocalDateTime createdAt;
     private LocalDateTime updatedAt;
     private LocalDate expectedDeliveryDate;
@@ -110,6 +111,7 @@ public class OrderDetailResponse {
             .addressSnapshot(order.getAddressSnapshot())
             .items(itemResponses)
             .deliveredAt(order.getDeliveredAt())
+            .completedAt(order.getCompletedAt())
             .createdAt(order.getCreatedAt())
             .updatedAt(order.getUpdatedAt())
             .expectedDeliveryDate(order.getExpectedDeliveryDate())

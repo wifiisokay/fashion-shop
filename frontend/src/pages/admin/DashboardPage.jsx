@@ -64,10 +64,10 @@ const ORDER_STATUS_MAP = {
 
 // Return status styling map
 const RETURN_STATUS_MAP = {
-  'PENDING': { label: 'Chờ duyệt', color: '#EF4444', badgeClass: 'bg-red-50 text-red-700 border-red-200' },
+  'REQUESTED': { label: 'Chờ duyệt', color: '#EF4444', badgeClass: 'bg-red-50 text-red-700 border-red-200' },
   'APPROVED': { label: 'Đã duyệt', color: '#F59E0B', badgeClass: 'bg-amber-50 text-amber-700 border-amber-200' },
   'RECEIVED': { label: 'Đã nhận', color: '#3B82F6', badgeClass: 'bg-blue-50 text-blue-700 border-blue-200' },
-  'COMPLETED': { label: 'Đã xử lý', color: '#10B981', badgeClass: 'bg-green-50 text-green-700 border-green-200' },
+  'COMPLETED': { label: 'Đã hoàn tiền', color: '#10B981', badgeClass: 'bg-green-50 text-green-700 border-green-200' },
   'REJECTED': { label: 'Từ chối', color: '#6B7280', badgeClass: 'bg-gray-50 text-gray-700 border-gray-200' }
 };
 
@@ -381,10 +381,10 @@ const DashboardPage = () => {
       </div>
 
       {/* 2. Overview Stats Cards */}
-      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-6 gap-6">
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 xl:grid-cols-8 gap-5">
         
         {/* Thẻ Doanh thu sau xử lý - Nổi bật nhất */}
-        <div className="bg-gradient-to-br from-indigo-900 via-indigo-800 to-slate-900 text-white p-6 rounded-2xl border border-indigo-950 shadow-md shadow-indigo-950/10 flex flex-col justify-between transition-all duration-300 hover:-translate-y-1 hover:shadow-xl hover:shadow-indigo-950/20 col-span-1 sm:col-span-2 xl:col-span-2 min-h-[160px]">
+        <div className="bg-gradient-to-br from-indigo-900 via-indigo-800 to-slate-900 text-white p-6 rounded-2xl border border-indigo-950 shadow-md shadow-indigo-950/10 flex flex-col justify-between transition-all duration-300 hover:-translate-y-1 hover:shadow-xl hover:shadow-indigo-950/20 col-span-1 sm:col-span-2 lg:col-span-2 xl:col-span-2 min-h-[160px]">
           <div>
             <div className="flex items-center justify-between w-full mb-1">
               <span className="text-xs font-bold text-indigo-200 uppercase tracking-widest">Doanh thu sau xử lý</span>
@@ -401,7 +401,7 @@ const DashboardPage = () => {
               <span className="font-bold text-emerald-300">{formatPrice(overview?.finalizedGrossRevenue || 0)}</span>
             </div>
             <div className="flex justify-between items-center">
-              <span>Đổi/trả đã hoàn tiền:</span>
+              <span>Trả hàng đã hoàn tiền:</span>
               <span className="font-bold text-rose-300">-{formatPrice(overview?.processedRefundAmount || 0)}</span>
             </div>
             <div className="flex justify-between items-center border-t border-indigo-700/20 pt-1.5 mt-1 text-[10px] text-indigo-300/80">
@@ -427,19 +427,29 @@ const DashboardPage = () => {
           <p className="text-[11px] text-gray-400 mt-2 font-medium">Đơn mới/chờ xác nhận</p>
         </StatCard>
 
-        {/* Đơn đang giao / chờ xác nhận */}
+        {/* Đơn đang giao */}
         <StatCard
           title="Đơn đang giao"
           value={overview?.shippingOrderCount || 0}
           icon={Truck}
           iconClassName="bg-blue-50 text-blue-600 border border-blue-100"
         >
-          <p className="text-[11px] text-gray-400 mt-2 font-medium">Đơn đang giao/đã giao</p>
+          <p className="text-[11px] text-gray-400 mt-2 font-medium">Đơn đang giao hàng</p>
         </StatCard>
 
-        {/* Đổi/trả chờ xử lý */}
+        {/* Đơn hoàn thành */}
         <StatCard
-          title="Đổi/trả chờ xử lý"
+          title="Đơn hoàn thành"
+          value={overview?.completedOrderCount || 0}
+          icon={CheckCircle}
+          iconClassName="bg-emerald-50 text-emerald-600 border border-emerald-100"
+        >
+          <p className="text-[11px] text-gray-400 mt-2 font-medium">Đơn hàng đã hoàn tất</p>
+        </StatCard>
+
+        {/* Trả hàng chờ xử lý */}
+        <StatCard
+          title="Trả hàng chờ xử lý"
           value={overview?.pendingReturnCount || 0}
           icon={RefreshCw}
           className={clsx(overview?.pendingReturnCount > 0 && "border-rose-200 bg-rose-50/10 shadow-rose-50/5")}
@@ -477,7 +487,7 @@ const DashboardPage = () => {
           title="Sản phẩm đang bán"
           value={overview?.activeProductCount || 0}
           icon={Package}
-          iconClassName="bg-emerald-50 text-emerald-600 border border-emerald-100"
+          iconClassName="bg-indigo-50 text-indigo-600 border border-indigo-100"
         >
           <p className="text-[11px] text-gray-400 mt-2 font-medium">Sản phẩm trạng thái bán</p>
         </StatCard>
@@ -529,12 +539,12 @@ const DashboardPage = () => {
           </ChartCard>
         </div>
 
-        {/* Donut Chart - Trạng thái đổi/trả/khiếu nại */}
+        {/* Donut Chart - Trạng thái trả hàng */}
         <div>
           <ChartCard 
-            title="Trạng thái đổi/trả/khiếu nại"
+            title="Trạng thái trả hàng"
             empty={returnChartData.length === 0}
-            emptyMessage="Chưa có yêu cầu đổi/trả trong thời gian này."
+            emptyMessage="Chưa có yêu cầu trả hàng trong thời gian này."
           >
             <ResponsiveContainer width="100%" height="100%">
               <PieChart>
@@ -662,10 +672,10 @@ const DashboardPage = () => {
           </div>
         </div>
 
-        {/* Bảng Yêu cầu đổi/trả cần xử lý */}
+        {/* Bảng Yêu cầu trả hàng cần xử lý */}
         <div className="bg-white rounded-2xl border border-gray-200 shadow-sm overflow-hidden flex flex-col">
           <div className="p-5 border-b border-gray-150 flex justify-between items-center">
-            <h2 className="text-base font-bold text-gray-900 tracking-tight">Yêu cầu đổi/trả cần xử lý</h2>
+            <h2 className="text-base font-bold text-gray-900 tracking-tight">Yêu cầu trả hàng cần xử lý</h2>
             <Link to="/staff/returns" className="text-xs font-semibold text-indigo-600 hover:text-indigo-800 transition-colors flex items-center gap-1">
               <span>Tất cả yêu cầu</span>
               <ArrowRight className="w-3.5 h-3.5" />
@@ -722,7 +732,7 @@ const DashboardPage = () => {
             ) : (
               <div className="p-8 text-center text-sm font-medium text-gray-400 flex flex-col items-center gap-2">
                 <CheckCircle className="w-7 h-7 text-emerald-400" />
-                <span>Tuyệt vời! Không có yêu cầu đổi/trả nào cần xử lý.</span>
+                <span>Tuyệt vời! Không có yêu cầu trả hàng nào cần xử lý.</span>
               </div>
             )}
           </div>

@@ -14,15 +14,15 @@ class ReturnStatusServiceTest {
     // ==================== validateTransition ====================
 
     @Test
-    @DisplayName("PENDING → APPROVED — valid")
-    void pendingToApproved() {
-        assertDoesNotThrow(() -> sut.validateTransition(ReturnStatus.PENDING, ReturnStatus.APPROVED));
+    @DisplayName("REQUESTED → APPROVED — valid")
+    void requestedToApproved() {
+        assertDoesNotThrow(() -> sut.validateTransition(ReturnStatus.REQUESTED, ReturnStatus.APPROVED));
     }
 
     @Test
-    @DisplayName("PENDING → REJECTED — valid")
-    void pendingToRejected() {
-        assertDoesNotThrow(() -> sut.validateTransition(ReturnStatus.PENDING, ReturnStatus.REJECTED));
+    @DisplayName("REQUESTED → REJECTED — valid")
+    void requestedToRejected() {
+        assertDoesNotThrow(() -> sut.validateTransition(ReturnStatus.REQUESTED, ReturnStatus.REJECTED));
     }
 
     @Test
@@ -38,10 +38,10 @@ class ReturnStatusServiceTest {
     }
 
     @Test
-    @DisplayName("PENDING → COMPLETED — INVALID (skip step)")
-    void pendingToCompleted_invalid() {
+    @DisplayName("REQUESTED → COMPLETED — INVALID (skip step)")
+    void requestedToCompleted_invalid() {
         assertThrows(BusinessException.class,
-            () -> sut.validateTransition(ReturnStatus.PENDING, ReturnStatus.COMPLETED));
+            () -> sut.validateTransition(ReturnStatus.REQUESTED, ReturnStatus.COMPLETED));
     }
 
     @Test
@@ -52,10 +52,10 @@ class ReturnStatusServiceTest {
     }
 
     @Test
-    @DisplayName("COMPLETED → PENDING — INVALID (terminal state)")
-    void completedToPending_invalid() {
+    @DisplayName("COMPLETED → REQUESTED — INVALID (terminal state)")
+    void completedToRequested_invalid() {
         assertThrows(BusinessException.class,
-            () -> sut.validateTransition(ReturnStatus.COMPLETED, ReturnStatus.PENDING));
+            () -> sut.validateTransition(ReturnStatus.COMPLETED, ReturnStatus.REQUESTED));
     }
 
     // ==================== getLabel ====================
@@ -63,10 +63,10 @@ class ReturnStatusServiceTest {
     @Test
     @DisplayName("getLabel — known status")
     void getLabel_known() {
-        assertEquals("Chờ xử lý", sut.getLabel(ReturnStatus.PENDING));
+        assertEquals("Chờ xử lý", sut.getLabel(ReturnStatus.REQUESTED));
         assertEquals("Đã duyệt", sut.getLabel(ReturnStatus.APPROVED));
         assertEquals("Từ chối", sut.getLabel(ReturnStatus.REJECTED));
         assertEquals("Đã nhận hàng", sut.getLabel(ReturnStatus.RECEIVED));
-        assertEquals("Hoàn tất", sut.getLabel(ReturnStatus.COMPLETED));
+        assertEquals("Đã hoàn tiền", sut.getLabel(ReturnStatus.COMPLETED));
     }
 }

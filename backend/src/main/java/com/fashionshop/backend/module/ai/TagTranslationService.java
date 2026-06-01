@@ -3,7 +3,6 @@ package com.fashionshop.backend.module.ai;
 import org.springframework.stereotype.Service;
 
 import java.util.LinkedHashMap;
-import java.util.Locale;
 import java.util.Map;
 import java.util.Optional;
 
@@ -43,6 +42,7 @@ public class TagTranslationService {
         OCCASION.put("hàng ngày", "daily");
         OCCASION.put("mặc thường", "daily");
         OCCASION.put("đi chơi", "hangout");
+        OCCASION.put("cafe", "hangout");
         OCCASION.put("gặp bạn", "hangout");
         OCCASION.put("hẹn hò", "date");
         OCCASION.put("đi học", "school");
@@ -162,9 +162,9 @@ public class TagTranslationService {
     }
 
     private Optional<String> detect(String message, Map<String, String> map) {
-        String normalized = message == null ? "" : message.toLowerCase(Locale.ROOT);
+        String normalized = VietnameseTextNormalizer.normalize(message);
         return map.entrySet().stream()
-            .filter(entry -> normalized.contains(entry.getKey()))
+            .filter(entry -> normalized.contains(VietnameseTextNormalizer.normalize(entry.getKey())))
             .map(Map.Entry::getValue)
             .findFirst();
     }

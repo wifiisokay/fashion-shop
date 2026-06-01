@@ -74,13 +74,4 @@ public class OrderController {
         return ResponseEntity.ok(ApiResponse.success("Hủy đơn hàng thành công"));
     }
 
-    @PostMapping("/{id}/confirm-received")
-    @Operation(summary = "Xác nhận đã nhận hàng (Customer)", security = @SecurityRequirement(name = "cookieAuth"))
-    public ResponseEntity<ApiResponse<Void>> confirmReceived(
-        @AuthenticationPrincipal User user,
-        @PathVariable Long id
-    ) {
-        orderService.confirmReceived(user.getId(), id);
-        return ResponseEntity.ok(ApiResponse.success("Xác nhận nhận hàng thành công"));
-    }
 }

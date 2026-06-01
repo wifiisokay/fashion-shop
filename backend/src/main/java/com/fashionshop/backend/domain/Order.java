@@ -17,11 +17,12 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 
-/**
- * Đơn hàng.
- * addressSnapshot: JSON snapshot địa chỉ tại thời điểm đặt hàng — không FK vào Address.
- * deliveredAt: set khi chuyển SHIPPING → DELIVERED, dùng cho auto-complete job.
- */
+    /**
+     * Đơn hàng.
+     * addressSnapshot: JSON snapshot địa chỉ tại thời điểm đặt hàng — không FK vào Address.
+     * deliveredAt: set khi chuyển SHIPPING → DELIVERED.
+     * completedAt: set khi admin xác nhận hoàn thành đơn.
+     */
 @Entity
 @Table(name = "orders", indexes = {
     @Index(name = "idx_orders_user", columnList = "user_id"),
@@ -100,6 +101,9 @@ public class Order {
 
     @Column(name = "delivered_at")
     private LocalDateTime deliveredAt;
+
+    @Column(name = "completed_at")
+    private LocalDateTime completedAt;
 
     @Column(name = "expected_delivery_date")
     private java.time.LocalDate expectedDeliveryDate;

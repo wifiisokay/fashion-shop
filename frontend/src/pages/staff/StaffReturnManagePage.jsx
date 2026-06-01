@@ -22,28 +22,28 @@ import {
 const CHART_COLORS = ['#3B82F6', '#10B981', '#F59E0B', '#EF4444', '#8B5CF6', '#EC4899', '#6B7280'];
 
 const STATUS_LABELS = {
-  PENDING: 'Chờ xử lý',
+  REQUESTED: 'Chờ xử lý',
   APPROVED: 'Đã duyệt',
   REJECTED: 'Từ chối',
   RECEIVED: 'Đã nhận hàng',
-  COMPLETED: 'Hoàn tất'
+  COMPLETED: 'Đã hoàn tiền'
 };
 
 const STATUS_OPTIONS = [
   { value: '', label: 'Tất cả trạng thái' },
-  { value: 'PENDING', label: 'Chờ xử lý' },
+  { value: 'REQUESTED', label: 'Chờ xử lý' },
   { value: 'APPROVED', label: 'Đã duyệt' },
   { value: 'REJECTED', label: 'Từ chối' },
   { value: 'RECEIVED', label: 'Đã nhận hàng' },
-  { value: 'COMPLETED', label: 'Hoàn tất' },
+  { value: 'COMPLETED', label: 'Đã hoàn tiền' },
 ];
 
 const STATUS_BADGE = {
-  PENDING:   { label: 'Chờ xử lý',    color: 'bg-yellow-100 text-yellow-800' },
+  REQUESTED: { label: 'Chờ xử lý',    color: 'bg-yellow-100 text-yellow-800' },
   APPROVED:  { label: 'Đã duyệt',     color: 'bg-blue-100 text-blue-800' },
   REJECTED:  { label: 'Từ chối',       color: 'bg-red-100 text-red-800' },
   RECEIVED:  { label: 'Đã nhận hàng',  color: 'bg-purple-100 text-purple-800' },
-  COMPLETED: { label: 'Hoàn tất',      color: 'bg-green-100 text-green-800' },
+  COMPLETED: { label: 'Đã hoàn tiền',  color: 'bg-green-100 text-green-800' },
 };
 
 const SummaryCard = ({ title, value, icon: Icon }) => (
@@ -65,7 +65,6 @@ const StaffReturnManagePage = () => {
   const [selectedReturn, setSelectedReturn] = useState(null);
   const [rejectNote, setRejectNote] = useState('');
   const [showRejectDialog, setShowRejectDialog] = useState(null);
-  const [refundAmount, setRefundAmount] = useState('');
   const [completeNote, setCompleteNote] = useState('');
   const [showCompleteDialog, setShowCompleteDialog] = useState(null);
   const [showApproveDialog, setShowApproveDialog] = useState(null);
@@ -80,36 +79,39 @@ const StaffReturnManagePage = () => {
 
   const { data, isLoading, isError } = useQuery({
     queryKey: ['staffReturns', statusFilter, page],
-    queryFn: () => returnApi.getAll({ status: statusFilter || undefined, page, size: 10 }).then(r => r.data.data),
+    queryFn: () => {
+      const params = { status: statusFilter || undefined, page, size: 10 };
+      return (isAdmin ? returnApi.getAdminAll(params) : returnApi.getAll(params)).then(r => r.data.data);
+    },
   });
 
   const detailQuery = useQuery({
     queryKey: ['staffReturnDetail', selectedReturn],
-    queryFn: () => returnApi.getById(selectedReturn).then(r => r.data.data),
+    queryFn: () => (isAdmin ? returnApi.getAdminById(selectedReturn) : returnApi.getById(selectedReturn)).then(r => r.data.data),
     enabled: !!selectedReturn,
   });
 
   const approveMutation = useMutation({
-    mutationFn: (id) => returnApi.approveReturn(id, { note: '' }),
+    mutationFn: (id) => (isAdmin ? returnApi.adminApprove(id, { note: '' }) : returnApi.approveReturn(id, { note: '' })),
     onSuccess: () => { toast.success('Đã duyệt yêu cầu'); queryClient.invalidateQueries({ queryKey: ['staffReturns'] }); queryClient.invalidateQueries({ queryKey: ['returnDashboard'] }); setSelectedReturn(null); setShowApproveDialog(null); },
     onError: (err) => toast.error(err.response?.data?.message || 'Lỗi duyệt'),
   });
 
   const rejectMutation = useMutation({
-    mutationFn: ({ id, note }) => returnApi.rejectReturn(id, { note }),
+    mutationFn: ({ id, note }) => (isAdmin ? returnApi.adminReject(id, { note }) : returnApi.rejectReturn(id, { note })),
     onSuccess: () => { toast.success('Đã từ chối yêu cầu'); queryClient.invalidateQueries({ queryKey: ['staffReturns'] }); queryClient.invalidateQueries({ queryKey: ['returnDashboard'] }); setShowRejectDialog(null); setSelectedReturn(null); },
     onError: (err) => toast.error(err.response?.data?.message || 'Lỗi từ chối'),
   });
 
   const receiveMutation = useMutation({
-    mutationFn: (id) => returnApi.receiveReturn(id),
+    mutationFn: (id) => returnApi.markReceived(id, { note: '' }),
     onSuccess: () => { toast.success('Đã xác nhận nhận hàng'); queryClient.invalidateQueries({ queryKey: ['staffReturns'] }); queryClient.invalidateQueries({ queryKey: ['returnDashboard'] }); setSelectedReturn(null); setShowReceiveDialog(null); },
     onError: (err) => toast.error(err.response?.data?.message || 'Lỗi'),
   });
 
   const completeMutation = useMutation({
-    mutationFn: ({ id, refundAmount, note }) => returnApi.completeReturn(id, { refundAmount: refundAmount || null, note: note || null }),
-    onSuccess: () => { toast.success('Đã ghi nhận hoàn tất xử lý'); queryClient.invalidateQueries({ queryKey: ['staffReturns'] }); queryClient.invalidateQueries({ queryKey: ['returnDashboard'] }); setShowCompleteDialog(null); setSelectedReturn(null); setRefundAmount(''); setCompleteNote(''); },
+    mutationFn: ({ id, note }) => returnApi.completeReturn(id, { note: note || null }),
+    onSuccess: () => { toast.success('Đã xác nhận hoàn tiền'); queryClient.invalidateQueries({ queryKey: ['staffReturns'] }); queryClient.invalidateQueries({ queryKey: ['returnDashboard'] }); setShowCompleteDialog(null); setSelectedReturn(null); setCompleteNote(''); },
     onError: (err) => toast.error(err.response?.data?.message || 'Lỗi'),
   });
 
@@ -155,9 +157,9 @@ const StaffReturnManagePage = () => {
     { title: 'ID', dataIndex: 'id', key: 'id', render: (val) => <span className="font-mono text-sm">#{val}</span> },
     { title: 'Mã đơn', dataIndex: 'orderId', key: 'orderId', render: (val) => <span className="font-medium">#{val}</span> },
     { title: 'Khách hàng', dataIndex: 'customerName', key: 'customerName' },
-    { title: 'Loại', dataIndex: 'requestTypeLabel', key: 'requestTypeLabel', render: (val, row) => val || parseReturnReason(row.reason).typeLabel },
-    { title: 'SL SP', dataIndex: 'totalReturnQuantity', key: 'totalReturnQuantity', render: (val) => val || 0 },
-    { title: 'Giá trị', dataIndex: 'totalReturnValue', key: 'totalReturnValue', render: (val) => formatPrice(val || 0) },
+    { title: 'Lý do', dataIndex: 'reason', key: 'reason', render: (val) => parseReturnReason(val).cleanReason || '-' },
+    { title: 'Hoàn tiền', dataIndex: 'refundAmount', key: 'refundAmount', render: (val) => formatPrice(val || 0) },
+    { title: 'Hạn còn', dataIndex: 'remainingReturnDays', key: 'remainingReturnDays', render: (val) => `${val ?? 0} ngày` },
     {
       title: 'Trạng thái', dataIndex: 'status', key: 'status',
       render: (val) => {
@@ -181,7 +183,7 @@ const StaffReturnManagePage = () => {
   return (
     <div className="space-y-6">
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
-        <h1 className="text-2xl font-bold text-gray-900">Quản lý đổi/trả và khiếu nại</h1>
+        <h1 className="text-2xl font-bold text-gray-900">Quản lý trả hàng</h1>
         <select
           value={statusFilter}
           onChange={(e) => { setStatusFilter(e.target.value); setPage(0); }}
@@ -196,7 +198,7 @@ const StaffReturnManagePage = () => {
         <div className="bg-amber-50 border-l-4 border-amber-500 rounded-r-xl p-4 shadow-sm space-y-2">
           <div className="flex items-center gap-2 text-amber-800 font-semibold">
             <AlertCircle className="w-5 h-5 shrink-0" />
-            <span>Cảnh báo SLA Đổi/Trả hàng cần lưu ý</span>
+            <span>Cảnh báo SLA trả hàng cần lưu ý</span>
           </div>
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 text-sm text-amber-700 pl-7">
             {dashboardQuery.data.alerts.approvedOver3Days > 0 && (
@@ -254,7 +256,7 @@ const StaffReturnManagePage = () => {
 
       {/* Recharts Distributions */}
       {dashboardQuery.data && (
-        <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+        <div className="grid grid-cols-1 gap-6">
           {/* Status Chart */}
           <div className="bg-white p-6 rounded-xl border border-gray-200 shadow-sm flex flex-col">
             <h2 className="text-sm font-bold text-gray-900 mb-4">Phân bổ Trạng thái Yêu cầu</h2>
@@ -288,37 +290,6 @@ const StaffReturnManagePage = () => {
               )}
             </div>
           </div>
-
-          {/* Type Chart */}
-          <div className="bg-white p-6 rounded-xl border border-gray-200 shadow-sm flex flex-col">
-            <h2 className="text-sm font-bold text-gray-900 mb-4">Tỷ lệ Loại Yêu cầu</h2>
-            <div className="h-60 w-full">
-              {dashboardQuery.data.typeChart && dashboardQuery.data.typeChart.length > 0 ? (
-                <ResponsiveContainer width="100%" height="100%">
-                  <PieChart>
-                    <Pie
-                      data={dashboardQuery.data.typeChart}
-                      cx="50%"
-                      cy="50%"
-                      innerRadius={50}
-                      outerRadius={75}
-                      paddingAngle={3}
-                      dataKey="value"
-                      nameKey="label"
-                    >
-                      {dashboardQuery.data.typeChart.map((entry, index) => (
-                        <Cell key={`cell-${index}`} fill={CHART_COLORS[(index + 2) % CHART_COLORS.length]} />
-                      ))}
-                    </Pie>
-                    <ChartTooltip formatter={(value) => [`${value} yêu cầu`, 'Số lượng']} />
-                    <ChartLegend verticalAlign="bottom" height={36} iconType="circle" fontSize={11} />
-                  </PieChart>
-                </ResponsiveContainer>
-              ) : (
-                <div className="flex h-full items-center justify-center text-xs text-gray-500">Chưa có dữ liệu loại yêu cầu</div>
-              )}
-            </div>
-          </div>
         </div>
       )}
 
@@ -329,7 +300,7 @@ const StaffReturnManagePage = () => {
           <div className="bg-white rounded-xl border border-gray-200 shadow-sm overflow-hidden flex flex-col">
             <div className="p-4 border-b border-gray-150 bg-gray-50">
               <h2 className="text-sm font-bold text-gray-900">Hàng đợi xử lý ưu tiên</h2>
-              <p className="text-xs text-gray-500">5 yêu cầu đổi trả cần được xem xét xử lý gấp nhất</p>
+              <p className="text-xs text-gray-500">5 yêu cầu trả hàng cần được xem xét xử lý gấp nhất</p>
             </div>
             <div className="overflow-x-auto flex-1">
               {dashboardQuery.data.queue && dashboardQuery.data.queue.length > 0 ? (
@@ -338,7 +309,6 @@ const StaffReturnManagePage = () => {
                     <tr>
                       <th className="px-4 py-3 font-semibold">Mã yêu cầu</th>
                       <th className="px-4 py-3 font-semibold">Khách hàng</th>
-                      <th className="px-4 py-3 font-semibold">Loại</th>
                       <th className="px-4 py-3 font-semibold text-right">Giá trị</th>
                       <th className="px-4 py-3 font-semibold text-center">Hành động</th>
                     </tr>
@@ -348,17 +318,7 @@ const StaffReturnManagePage = () => {
                       <tr key={req.id} className="hover:bg-gray-50 transition-colors">
                         <td className="px-4 py-3 font-mono font-medium text-gray-900">#{req.id}</td>
                         <td className="px-4 py-3 font-medium text-gray-700 truncate max-w-[120px]">{req.customerName}</td>
-                        <td className="px-4 py-3">
-                          <span className={clsx(
-                            'px-2 py-0.5 rounded text-[10px] font-semibold',
-                            req.reason?.includes('[ĐỔI HÀNG]') ? 'bg-purple-100 text-purple-800' :
-                            req.reason?.includes('[KHIẾU NẠI]') ? 'bg-red-100 text-red-800' :
-                            'bg-blue-100 text-blue-800'
-                          )}>
-                            {req.requestTypeLabel || parseReturnReason(req.reason).typeLabel}
-                          </span>
-                        </td>
-                        <td className="px-4 py-3 text-right font-medium text-red-600">{formatPrice(req.totalReturnValue || 0)}</td>
+                        <td className="px-4 py-3 text-right font-medium text-red-600">{formatPrice(req.refundAmount || 0)}</td>
                         <td className="px-4 py-3 text-center">
                           <button
                             onClick={() => setSelectedReturn(req.id)}
@@ -419,7 +379,7 @@ const StaffReturnManagePage = () => {
       </div>
 
       <div className="bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden">
-        <DataTable columns={columns} data={data?.content || []} loading={isLoading} emptyText="Không có yêu cầu đổi/trả hoặc khiếu nại nào" />
+        <DataTable columns={columns} data={data?.content || []} loading={isLoading} emptyText="Không có yêu cầu trả hàng nào" />
       </div>
 
       {/* Pagination */}
@@ -468,7 +428,7 @@ const StaffReturnManagePage = () => {
         <div onClick={() => setSelectedReturn(null)} className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4">
           <div onClick={(e) => e.stopPropagation()} className="bg-white rounded-2xl shadow-xl max-w-2xl w-full max-h-[90vh] overflow-y-auto">
             <div className="flex items-center justify-between p-6 border-b border-gray-200">
-              <h2 className="text-lg font-bold text-gray-900">Chi tiết yêu cầu đổi/trả hoặc khiếu nại #{detailQuery.data.id}</h2>
+              <h2 className="text-lg font-bold text-gray-900">Chi tiết yêu cầu trả hàng #{detailQuery.data.id}</h2>
               <button onClick={() => setSelectedReturn(null)} className="p-1.5 hover:bg-gray-100 rounded-full"><XIcon className="w-5 h-5" /></button>
             </div>
 
@@ -481,45 +441,45 @@ const StaffReturnManagePage = () => {
                 {detailQuery.data.refundAmount && (
                   <div><span className="text-gray-500">Số tiền hoàn:</span> <span className="font-medium text-green-600">{formatPrice(detailQuery.data.refundAmount)}</span></div>
                 )}
-                {detailQuery.data.processedByName && (
-                  <div><span className="text-gray-500">Xử lý bởi:</span> <span className="font-medium">{detailQuery.data.processedByName}</span></div>
-                )}
               </div>
 
-              <div>
-                <div className="flex items-center gap-2 mb-2">
-                  <h3 className="text-sm font-bold text-gray-900">Nội dung yêu cầu</h3>
-                  <span className="px-2 py-0.5 rounded-full text-xs font-medium bg-blue-50 text-blue-700">
-                    {detailQuery.data.requestTypeLabel || parseReturnReason(detailQuery.data.reason).typeLabel}
-                  </span>
-                </div>
-                <p className="text-sm text-gray-700 bg-gray-50 rounded-lg p-3 whitespace-pre-line">
-                  {parseReturnReason(detailQuery.data.reason).cleanReason}
-                </p>
-              </div>
-
-              {detailQuery.data.orderItems?.length > 0 && (
+              {detailQuery.data.items && detailQuery.data.items.length > 0 && (
                 <div>
-                  <h3 className="text-sm font-bold text-gray-900 mb-2">Sản phẩm trong đơn</h3>
-                  <div className="border border-gray-200 rounded-lg divide-y divide-gray-100 overflow-hidden">
-                    {detailQuery.data.orderItems.map((item) => (
-                      <div key={item.id} className="flex items-center gap-3 p-3 text-sm">
-                        <img
-                          src={item.imageUrl || 'https://via.placeholder.com/48'}
-                          alt={item.productName}
-                          className="w-12 h-12 rounded object-cover border border-gray-200"
-                          referrerPolicy="no-referrer"
-                        />
-                        <div className="min-w-0 flex-1">
-                          <p className="font-medium text-gray-900 truncate">{item.productName}</p>
-                          <p className="text-xs text-gray-500">{item.colorName || 'Không màu'} / {item.size || 'Không size'} x {item.quantity}</p>
+                  <h3 className="text-sm font-bold text-gray-900 mb-3">Sản phẩm yêu cầu trả</h3>
+                  <div className="border border-gray-200 rounded-xl divide-y divide-gray-200 overflow-hidden bg-gray-50">
+                    {detailQuery.data.items.map((item) => (
+                      <div key={item.id} className="p-3 flex items-center gap-3">
+                        <div className="w-12 h-12 shrink-0 rounded-lg overflow-hidden border border-gray-200 bg-white">
+                          {item.imageUrl ? (
+                            <img src={item.imageUrl} alt={item.productName} className="w-full h-full object-cover" />
+                          ) : (
+                            <div className="w-full h-full bg-gray-100 flex items-center justify-center text-xs text-gray-400">Ảnh</div>
+                          )}
                         </div>
-                        <div className="font-medium text-gray-900">{formatPrice(item.subtotal || 0)}</div>
+                        <div className="flex-1 min-w-0">
+                          <h4 className="text-sm font-medium text-gray-900 truncate">{item.productName}</h4>
+                          <p className="text-xs text-gray-500 mt-0.5">
+                            Phân loại: <span className="font-medium text-gray-700">{item.colorName || '-'}</span> | Size: <span className="font-medium text-gray-700">{item.size || '-'}</span>
+                          </p>
+                        </div>
+                        <div className="text-right shrink-0">
+                          <span className="text-xs text-gray-500 block">Số lượng: <strong className="text-gray-900">{item.quantity}</strong></span>
+                          <span className="text-sm font-bold text-red-600 block mt-0.5">{formatPrice(item.subtotal || 0)}</span>
+                        </div>
                       </div>
                     ))}
                   </div>
                 </div>
               )}
+
+              <div>
+                <div className="flex items-center gap-2 mb-2">
+                  <h3 className="text-sm font-bold text-gray-900">Nội dung yêu cầu</h3>
+                </div>
+                <p className="text-sm text-gray-700 bg-gray-50 rounded-lg p-3 whitespace-pre-line">
+                  {parseReturnReason(detailQuery.data.reason).cleanReason}
+                </p>
+              </div>
 
               {detailQuery.data.adminNote && (
                 <div>
@@ -546,7 +506,7 @@ const StaffReturnManagePage = () => {
 
             {/* Actions */}
             <div className="flex gap-3 justify-end p-6 border-t border-gray-200">
-              {detailQuery.data.status === 'PENDING' && (
+              {detailQuery.data.status === 'REQUESTED' && (
                 <>
                   <Button onClick={() => setShowApproveDialog(detailQuery.data.id)}
                     loading={approveMutation.isPending}>
@@ -564,11 +524,8 @@ const StaffReturnManagePage = () => {
                 </Button>
               )}
               {detailQuery.data.status === 'RECEIVED' && isAdmin && (
-                <Button onClick={() => {
-                  setRefundAmount(detailQuery.data.totalReturnValue?.toString() || '');
-                  setShowCompleteDialog(detailQuery.data.id);
-                }}>
-                  <CheckCircle className="w-4 h-4 mr-1" /> Xác nhận đã xử lý
+                <Button onClick={() => setShowCompleteDialog(detailQuery.data.id)}>
+                  <CheckCircle className="w-4 h-4 mr-1" /> Xác nhận hoàn tiền
                 </Button>
               )}
             </div>
@@ -603,33 +560,24 @@ const StaffReturnManagePage = () => {
 
       {/* Complete Dialog */}
       {showCompleteDialog && (
-        <div onClick={() => { setShowCompleteDialog(null); setRefundAmount(''); setCompleteNote(''); }} className="fixed inset-0 z-[60] flex items-center justify-center bg-black/40 p-4">
+        <div onClick={() => { setShowCompleteDialog(null); setCompleteNote(''); }} className="fixed inset-0 z-[60] flex items-center justify-center bg-black/40 p-4">
           <div onClick={(e) => e.stopPropagation()} className="bg-white rounded-2xl shadow-xl max-w-md w-full p-6 space-y-4">
-            <h3 className="text-lg font-bold text-gray-900">Xác nhận đã xử lý</h3>
-            <p className="text-sm text-gray-600">Số tiền hoàn là ghi nhận thủ công nội bộ, không tự gọi cổng thanh toán.</p>
-            <input
-              type="number"
-              value={refundAmount}
-              onChange={(e) => setRefundAmount(e.target.value)}
-              placeholder="Số tiền hoàn ghi nhận (VND)"
-              className="w-full border border-gray-300 rounded-xl p-3 text-sm focus:ring-black focus:border-black"
-            />
+            <h3 className="text-lg font-bold text-gray-900">Xác nhận hoàn tiền</h3>
             <textarea
               value={completeNote}
               onChange={(e) => setCompleteNote(e.target.value)}
-              placeholder="Ghi chú xử lý cho yêu cầu này..."
+              placeholder="Ghi chú (không bắt buộc)..."
               rows={3}
               className="w-full border border-gray-300 rounded-xl p-3 text-sm focus:ring-black focus:border-black resize-none"
             />
             <div className="flex gap-3 justify-end">
-              <Button variant="secondary" onClick={() => { setShowCompleteDialog(null); setRefundAmount(''); setCompleteNote(''); }}>Hủy</Button>
+              <Button variant="secondary" onClick={() => { setShowCompleteDialog(null); setCompleteNote(''); }}>Hủy</Button>
               <Button
                 loading={completeMutation.isPending}
                 onClick={() => {
                   completeMutation.mutate({
                     id: showCompleteDialog,
-                    refundAmount: refundAmount ? parseFloat(refundAmount) : null,
-                    note: completeNote.trim(),
+                    note: completeNote.trim() || null,
                   });
                 }}>Xác nhận đã xử lý</Button>
             </div>
@@ -641,8 +589,8 @@ const StaffReturnManagePage = () => {
       {showApproveDialog && (
         <div onClick={() => setShowApproveDialog(null)} className="fixed inset-0 z-[60] flex items-center justify-center bg-black/40 p-4">
           <div onClick={(e) => e.stopPropagation()} className="bg-white rounded-2xl shadow-xl max-w-md w-full p-6 space-y-4">
-            <h3 className="text-lg font-bold text-gray-900">Duyệt yêu cầu đổi/trả</h3>
-            <p className="text-sm text-gray-600">Bạn có chắc chắn muốn duyệt yêu cầu đổi trả này? Hành động này sẽ chuyển trạng thái yêu cầu sang <span className="font-semibold text-blue-700">ĐÃ DUYỆT</span>.</p>
+            <h3 className="text-lg font-bold text-gray-900">Duyệt yêu cầu trả hàng</h3>
+            <p className="text-sm text-gray-600">Bạn có chắc chắn muốn duyệt yêu cầu trả hàng này? Hành động này sẽ chuyển trạng thái yêu cầu sang <span className="font-semibold text-blue-700">ĐÃ DUYỆT</span>.</p>
             <div className="flex gap-3 justify-end pt-2">
               <Button variant="secondary" onClick={() => setShowApproveDialog(null)}>Hủy</Button>
               <Button

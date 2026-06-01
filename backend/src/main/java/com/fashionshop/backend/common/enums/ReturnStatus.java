@@ -2,11 +2,11 @@ package com.fashionshop.backend.common.enums;
 
 /**
  * Return lifecycle:
- * PENDING → APPROVED → RECEIVED → COMPLETED
- *           ↘ REJECTED
+ * REQUESTED → APPROVED → RECEIVED → COMPLETED
+ *             ↘ REJECTED
  */
 public enum ReturnStatus {
-    PENDING,
+    REQUESTED,
     APPROVED,
     REJECTED,
     RECEIVED,

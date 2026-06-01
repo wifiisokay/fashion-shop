@@ -1,5 +1,19 @@
 package com.fashionshop.backend.module.order;
 
+import java.math.BigDecimal;
+import java.time.LocalDateTime;
+import java.util.ArrayList;
+import java.util.HashMap;
+import java.util.LinkedHashMap;
+import java.util.List;
+import java.util.Map;
+
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.PageRequest;
+import org.springframework.http.HttpStatus;
+import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
+
 import com.fashionshop.backend.common.PageResponse;
 import com.fashionshop.backend.common.enums.OrderPaymentStatus;
 import com.fashionshop.backend.common.enums.OrderStatus;
@@ -40,21 +54,9 @@ import com.fashionshop.backend.module.order.shipping.ShippingFeeEstimator;
 import com.fashionshop.backend.module.payment.PaymentService;
 import com.fashionshop.backend.module.product.ProductPriceService;
 import com.fashionshop.backend.module.returnrequest.ReturnStatusService;
+
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
-import org.springframework.data.domain.Page;
-import org.springframework.data.domain.PageRequest;
-import org.springframework.http.HttpStatus;
-import org.springframework.stereotype.Service;
-import org.springframework.transaction.annotation.Transactional;
-
-import java.math.BigDecimal;
-import java.time.LocalDateTime;
-import java.util.ArrayList;
-import java.util.HashMap;
-import java.util.LinkedHashMap;
-import java.util.List;
-import java.util.Map;
 
 @Slf4j
 @Service
@@ -262,20 +264,21 @@ public class OrderServiceImpl implements OrderService {
 
     @Override
     @Transactional
-    public void confirmReceived(Long userId, Long orderId) {
-        Order order = orderRepository.findByIdAndUserId(orderId, userId)
+    public void confirmCompleted(Long orderId) {
+        Order order = orderRepository.findById(orderId)
             .orElseThrow(() -> new BusinessException(ErrorCode.ORDER_NOT_FOUND, HttpStatus.NOT_FOUND));
 
         if (order.getStatus() != OrderStatus.DELIVERED) {
             throw new BusinessException(ErrorCode.INVALID_STATUS_TRANSITION, HttpStatus.BAD_REQUEST,
-                "Chi co the xac nhan nhan hang khi don da giao");
+                "Chi co the hoan thanh don khi don da giao");
         }
 
         order.setStatus(OrderStatus.COMPLETED);
+        order.setCompletedAt(LocalDateTime.now());
 
         paymentRepository.findByOrderId(orderId).ifPresent(payment -> {
             if (payment.getMethod() == PaymentMethod.COD
-                    && payment.getStatus() == PaymentStatus.PENDING) {
+                && payment.getStatus() == PaymentStatus.PENDING) {
                 payment.setStatus(PaymentStatus.SUCCESS);
                 payment.setPaidAt(LocalDateTime.now());
                 order.setPaymentStatus(OrderPaymentStatus.PAID);
@@ -285,7 +288,7 @@ public class OrderServiceImpl implements OrderService {
         });
 
         orderRepository.save(order);
-        log.info("Order #{} confirmed received by customer {}", orderId, userId);
+        log.info("Order #{} confirmed completed by admin", orderId);
     }
 
     @Override
@@ -309,10 +312,7 @@ public class OrderServiceImpl implements OrderService {
             .deliveredCount(orderRepository.countByStatus(OrderStatus.DELIVERED))
             .completedCount(orderRepository.countByStatus(OrderStatus.COMPLETED))
             .cancelledCount(orderRepository.countByStatus(OrderStatus.CANCELLED))
-            .returnCount(
-                orderRepository.countByStatus(OrderStatus.RETURN_REQUESTED)
-                    + orderRepository.countByStatus(OrderStatus.RETURNING)
-                    + orderRepository.countByStatus(OrderStatus.RETURNED))
+            .returnCount(returnRequestRepository.count())
             .build();
     }
 
@@ -348,6 +348,11 @@ public class OrderServiceImpl implements OrderService {
             staffCancelOrder(orderId, cancelReq);
             order = orderRepository.findById(orderId).orElseThrow();
             return OrderDetailResponse.from(order, statusService.getLabel(order.getStatus()));
+        }
+
+        if (newStatus == OrderStatus.COMPLETED) {
+            throw new BusinessException(ErrorCode.INVALID_STATUS_TRANSITION, HttpStatus.BAD_REQUEST,
+                "Chi admin moi duoc xac nhan hoan thanh don hang");
         }
 
         statusService.validateTransition(order.getStatus(), newStatus);

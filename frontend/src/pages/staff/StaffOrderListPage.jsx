@@ -178,9 +178,6 @@ const StaffOrderListPage = () => {
             <option value="DELIVERED">Đã giao</option>
             <option value="COMPLETED">Hoàn thành</option>
             <option value="CANCELLED">Đã hủy</option>
-            <option value="RETURN_REQUESTED">Yêu cầu đổi/trả</option>
-            <option value="RETURNING">Đang xử lý đổi/trả</option>
-            <option value="RETURNED">Đã xử lý đổi/trả</option>
           </select>
           <select
             value={categoryFilter}

@@ -1,20 +1,24 @@
 package com.fashionshop.backend.module.ai;
 
-import com.fashionshop.backend.module.ai.dto.response.ChatProductCard;
-import com.fashionshop.backend.module.ai.dto.response.OutfitComboResponse;
-import com.fashionshop.backend.module.ai.dto.response.OutfitSlot;
-import com.fashionshop.backend.module.ai.dto.response.OutfitSuggestionResponse;
-import lombok.RequiredArgsConstructor;
-import lombok.extern.slf4j.Slf4j;
-import org.springframework.stereotype.Service;
-
 import java.time.LocalDateTime;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
 import java.util.Random;
+import java.util.Set;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ConcurrentHashMap;
+
+import org.springframework.stereotype.Service;
+
+import com.fashionshop.backend.module.ai.dto.ChatContext;
+import com.fashionshop.backend.module.ai.dto.response.ChatProductCard;
+import com.fashionshop.backend.module.ai.dto.response.OutfitComboResponse;
+import com.fashionshop.backend.module.ai.dto.response.OutfitSlot;
+import com.fashionshop.backend.module.ai.dto.response.OutfitSuggestionResponse;
+
+import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
 
 @Slf4j
 @Service
@@ -48,8 +52,18 @@ public class OutfitSuggestionService {
     }
 
     public OutfitSuggestionResponse getSuggestions(Long productId, Long colorId, boolean refresh, Long userId) {
+        return getSuggestions(productId, colorId, refresh, userId, null);
+    }
+
+    public OutfitSuggestionResponse getSuggestions(Long productId, Long colorId, ChatContext context) {
+        return getSuggestions(productId, colorId, false, null, context);
+    }
+
+    private OutfitSuggestionResponse getSuggestions(Long productId, Long colorId, boolean refresh, Long userId,
+                                                    ChatContext context) {
         log.info("[OUTFIT] request productId={}, colorId={}", productId, colorId);
-        if (!refresh) {
+        boolean contextual = context != null && (context.getStyleTag() != null || context.getOccasionTag() != null);
+        if (!refresh && !contextual) {
             var cached = outfitCacheManager.tryLoadValidCache(productId, colorId);
             if (cached.isPresent() && isValidCachedOutfit(productId, colorId, cached.get().combos())) {
                 log.info("[OUTFIT] cache_hit productId={}, colorId={}, combos={}",
@@ -72,7 +86,9 @@ public class OutfitSuggestionService {
             log.info("[OUTFIT] cache_refresh productId={}, colorId={}", productId, colorId);
         }
 
-        List<OutfitComboResponse> combos = getOrBuildCombos(productId, colorId, userId);
+        List<OutfitComboResponse> combos = contextual
+            ? buildCombos(productId, colorId, context.getStyleTag(), context.getOccasionTag(), userId)
+            : getOrBuildCombos(productId, colorId, userId);
         log.info("[OUTFIT] build_result productId={}, colorId={}, combos={}", productId, colorId, combos.size());
         LocalDateTime createdAt = LocalDateTime.now();
         if (combos.isEmpty()) {
@@ -149,13 +165,17 @@ public class OutfitSuggestionService {
     }
 
     public List<OutfitComboResponse> buildCombos(Long productId, Long colorId) {
-        return buildCombos(productId, colorId, null);
+        return buildCombos(productId, colorId, null, null, null);
     }
 
     public List<OutfitComboResponse> buildCombos(Long productId, Long colorId, Long userId) {
+        return buildCombos(productId, colorId, null, null, userId);
+    }
+
+    public List<OutfitComboResponse> buildCombos(Long productId, Long colorId, String styleTag, String occasionTag, Long userId) {
         ChatProductCard base = productRetrieverService.findProductCard(productId, colorId)
             .orElseThrow(() -> new IllegalArgumentException("Product is not available"));
-        String anchorRole = base.getRole();
+        String anchorRole = normalizeRole(base.getRole());
         log.info("[OUTFIT] base productId={}, colorId={}, role={}, gender={}, colorName={}, colorFamily={}",
             base.getId(), base.getColorId(), anchorRole, base.getGender(), base.getColorName(), base.getColorFamily());
 
@@ -173,9 +193,9 @@ public class OutfitSuggestionService {
             productId, rawTopCandidates.size(), rawBottomCandidates.size(), rawOuterCandidates.size());
 
         // Phase B: shuffle → local score → shortlist top 20
-        List<ChatProductCard> topCandidates = scoreAndShortlist(base, rawTopCandidates, productId, colorId, "top", 20);
-        List<ChatProductCard> bottomCandidates = scoreAndShortlist(base, rawBottomCandidates, productId, colorId, "bottom", 20);
-        List<ChatProductCard> outerCandidates = scoreAndShortlist(base, rawOuterCandidates, productId, colorId, "outer", 15);
+        List<ChatProductCard> topCandidates = scoreAndShortlist(base, rawTopCandidates, productId, colorId, "top", 20, styleTag, occasionTag);
+        List<ChatProductCard> bottomCandidates = scoreAndShortlist(base, rawBottomCandidates, productId, colorId, "bottom", 20, styleTag, occasionTag);
+        List<ChatProductCard> outerCandidates = scoreAndShortlist(base, rawOuterCandidates, productId, colorId, "outer", 15, styleTag, occasionTag);
         log.info("[OUTFIT] shortlisted_candidates productId={} top={} bottom={} outer={}",
             productId, topCandidates.size(), bottomCandidates.size(), outerCandidates.size());
 
@@ -214,7 +234,7 @@ public class OutfitSuggestionService {
     private List<ChatProductCard> scoreAndShortlist(
             ChatProductCard base,
             List<ChatProductCard> pool,
-            Long productId, Long colorId, String slotRole, int limit) {
+            Long productId, Long colorId, String slotRole, int limit, String styleTag, String occasionTag) {
         if (pool.isEmpty()) return List.of();
         List<ChatProductCard> copy = new ArrayList<>(pool);
         long seed = System.nanoTime()
@@ -222,11 +242,26 @@ public class OutfitSuggestionService {
             ^ (colorId == null ? 0 : colorId << 8)
             ^ slotRole.hashCode();
         Collections.shuffle(copy, new Random(seed));
+        for (ChatProductCard candidate : copy) {
+            OutfitScoringService.ScoreBreakdown breakdown = outfitScoringService.scoreWithBreakdown(base, candidate, styleTag, occasionTag);
+            if (breakdown == null) {
+                breakdown = new OutfitScoringService.ScoreBreakdown(0, 0, 0, 0, 0, 0);
+            }
+            log.info("[AI_STYLE_SCORE] baseId={} candidateId={} role={} score={} color={} fit={} stock={} style={} occasion={}",
+                base.getId(), candidate.getId(), slotRole,
+                breakdown.total(), breakdown.colorFamily(), breakdown.fitBalance(), breakdown.stock(),
+                breakdown.styleTag(), breakdown.occasionTag());
+        }
         return copy.stream()
             .sorted(java.util.Comparator.comparingDouble(
-                (ChatProductCard c) -> -outfitScoringService.score(base, c)))
+                (ChatProductCard c) -> -scoreTotal(base, c, styleTag, occasionTag)))
             .limit(limit)
             .toList();
+    }
+
+    private double scoreTotal(ChatProductCard base, ChatProductCard candidate, String styleTag, String occasionTag) {
+        OutfitScoringService.ScoreBreakdown score = outfitScoringService.scoreWithBreakdown(base, candidate, styleTag, occasionTag);
+        return score != null ? score.total() : 0;
     }
 
     /**
@@ -256,7 +291,7 @@ public class OutfitSuggestionService {
             addIfAbsent(products, bottom);
             addIfAbsent(products, outer);
 
-            if (products.size() < 2) {
+            if (!hasRequiredSlots(anchorRole, top, bottom, outer)) {
                 log.debug("[OUTFIT] skip_style style={} reason=insufficient_items size={}", STYLE_PROFILES.get(i).style(), products.size());
                 continue;
             }
@@ -283,35 +318,6 @@ public class OutfitSuggestionService {
             if (comboCount >= 3) break;
         }
 
-        if (combos.isEmpty()) {
-            List<ChatProductCard> candidates = productRetrieverService.findAnyAvailableOutfitFallback(productId, base.getGender(), 12).stream()
-                .filter(candidate -> !sameRole(base, candidate))
-                .toList();
-            log.info("[OUTFIT] candidates_fallback productId={}, count={}", productId, candidates.size());
-            if (!candidates.isEmpty()) {
-                List<ChatProductCard> products = new ArrayList<>();
-                addIfAbsent(products, base);
-                addIfAbsent(products, candidates.get(0));
-                String description = "Set do toi gian, co san pham chinh va item bo sung khac vai tro de tao outfit hoan chinh.";
-                combos.add(OutfitComboResponse.builder()
-                    .outfitType("casual")
-                    .style("casual")
-                    .label("Set toi gian")
-                    .description(description)
-                    .reason(description)
-                    .colorStory(buildColorStory(products))
-                    .occasion(occasionForStyle("casual"))
-                    .provider("RULE")
-                    .topSlot(slotFrom(slotProduct(products, "top"), "top", !anchorIs(anchorRole, "top")))
-                    .bottomSlot(slotFrom(slotProduct(products, "bottom"), "bottom", !anchorIs(anchorRole, "bottom")))
-                    .outerSlot(slotFrom(slotProduct(products, "outer"), "outer", !anchorIs(anchorRole, "outer")))
-                    .products(products)
-                    .items(products)
-                    .build());
-                log.info("[OUTFIT] combo_minimal_fallback productId={}, items={}", productId, products.size());
-            }
-        }
-
         return combos;
     }
 
@@ -324,7 +330,7 @@ public class OutfitSuggestionService {
         String mainGender = mainProduct != null ? mainProduct.getGender() : null;
         for (OutfitComboResponse combo : combos) {
             List<ChatProductCard> products = combo.getProducts() != null ? combo.getProducts() : combo.getItems();
-            if (products == null || products.size() < 2) {
+            if (products == null || products.isEmpty()) {
                 return false;
             }
             boolean hasMain = products.stream().anyMatch(product -> productId.equals(product.getId()));
@@ -333,7 +339,10 @@ public class OutfitSuggestionService {
             boolean genderMismatch = isStrictGender(mainGender) && products.stream()
                 .filter(product -> !productId.equals(product.getId()))
                 .anyMatch(product -> product.getGender() == null || !mainGender.equalsIgnoreCase(product.getGender()));
-            if (!hasMain || !hasComplementary || genderMismatch) {
+            boolean duplicateIds = products.stream().map(ChatProductCard::getId).distinct().count() != products.size();
+            boolean validStructure = hasRequiredSlots(mainRole, slotProduct(products, "top"),
+                slotProduct(products, "bottom"), slotProduct(products, "outer"));
+            if (!hasMain || (!"dress".equals(mainRole) && !hasComplementary) || genderMismatch || duplicateIds || !validStructure) {
                 return false;
             }
         }
@@ -344,10 +353,12 @@ public class OutfitSuggestionService {
         if (base == null || candidate == null) {
             return false;
         }
-        if (!isCoreRole(base.getRole()) || !isCoreRole(candidate.getRole())) {
+        String baseRole = normalizeRole(base.getRole());
+        String candidateRole = normalizeRole(candidate.getRole());
+        if (!isCoreRole(baseRole) || !isCoreRole(candidateRole)) {
             return false;
         }
-        return base.getRole().equals(candidate.getRole());
+        return baseRole.equals(candidateRole);
     }
 
     private boolean isStrictGender(String gender) {
@@ -355,25 +366,20 @@ public class OutfitSuggestionService {
     }
 
     private boolean isCoreRole(String role) {
-        return "top".equals(role) || "bottom".equals(role) || "dress".equals(role)
-            || "skirt".equals(role) || "outerwear".equals(role);
+        return "top".equals(role) || "bottom".equals(role) || "dress".equals(role) || "outer".equals(role);
     }
 
     private boolean needsSlot(String anchorRole, String slotRole) {
-        if ("dress".equals(anchorRole)) {
-            return "outer".equals(slotRole);
-        }
-        if ("skirt".equals(anchorRole)) {
-            return "top".equals(slotRole) || "outer".equals(slotRole);
-        }
-        return !anchorIs(anchorRole, slotRole);
+        SlotPlan plan = slotPlan(normalizeRole(anchorRole));
+        return plan.required().contains(slotRole) || plan.optional().contains(slotRole);
     }
 
     private boolean anchorIs(String anchorRole, String slotRole) {
+        String normalized = normalizeRole(anchorRole);
         return switch (slotRole) {
-            case "top" -> "top".equals(anchorRole);
-            case "bottom" -> "bottom".equals(anchorRole) || "skirt".equals(anchorRole);
-            case "outer" -> "outerwear".equals(anchorRole);
+            case "top" -> "top".equals(normalized);
+            case "bottom" -> "bottom".equals(normalized);
+            case "outer" -> "outer".equals(normalized);
             default -> false;
         };
     }
@@ -384,13 +390,17 @@ public class OutfitSuggestionService {
 
 
     private boolean shouldUseOuter(String anchorRole, int comboIndex, List<ChatProductCard> outerCandidates) {
+        SlotPlan plan = slotPlan(normalizeRole(anchorRole));
         if (anchorIs(anchorRole, "outer")) {
             return true;
         }
         if (outerCandidates.isEmpty()) {
             return false;
         }
-        return comboIndex % 2 == 1;
+        if (plan.required().contains("outer")) {
+            return true;
+        }
+        return plan.optional().contains("outer") && comboIndex % 2 == 1;
     }
 
     private void addIfAbsent(List<ChatProductCard> products, ChatProductCard product) {
@@ -409,11 +419,44 @@ public class OutfitSuggestionService {
     }
 
     private boolean roleMatchesSlot(String role, String slotRole) {
+        String normalized = normalizeRole(role);
         return switch (slotRole) {
-            case "top" -> "top".equals(role);
-            case "bottom" -> "bottom".equals(role) || "skirt".equals(role);
-            case "outer" -> "outerwear".equals(role);
+            case "top" -> "top".equals(normalized);
+            case "bottom" -> "bottom".equals(normalized);
+            case "outer" -> "outer".equals(normalized);
             default -> false;
+        };
+    }
+
+    private boolean hasRequiredSlots(String anchorRole, ChatProductCard top, ChatProductCard bottom, ChatProductCard outer) {
+        String normalized = normalizeRole(anchorRole);
+        return switch (normalized == null ? "" : normalized) {
+            case "top" -> top != null && bottom != null;
+            case "bottom" -> top != null && bottom != null;
+            case "outer" -> top != null && bottom != null && outer != null;
+            case "dress" -> true;
+            default -> top != null && bottom != null;
+        };
+    }
+
+    private SlotPlan slotPlan(String anchorRole) {
+        return switch (anchorRole == null ? "" : anchorRole) {
+            case "top" -> new SlotPlan(Set.of("bottom"), Set.of("outer"));
+            case "bottom" -> new SlotPlan(Set.of("top"), Set.of("outer"));
+            case "outer" -> new SlotPlan(Set.of("top", "bottom"), Set.of());
+            case "dress" -> new SlotPlan(Set.of(), Set.of("outer"));
+            default -> new SlotPlan(Set.of("top", "bottom"), Set.of("outer"));
+        };
+    }
+
+    private String normalizeRole(String role) {
+        if (role == null) {
+            return null;
+        }
+        return switch (role) {
+            case "outerwear" -> "outer";
+            case "skirt" -> "bottom";
+            default -> role;
         };
     }
 
@@ -490,6 +533,9 @@ public class OutfitSuggestionService {
     }
 
     private record StyleProfile(String style, String label, String occasion) {
+    }
+
+    private record SlotPlan(Set<String> required, Set<String> optional) {
     }
 
     private boolean looksLikeJson(String value) {

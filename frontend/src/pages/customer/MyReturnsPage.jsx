@@ -11,19 +11,19 @@ import { ROUTES } from '../../constants/routes';
 
 const STATUS_TABS = [
   { key: '', label: 'Tất cả' },
-  { key: 'PENDING', label: 'Chờ xử lý' },
+  { key: 'REQUESTED', label: 'Chờ xử lý' },
   { key: 'APPROVED', label: 'Đã duyệt' },
   { key: 'REJECTED', label: 'Từ chối' },
   { key: 'RECEIVED', label: 'Đã nhận hàng' },
-  { key: 'COMPLETED', label: 'Hoàn tất' },
+  { key: 'COMPLETED', label: 'Đã hoàn tiền' },
 ];
 
 const STATUS_BADGE = {
-  PENDING:   { label: 'Chờ xử lý',    color: 'bg-yellow-100 text-yellow-800' },
+  REQUESTED: { label: 'Chờ xử lý',    color: 'bg-yellow-100 text-yellow-800' },
   APPROVED:  { label: 'Đã duyệt',     color: 'bg-blue-100 text-blue-800' },
   REJECTED:  { label: 'Từ chối',       color: 'bg-red-100 text-red-800' },
   RECEIVED:  { label: 'Đã nhận hàng',  color: 'bg-purple-100 text-purple-800' },
-  COMPLETED: { label: 'Hoàn tất',      color: 'bg-green-100 text-green-800' },
+  COMPLETED: { label: 'Đã hoàn tiền',  color: 'bg-green-100 text-green-800' },
 };
 
 const MyReturnsPage = () => {
@@ -54,7 +54,7 @@ const MyReturnsPage = () => {
   };
 
   if (isLoading) return <div className="flex justify-center py-20"><Spinner size="lg" /></div>;
-  if (isError) return <div className="text-center py-20 text-red-500">Lỗi tải danh sách yêu cầu đổi/trả</div>;
+  if (isError) return <div className="text-center py-20 text-red-500">Lỗi tải danh sách yêu cầu trả hàng</div>;
 
   const returns = data?.content || [];
   const totalPages = data?.totalPages || 0;
@@ -62,7 +62,7 @@ const MyReturnsPage = () => {
   return (
     <div className="space-y-6">
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
-        <h1 className="text-2xl sm:text-3xl font-bold text-gray-900 font-sans">Đổi/Trả & Khiếu nại của tôi</h1>
+        <h1 className="text-2xl sm:text-3xl font-bold text-gray-900 font-sans">Yêu cầu trả hàng của tôi</h1>
         <Link to={ROUTES.MY_ORDERS}>
           <Button variant="outline" size="sm">
             Tạo yêu cầu mới <ArrowRight className="w-4 h-4 ml-1.5" />
@@ -90,14 +90,13 @@ const MyReturnsPage = () => {
 
       {returns.length === 0 ? (
         <div className="text-center py-20 text-gray-500 bg-white rounded-2xl border border-gray-100 shadow-sm space-y-4">
-          <p>Bạn không có yêu cầu đổi/trả hoặc khiếu nại nào ở trạng thái này.</p>
+          <p>Bạn không có yêu cầu trả hàng nào ở trạng thái này.</p>
           {!activeStatus && <Link to={ROUTES.PRODUCTS}><Button>Mua sắm ngay</Button></Link>}
         </div>
       ) : (
         <div className="space-y-4">
           {returns.map(ret => {
             const statusInfo = STATUS_BADGE[ret.status] || { label: ret.status, color: 'bg-gray-100 text-gray-800' };
-            const typeInfo = parseReturnReason(ret.reason);
             return (
               <div key={ret.id} className="bg-white rounded-2xl border border-gray-100 p-5 sm:p-6 shadow-sm hover:shadow-md transition-shadow">
                 <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 mb-4 pb-4 border-b border-gray-100">
@@ -118,17 +117,17 @@ const MyReturnsPage = () => {
                     <Link to={`/my-orders/${ret.orderId}`} className="font-medium text-blue-600 hover:underline">#{ret.orderId} ↗</Link>
                   </div>
                   <div>
-                    <span className="text-gray-400 block text-xs">Loại yêu cầu</span>
-                    <span className="font-semibold text-gray-900">{ret.requestTypeLabel || typeInfo.typeLabel}</span>
+                    <span className="text-gray-400 block text-xs">Thời hạn còn lại</span>
+                    <span className="font-semibold text-gray-900">{ret.remainingReturnDays ?? 0} ngày</span>
                   </div>
                   <div>
-                    <span className="text-gray-400 block text-xs">Tổng giá trị sản phẩm</span>
-                    <span className="font-bold text-red-600">{formatPrice(ret.totalReturnValue || 0)}</span>
+                    <span className="text-gray-400 block text-xs">Số tiền dự kiến hoàn</span>
+                    <span className="font-bold text-red-600">{formatPrice(ret.refundAmount || 0)}</span>
                   </div>
                 </div>
 
                 <div className="flex justify-between items-center mt-5 pt-3 border-t border-gray-50">
-                  <span className="text-xs text-gray-400">Số lượng sản phẩm: {ret.totalReturnQuantity || 0}</span>
+                  <span className="text-xs text-gray-400">Ảnh minh chứng: {ret.evidenceImages?.length || 0}</span>
                   <Button variant="outline" size="sm" onClick={() => setSelectedReturnId(ret.id)}>
                     <Eye className="w-4 h-4 mr-1.5" /> Chi tiết xử lý
                   </Button>
@@ -186,48 +185,20 @@ const MyReturnsPage = () => {
                   <span className="text-gray-400 block text-xs">Ngày tạo:</span>
                   <span className="font-medium text-gray-900">{formatDate(detailQuery.data.createdAt)}</span>
                 </div>
-                {detailQuery.data.refundAmount && (
-                  <div>
-                    <span className="text-gray-400 block text-xs">Số tiền đã hoàn:</span>
-                    <span className="font-bold text-green-600">{formatPrice(detailQuery.data.refundAmount)}</span>
-                  </div>
-                )}
+                <div>
+                  <span className="text-gray-400 block text-xs">Số tiền dự kiến hoàn:</span>
+                  <span className="font-bold text-green-600">{formatPrice(detailQuery.data.refundAmount || 0)}</span>
+                </div>
               </div>
 
               <div>
                 <div className="flex items-center gap-2 mb-2">
                   <h3 className="text-sm font-bold text-gray-900">Nội dung yêu cầu</h3>
-                  <span className="px-2 py-0.5 rounded-full text-xs font-semibold bg-blue-50 text-blue-700">
-                    {detailQuery.data.requestTypeLabel || parseReturnReason(detailQuery.data.reason).typeLabel}
-                  </span>
                 </div>
                 <p className="text-sm text-gray-700 bg-gray-50 rounded-lg p-3 whitespace-pre-line">
                   {parseReturnReason(detailQuery.data.reason).cleanReason}
                 </p>
               </div>
-
-              {detailQuery.data.orderItems?.length > 0 && (
-                <div>
-                  <h3 className="text-sm font-bold text-gray-900 mb-2">Sản phẩm đổi/trả</h3>
-                  <div className="border border-gray-200 rounded-lg divide-y divide-gray-100 overflow-hidden">
-                    {detailQuery.data.orderItems.map((item) => (
-                      <div key={item.id} className="flex items-center gap-3 p-3 text-sm">
-                        <img
-                          src={item.imageUrl || 'https://via.placeholder.com/48'}
-                          alt={item.productName}
-                          className="w-12 h-12 rounded object-cover border border-gray-200"
-                          referrerPolicy="no-referrer"
-                        />
-                        <div className="min-w-0 flex-1">
-                          <p className="font-medium text-gray-900 truncate">{item.productName}</p>
-                          <p className="text-xs text-gray-500">{item.colorName || 'Không màu'} / {item.size || 'Không size'} x {item.quantity}</p>
-                        </div>
-                        <div className="font-medium text-gray-900">{formatPrice(item.subtotal || 0)}</div>
-                      </div>
-                    ))}
-                  </div>
-                </div>
-              )}
 
               {/* Evidence images */}
               {detailQuery.data.evidenceImages?.length > 0 && (

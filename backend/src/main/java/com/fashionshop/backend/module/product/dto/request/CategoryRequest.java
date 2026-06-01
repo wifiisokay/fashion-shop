@@ -1,5 +1,6 @@
 package com.fashionshop.backend.module.product.dto.request;
 
+import com.fashionshop.backend.common.enums.CategoryRole;
 import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.Size;
 import lombok.Getter;
@@ -18,4 +19,8 @@ public class CategoryRequest {
 
     /** NULL = danh mục gốc. Có giá trị = danh mục con. */
     private Integer parentId;
+
+    /** NULL = giữ nguyên/không set role. */
+    private CategoryRole role;
+
 }

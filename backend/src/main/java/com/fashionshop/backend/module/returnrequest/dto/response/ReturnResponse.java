@@ -5,7 +5,9 @@ import lombok.Builder;
 import lombok.Getter;
 
 import java.math.BigDecimal;
+import java.time.LocalDate;
 import java.time.LocalDateTime;
+import java.time.temporal.ChronoUnit;
 import java.util.List;
 
 @Getter
@@ -14,67 +16,84 @@ public class ReturnResponse {
 
     private Long id;
     private Long orderId;
+    private String orderCode;
     private String customerName;
     private String reason;
-    private String requestTypeLabel;
-    private List<ReturnItemResponse> items;
-    private List<ReturnItemResponse> orderItems;
-    private Integer totalReturnQuantity;
-    private BigDecimal totalReturnValue;
     private List<String> evidenceImages;
     private String status;
     private String statusLabel;
-    private String previousOrderStatus;
     private BigDecimal refundAmount;
     private String adminNote;
-    private String processedByName;
     private LocalDateTime createdAt;
     private LocalDateTime updatedAt;
+    private LocalDateTime receivedAt;
+    private LocalDateTime refundedAt;
+    private Integer remainingReturnDays;
+    private List<ReturnItemResponse> items;
 
     public static ReturnResponse from(ReturnRequest r, String statusLabel) {
-        List<ReturnItemResponse> itemResponses = r.getItems().stream()
-            .map(ReturnItemResponse::from)
-            .toList();
-        Integer totalQuantity = itemResponses.stream()
-            .map(ReturnItemResponse::getQuantity)
-            .filter(qty -> qty != null)
-            .reduce(0, Integer::sum);
-        BigDecimal totalValue = itemResponses.stream()
-            .map(ReturnItemResponse::getSubtotal)
-            .filter(value -> value != null)
-            .reduce(BigDecimal.ZERO, BigDecimal::add);
+        Long orderId = null;
+        String orderCode = "";
+        try {
+            if (r.getOrder() != null) {
+                orderId = r.getOrder().getId();
+                orderCode = String.valueOf(orderId);
+            }
+        } catch (Exception e) {
+            // order not found or lazy load failed
+        }
+
+        String customerName = "";
+        try {
+            if (r.getUser() != null) {
+                customerName = r.getUser().getFullName();
+            }
+        } catch (Exception e) {
+            // user not found or lazy load failed
+        }
+
+        List<ReturnItemResponse> itemsList = List.of();
+        try {
+            if (r.getItems() != null) {
+                itemsList = r.getItems().stream()
+                    .map(ReturnItemResponse::from)
+                    .toList();
+            }
+        } catch (Exception e) {
+            // lazy load items failed
+        }
 
         return ReturnResponse.builder()
             .id(r.getId())
-            .orderId(r.getOrder().getId())
-            .customerName(r.getUser().getFullName())
-            .reason(stripReasonPrefix(r.getReason()))
-            .requestTypeLabel(resolveRequestTypeLabel(r.getReason()))
-            .items(itemResponses)
-            .orderItems(itemResponses)
-            .totalReturnQuantity(totalQuantity)
-            .totalReturnValue(totalValue)
+            .orderId(orderId)
+            .orderCode(orderCode)
+            .customerName(customerName)
+            .reason(r.getReason())
             .evidenceImages(r.getEvidenceImages())
-            .status(r.getStatus().name())
+            .status(r.getStatus() != null ? r.getStatus().name() : null)
             .statusLabel(statusLabel)
-            .previousOrderStatus(r.getPreviousOrderStatus())
             .refundAmount(r.getRefundAmount())
             .adminNote(r.getAdminNote())
-            .processedByName(r.getProcessedBy() != null ? r.getProcessedBy().getFullName() : null)
             .createdAt(r.getCreatedAt())
             .updatedAt(r.getUpdatedAt())
+            .receivedAt(r.getReceivedAt())
+            .refundedAt(r.getRefundedAt())
+            .remainingReturnDays(calculateRemainingDays(r))
+            .items(itemsList)
             .build();
     }
 
-    private static String resolveRequestTypeLabel(String reason) {
-        if (reason == null) return "Trả hàng";
-        if (reason.startsWith("[ĐỔI HÀNG]")) return "Đổi hàng";
-        if (reason.startsWith("[KHIẾU NẠI]")) return "Khiếu nại";
-        return "Trả hàng";
-    }
-
-    private static String stripReasonPrefix(String reason) {
-        if (reason == null) return null;
-        return reason.replaceFirst("^\\[(TRẢ HÀNG|ĐỔI HÀNG|KHIẾU NẠI)]\\s*", "");
+    private static Integer calculateRemainingDays(ReturnRequest r) {
+        try {
+            if (r.getOrder() == null || r.getOrder().getCompletedAt() == null) {
+                return 0;
+            }
+            LocalDate completedDate = r.getOrder().getCompletedAt().toLocalDate();
+            long daysSince = ChronoUnit.DAYS.between(completedDate, LocalDate.now());
+            long remaining = 7 - daysSince;
+            return (int) Math.max(0, remaining);
+        } catch (Exception e) {
+            return 0;
+        }
     }
 }

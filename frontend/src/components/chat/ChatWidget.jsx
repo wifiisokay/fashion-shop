@@ -19,6 +19,7 @@ const SLOT_ROLE_LABELS = {
   top: 'Áo',
   bottom: 'Quần/Váy',
   outer: 'Khoác',
+  dress: 'Váy/Đầm',
 };
 
 const uniqueProducts = (items = []) => {
@@ -498,6 +499,19 @@ const ChatWidget = () => {
                         </div>
                       );
                     })}
+                  </div>
+                )}
+
+                {(msg.context?.occasionLabel || (msg.styleTips && msg.styleTips.length > 0)) && (
+                  <div className="mt-2 ml-11 rounded-xl border border-indigo-100 bg-indigo-50 p-2.5 text-xs text-indigo-900">
+                    {msg.context?.occasionLabel && (
+                      <p className="mb-1 font-semibold">Dịp phù hợp: {msg.context.occasionLabel}</p>
+                    )}
+                    {msg.styleTips && msg.styleTips.length > 0 && (
+                      <ul className="space-y-1">
+                        {msg.styleTips.map((tip, tipIdx) => <li key={tipIdx}>- {tip}</li>)}
+                      </ul>
+                    )}
                   </div>
                 )}
 

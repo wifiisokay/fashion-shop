@@ -25,6 +25,9 @@ public class ChatProductCard {
     private String role;
     private String reason;
     private String categorySlug;
+    private String categoryName;
+    private String categoryRole;
+    private String parentCategoryName;
     private String gender;
     private String colorName;
     private String colorCode;
@@ -33,4 +36,8 @@ public class ChatProductCard {
     private Long totalStock;
     private String matchReason;
     private java.util.List<ChatProductVariantOption> availableVariants;
+    private java.util.List<String> styleTags;
+    private java.util.List<String> occasionTags;
+    private String material;
+    private String season;
 }

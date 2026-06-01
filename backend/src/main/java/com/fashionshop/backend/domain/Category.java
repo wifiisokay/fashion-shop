@@ -1,5 +1,6 @@
 package com.fashionshop.backend.domain;
 
+import com.fashionshop.backend.common.enums.CategoryRole;
 import jakarta.persistence.*;
 import lombok.*;
 import org.hibernate.annotations.CreationTimestamp;
@@ -33,6 +34,9 @@ public class Category {
     private String slug;
 
     private String description;
+
+    @Enumerated(EnumType.STRING)
+    private CategoryRole role;
 
     @ManyToOne(fetch = FetchType.LAZY)
     @JoinColumn(name = "parent_id", foreignKey = @ForeignKey(

@@ -4,6 +4,7 @@ import { useStaffOrder } from '../../hooks/useStaffOrder';
 import { useConfirmPacking } from '../../hooks/useConfirmPacking';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { returnApi } from '../../api/returnApi';
+import { orderApi } from '../../api/orderApi';
 import { useAuth } from '../../contexts/AuthContext';
 import Spinner from '../../components/ui/Spinner';
 import Button from '../../components/ui/Button';
@@ -31,28 +32,37 @@ const StaffOrderDetailPage = () => {
   // Return actions
   const [rejectNote, setRejectNote] = useState('');
   const [showRejectDialog, setShowRejectDialog] = useState(false);
-  const [refundAmount, setRefundAmount] = useState('');
   const [completeNote, setCompleteNote] = useState('');
   const [showCompleteDialog, setShowCompleteDialog] = useState(false);
 
   const approveMutation = useMutation({
-    mutationFn: () => returnApi.approveReturn(order?.returnId, { note: '' }),
+    mutationFn: () => (authUser?.role === 'ADMIN'
+      ? returnApi.adminApprove(order?.returnId, { note: '' })
+      : returnApi.approveReturn(order?.returnId, { note: '' })),
     onSuccess: () => { toast.success('Đã duyệt yêu cầu'); refetch?.(); queryClient.invalidateQueries({ queryKey: ['staffOrders'] }); },
     onError: (err) => toast.error(err.response?.data?.message || 'Lỗi'),
   });
   const rejectMutation = useMutation({
-    mutationFn: (note) => returnApi.rejectReturn(order?.returnId, { note }),
+    mutationFn: (note) => (authUser?.role === 'ADMIN'
+      ? returnApi.adminReject(order?.returnId, { note })
+      : returnApi.rejectReturn(order?.returnId, { note })),
     onSuccess: () => { toast.success('Đã từ chối yêu cầu'); setShowRejectDialog(false); refetch?.(); queryClient.invalidateQueries({ queryKey: ['staffOrders'] }); },
     onError: (err) => toast.error(err.response?.data?.message || 'Lỗi'),
   });
   const receiveMutation = useMutation({
-    mutationFn: () => returnApi.receiveReturn(order?.returnId),
+    mutationFn: () => returnApi.markReceived(order?.returnId, { note: '' }),
     onSuccess: () => { toast.success('Đã xác nhận nhận hàng'); refetch?.(); },
     onError: (err) => toast.error(err.response?.data?.message || 'Lỗi'),
   });
   const completeMutation = useMutation({
-    mutationFn: ({ refundAmount, note }) => returnApi.completeReturn(order?.returnId, { refundAmount: refundAmount || null, note: note || null }),
-    onSuccess: () => { toast.success('Đã ghi nhận hoàn tất xử lý'); setShowCompleteDialog(false); setRefundAmount(''); setCompleteNote(''); refetch?.(); },
+    mutationFn: ({ note }) => returnApi.completeReturn(order?.returnId, { note: note || null }),
+    onSuccess: () => { toast.success('Đã xác nhận hoàn tiền'); setShowCompleteDialog(false); setCompleteNote(''); refetch?.(); },
+    onError: (err) => toast.error(err.response?.data?.message || 'Lỗi'),
+  });
+
+  const confirmCompletedMutation = useMutation({
+    mutationFn: () => orderApi.confirmCompleted(order?.id),
+    onSuccess: () => { toast.success('Đã xác nhận hoàn thành đơn'); refetch?.(); },
     onError: (err) => toast.error(err.response?.data?.message || 'Lỗi'),
   });
 
@@ -317,9 +327,21 @@ const StaffOrderDetailPage = () => {
                 </p>
               </div>
             ) : order.status === 'DELIVERED' ? (
-              <p className="text-green-600 font-medium flex items-center gap-2">
-                <CheckCircle className="w-5 h-5" /> Đơn hàng đã giao. Hệ thống sẽ tự động hoàn thành sau 7 ngày.
-              </p>
+              authUser?.role === 'ADMIN' ? (
+                <div className="flex flex-wrap gap-3">
+                  <Button
+                    onClick={() => confirmCompletedMutation.mutate()}
+                    loading={confirmCompletedMutation.isPending}
+                    className="bg-green-600 hover:bg-green-700"
+                  >
+                    <CheckCircle className="w-4 h-4 mr-2" /> Xác nhận hoàn thành
+                  </Button>
+                </div>
+              ) : (
+                <p className="text-green-600 font-medium flex items-center gap-2">
+                  <CheckCircle className="w-5 h-5" /> Đơn hàng đã giao. Chờ admin xác nhận hoàn thành.
+                </p>
+              )
             ) : (
               <div className="flex flex-wrap gap-3">
                 {order.status === 'AWAITING_PAYMENT' && (
@@ -386,7 +408,7 @@ const StaffOrderDetailPage = () => {
           {order.returnId && (
             <div className="bg-orange-50 rounded-xl shadow-sm border border-orange-200 p-6 space-y-4">
               <h2 className="font-semibold text-orange-800 flex items-center gap-2">
-                <RotateCcw className="w-5 h-5" /> Yêu cầu đổi/trả hoặc khiếu nại #{order.returnId}
+                <RotateCcw className="w-5 h-5" /> Yêu cầu trả hàng #{order.returnId}
               </h2>
               <div className="grid grid-cols-2 gap-3 text-sm">
                 <div><span className="text-gray-500">Trạng thái:</span> <span className="font-semibold">{order.returnStatusLabel || order.returnStatus}</span></div>
@@ -427,7 +449,7 @@ const StaffOrderDetailPage = () => {
               )}
               {/* Return Actions */}
               <div className="flex flex-wrap gap-2 pt-2 border-t border-orange-200">
-                {order.returnStatus === 'PENDING' && (
+                {order.returnStatus === 'REQUESTED' && (
                   <>
                     <Button onClick={() => { if (window.confirm('Duyệt yêu cầu này?')) approveMutation.mutate(); }} loading={approveMutation.isPending} className="bg-blue-600 hover:bg-blue-700">
                       <CheckCircle className="w-4 h-4 mr-1" /> Duyệt
@@ -444,7 +466,7 @@ const StaffOrderDetailPage = () => {
                 )}
                 {order.returnStatus === 'RECEIVED' && authUser?.role === 'ADMIN' && (
                   <Button onClick={() => setShowCompleteDialog(true)} className="bg-green-600 hover:bg-green-700">
-                    <CheckCircle className="w-4 h-4 mr-1" /> Xác nhận đã xử lý
+                    <CheckCircle className="w-4 h-4 mr-1" /> Xác nhận hoàn tiền
                   </Button>
                 )}
               </div>
@@ -559,31 +581,22 @@ const StaffOrderDetailPage = () => {
       {showCompleteDialog && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4">
           <div className="bg-white rounded-2xl shadow-xl max-w-md w-full p-6 space-y-4">
-            <h3 className="text-lg font-bold text-gray-900">Xác nhận đã xử lý</h3>
-            <p className="text-sm text-gray-600">Số tiền hoàn là ghi nhận thủ công nội bộ, không tự gọi cổng thanh toán.</p>
-            <input
-              type="number"
-              value={refundAmount}
-              onChange={(e) => setRefundAmount(e.target.value)}
-              placeholder="Số tiền hoàn ghi nhận (VND)"
-              className="w-full border border-gray-300 rounded-xl p-3 text-sm focus:ring-black focus:border-black"
-            />
+            <h3 className="text-lg font-bold text-gray-900">Xác nhận hoàn tiền</h3>
             <textarea
               value={completeNote}
               onChange={(e) => setCompleteNote(e.target.value)}
-              placeholder="Ghi chú xử lý cho yêu cầu này..."
+              placeholder="Ghi chú (không bắt buộc)..."
               rows={3}
               className="w-full border border-gray-300 rounded-xl p-3 text-sm focus:ring-black focus:border-black resize-none"
             />
             <div className="flex gap-3 justify-end">
-              <Button variant="secondary" onClick={() => { setShowCompleteDialog(false); setRefundAmount(''); setCompleteNote(''); }}>Hủy</Button>
+              <Button variant="secondary" onClick={() => { setShowCompleteDialog(false); setCompleteNote(''); }}>Hủy</Button>
               <Button loading={completeMutation.isPending} onClick={() => {
                 if (!window.confirm('Xác nhận đã xử lý yêu cầu này?')) return;
                 completeMutation.mutate({
-                  refundAmount: refundAmount ? parseFloat(refundAmount) : null,
-                  note: completeNote.trim(),
+                  note: completeNote.trim() || null,
                 });
-              }}>Xác nhận đã xử lý</Button>
+              }}>Xác nhận hoàn tiền</Button>
             </div>
           </div>
         </div>

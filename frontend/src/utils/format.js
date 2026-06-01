@@ -20,27 +20,16 @@ export const formatOrderStatus = (status) => ({
 
 export const formatReturnType = (type) => ({
   RETURN: { label: 'Trả hàng', color: 'red' },
-  EXCHANGE: { label: 'Đổi hàng', color: 'blue' },
-  COMPLAINT: { label: 'Khiếu nại', color: 'gold' },
   REFUND: { label: 'Hoàn tiền', color: 'red' },
 }[type] ?? { label: type, color: 'default' });
 
 export const RETURN_REASON_TYPES = [
   { value: 'RETURN', label: 'Trả hàng', prefix: '[TRẢ HÀNG]' },
-  { value: 'EXCHANGE', label: 'Đổi hàng', prefix: '[ĐỔI HÀNG]' },
-  { value: 'COMPLAINT', label: 'Khiếu nại', prefix: '[KHIẾU NẠI]' },
 ];
 
 export const parseReturnReason = (reason = '') => {
-  const match = reason.match(/^\[(TRẢ HÀNG|ĐỔI HÀNG|KHIẾU NẠI)\]\s*(.*)$/i);
-  if (!match) {
-    return { type: 'RETURN', typeLabel: 'Trả hàng', cleanReason: reason };
-  }
-
-  const prefix = match[1].toUpperCase();
-  const type = prefix === 'ĐỔI HÀNG' ? 'EXCHANGE' : prefix === 'KHIẾU NẠI' ? 'COMPLAINT' : 'RETURN';
-  const info = formatReturnType(type);
-  return { type, typeLabel: info.label, cleanReason: match[2] || '' };
+  const info = formatReturnType('RETURN');
+  return { type: 'RETURN', typeLabel: info.label, cleanReason: reason };
 };
 
 export const isSaleActive = (saleStartDate, saleEndDate) => {

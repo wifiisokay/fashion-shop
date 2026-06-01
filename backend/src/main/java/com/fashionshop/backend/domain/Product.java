@@ -61,7 +61,7 @@ public class Product {
 
     @Column(name = "estimated_weight", nullable = false)
     @Builder.Default
-    private Integer estimatedWeight = 300; // gram
+    private Integer estimatedWeight = 100; // gram
 
     @Column(name = "low_stock_threshold", nullable = false)
     @Builder.Default
