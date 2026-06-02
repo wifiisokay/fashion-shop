@@ -15,7 +15,7 @@ import org.springframework.stereotype.Component;
 public class GeminiProperties {
 
     private String apiKey;
-    private String model = "gemini-2.0-flash";
+    private String model = "gemini-3.1-flash-lite";
     private int maxOutputTokens = 800;
     private double temperature = 0.7;
     private int timeoutSeconds = 10;

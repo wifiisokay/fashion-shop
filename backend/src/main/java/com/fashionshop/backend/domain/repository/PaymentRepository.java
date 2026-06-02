@@ -1,5 +1,6 @@
 package com.fashionshop.backend.domain.repository;
 
+import com.fashionshop.backend.common.enums.PaymentStatus;
 import com.fashionshop.backend.domain.Payment;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
@@ -10,6 +11,8 @@ import java.util.Optional;
 public interface PaymentRepository extends JpaRepository<Payment, Long> {
 
     Optional<Payment> findByOrderId(Long orderId);
+
+    Optional<Payment> findTopByOrderIdAndStatusOrderByCreatedAtDesc(Long orderId, PaymentStatus status);
 
     /** IPN lookup — tìm payment theo mã giao dịch hệ thống gửi VNPay. */
     Optional<Payment> findByVnpayTxnRef(String vnpayTxnRef);

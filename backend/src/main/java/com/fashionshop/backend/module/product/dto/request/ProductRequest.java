@@ -1,6 +1,7 @@
 package com.fashionshop.backend.module.product.dto.request;
 
 import java.math.BigDecimal;
+import java.time.LocalDateTime;
 import java.util.List;
 
 import com.fashionshop.backend.common.enums.Gender;
@@ -31,6 +32,10 @@ public class ProductRequest {
 
     private BigDecimal salePrice;
 
+    private LocalDateTime saleStartAt;
+
+    private LocalDateTime saleEndAt;
+
     @NotNull(message = "isSale không được để trống")
     private Boolean isSale;
 
@@ -46,6 +51,9 @@ public class ProductRequest {
     @Min(value = 50, message = "Cân nặng tối thiểu 50g")
     @Max(value = 50000, message = "Cân nặng tối đa 50kg")
     private Integer estimatedWeight;
+
+    @Min(value = 0, message = "NgÆ°á»¡ng cáº£nh bÃ¡o tá»“n kho khÃ´ng Ä‘Æ°á»£c Ã¢m")
+    private Integer lowStockThreshold;
 
     @Size(max = 4, message = "Chọn tối đa 4 phong cách")
     private List<String> styleTags;

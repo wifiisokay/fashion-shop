@@ -1,7 +1,6 @@
 package com.fashionshop.backend.module.auth;
 
 import com.fashionshop.backend.common.ApiResponse;
-import com.fashionshop.backend.config.JwtService;
 import com.fashionshop.backend.exception.BusinessException;
 import com.fashionshop.backend.exception.ErrorCode;
 import com.fashionshop.backend.module.auth.dto.request.ChangePasswordRequest;
@@ -21,14 +20,11 @@ import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
-import org.springframework.http.HttpHeaders;
 import org.springframework.http.HttpStatus;
-import org.springframework.http.ResponseCookie;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.web.bind.annotation.*;
 
-import java.time.Duration;
 import java.util.Arrays;
 
 /**
@@ -51,13 +47,8 @@ import java.util.Arrays;
 public class AuthController {
 
     private final AuthService authService;
-    private final JwtService jwtService;
     private final TokenBlacklistService tokenBlacklistService;
-
-    // Cookie configuration constants — đồng bộ với JwtProperties nhưng không inject thêm bean
-    private static final String COOKIE_NAME = "access_token";
-    private static final String COOKIE_PATH = "/api";
-    private static final String SAME_SITE   = "Strict";
+    private final AuthCookieService authCookieService;
 
     /**
      * POST /api/auth/register — Public
@@ -74,7 +65,7 @@ public class AuthController {
             @Valid @RequestBody RegisterRequest request,
             HttpServletResponse response) {
         LoginResult result = authService.register(request);
-        setAuthCookie(response, result.token());
+        authCookieService.setAuthCookie(response, result.token());
         return ResponseEntity.ok(ApiResponse.success("Đăng ký thành công", result.userInfo()));
     }
 
@@ -93,7 +84,7 @@ public class AuthController {
             @Valid @RequestBody LoginRequest request,
             HttpServletResponse response) {
         LoginResult result = authService.login(request);
-        setAuthCookie(response, result.token());
+        authCookieService.setAuthCookie(response, result.token());
         return ResponseEntity.ok(ApiResponse.success("Đăng nhập thành công", result.userInfo()));
     }
 
@@ -174,22 +165,20 @@ public class AuthController {
         String token = extractToken(request);
         if (token != null) {
             try {
-                // Lấy expiry trực tiếp từ claims — không cần JwtProperties ở đây
-                java.util.Date expiry = jwtService.getExpiry(token);
-                tokenBlacklistService.blacklist(token, expiry);
+                tokenBlacklistService.blacklistToken(token, "LOGOUT");
             } catch (Exception e) {
                 // Token malformed / đã expired — vẫn clear cookie
             }
         }
 
-        clearAuthCookie(response);
+        authCookieService.clearAuthCookie(response);
         return ResponseEntity.ok(ApiResponse.success("Đăng xuất thành công"));
     }
 
     /**
      * PATCH /api/auth/change-password — Authenticated
      */
-    @PatchMapping("/change-password")
+    @RequestMapping(value = "/change-password", method = {RequestMethod.POST, RequestMethod.PATCH})
     @Operation(summary = "Change password", description = "Change password for currently authenticated user.", security = {
             @SecurityRequirement(name = "cookieAuth"),
             @SecurityRequirement(name = "bearerAuth")
@@ -202,44 +191,14 @@ public class AuthController {
     })
     public ResponseEntity<ApiResponse<Void>> changePassword(
             @Valid @RequestBody ChangePasswordRequest request,
-            @AuthenticationPrincipal(expression = "username") String currentEmail) {
+            @AuthenticationPrincipal(expression = "username") String currentEmail,
+            HttpServletResponse response) {
         if (currentEmail == null || currentEmail.isBlank()) {
             throw new BusinessException(ErrorCode.INVALID_CREDENTIALS, HttpStatus.UNAUTHORIZED, "Chưa đăng nhập");
         }
         authService.changePassword(currentEmail, request);
+        authCookieService.clearAuthCookie(response);
         return ResponseEntity.ok(ApiResponse.success("Đổi mật khẩu thành công"));
-    }
-
-    // ============ Cookie helpers ============
-
-    /**
-     * Set HttpOnly cookie với JWT token dùng ResponseCookie (Spring).
-     * HttpOnly=true → JS không thể đọc (chống XSS).
-     * SameSite=Strict → chỉ gửi khi cùng origin (chống CSRF).
-     */
-    private void setAuthCookie(HttpServletResponse response, String token) {
-        ResponseCookie cookie = ResponseCookie.from(COOKIE_NAME, token)
-                .httpOnly(true)
-                .secure(isProductionSecure())
-                .sameSite(SAME_SITE)
-                .path(COOKIE_PATH)
-                .maxAge(Duration.ofDays(1))
-                .build();
-        response.addHeader(HttpHeaders.SET_COOKIE, cookie.toString());
-    }
-
-    /**
-     * Clear cookie khi logout (MaxAge=0).
-     */
-    private void clearAuthCookie(HttpServletResponse response) {
-        ResponseCookie cookie = ResponseCookie.from(COOKIE_NAME, "")
-                .httpOnly(true)
-                .secure(isProductionSecure())
-                .sameSite(SAME_SITE)
-                .path(COOKIE_PATH)
-                .maxAge(Duration.ZERO)
-                .build();
-        response.addHeader(HttpHeaders.SET_COOKIE, cookie.toString());
     }
 
     /**
@@ -250,7 +209,7 @@ public class AuthController {
         // 1. Cookie
         if (request.getCookies() != null) {
             return Arrays.stream(request.getCookies())
-                    .filter(c -> COOKIE_NAME.equals(c.getName()))
+                    .filter(c -> authCookieService.getCookieName().equals(c.getName()))
                     .map(jakarta.servlet.http.Cookie::getValue)
                     .findFirst()
                     .orElseGet(() -> extractFromHeader(request));
@@ -267,12 +226,4 @@ public class AuthController {
         return null;
     }
 
-    /**
-     * Secure flag chỉ bật ở production (HTTPS).
-     * Có thể inject từ @Value nếu cần tùy chỉnh từng môi trường.
-     */
-    private boolean isProductionSecure() {
-        String profile = System.getProperty("spring.profiles.active", "");
-        return profile.contains("prod");
-    }
 }

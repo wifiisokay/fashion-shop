@@ -1,5 +1,6 @@
 package com.fashionshop.backend.domain;
 
+import com.fashionshop.backend.common.enums.OrderPaymentStatus;
 import com.fashionshop.backend.common.enums.OrderStatus;
 import com.fashionshop.backend.common.enums.PaymentMethod;
 import jakarta.persistence.*;
@@ -16,11 +17,12 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 
-/**
- * Đơn hàng.
- * addressSnapshot: JSON snapshot địa chỉ tại thời điểm đặt hàng — không FK vào Address.
- * deliveredAt: set khi chuyển SHIPPING → DELIVERED, dùng cho auto-complete job.
- */
+    /**
+     * Đơn hàng.
+     * addressSnapshot: JSON snapshot địa chỉ tại thời điểm đặt hàng — không FK vào Address.
+     * deliveredAt: set khi chuyển SHIPPING → DELIVERED.
+     * completedAt: set khi admin xác nhận hoàn thành đơn.
+     */
 @Entity
 @Table(name = "orders", indexes = {
     @Index(name = "idx_orders_user", columnList = "user_id"),
@@ -48,6 +50,11 @@ public class Order {
     @Enumerated(EnumType.STRING)
     @Column(name = "payment_method", nullable = false, length = 10)
     private PaymentMethod paymentMethod;
+
+    @Enumerated(EnumType.STRING)
+    @Column(name = "payment_status", nullable = false, length = 20)
+    @Builder.Default
+    private OrderPaymentStatus paymentStatus = OrderPaymentStatus.UNPAID;
 
     @Column(nullable = false, precision = 12, scale = 0)
     private BigDecimal subtotal;
@@ -94,6 +101,9 @@ public class Order {
 
     @Column(name = "delivered_at")
     private LocalDateTime deliveredAt;
+
+    @Column(name = "completed_at")
+    private LocalDateTime completedAt;
 
     @Column(name = "expected_delivery_date")
     private java.time.LocalDate expectedDeliveryDate;

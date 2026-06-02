@@ -3,7 +3,6 @@ import { useParams, Link } from 'react-router-dom';
 import { useMyOrder } from '../../hooks/useMyOrder';
 import { useCancelOrder } from '../../hooks/useCancelOrder';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
-import { orderApi } from '../../api/orderApi';
 import { reviewApi } from '../../api/reviewApi';
 import Spinner from '../../components/ui/Spinner';
 import OrderStatusBadge from '../../components/order/OrderStatusBadge';
@@ -12,7 +11,7 @@ import ReviewModal from '../../components/review/ReviewModal';
 import StarRating from '../../components/review/StarRating';
 import { formatPrice, formatDate } from '../../utils/format';
 import { ROUTES } from '../../constants/routes';
-import { ArrowLeft, PackageCheck, Star, Pencil, Trash2, RotateCcw } from 'lucide-react';
+import { ArrowLeft, Star, Pencil, Trash2, RotateCcw } from 'lucide-react';
 import { toast } from 'sonner';
 import ReturnRequestModal from '../../components/return/ReturnRequestModal';
 
@@ -22,7 +21,6 @@ const OrderDetailPage = () => {
   const cancelOrder = useCancelOrder();
   const [cancelReason, setCancelReason] = useState('');
   const [showCancelDialog, setShowCancelDialog] = useState(false);
-  const [confirmingReceived, setConfirmingReceived] = useState(false);
   const [reviewTarget, setReviewTarget] = useState(null); // { item, existingReview? }
   const [showReturnModal, setShowReturnModal] = useState(false);
   const queryClient = useQueryClient();
@@ -40,21 +38,23 @@ const OrderDetailPage = () => {
   if (isError || !order) return <div className="text-center py-20 text-red-500">Lỗi tải chi tiết đơn hàng</div>;
 
   const address = order.addressSnapshot || {};
-  const canCancel = order.status === 'PENDING' || order.status === 'AWAITING_PAYMENT';
+  const canCancel = order.status === 'PENDING';
+  const canShowReviews = order.status === 'COMPLETED';
 
-  // Return window: 7 days from deliveredAt
+  // Return window: 7 days from completedAt
   const canRequestReturn = (() => {
-    if (!['DELIVERED', 'COMPLETED'].includes(order.status)) return false;
-    if (order.returnStatus && ['PENDING', 'APPROVED', 'RECEIVED'].includes(order.returnStatus)) return false;
-    if (!order.deliveredAt) return false;
-    const deadline = new Date(order.deliveredAt);
+    if (order.status !== 'COMPLETED') return false;
+    if (order.paymentStatus === 'REFUNDED') return false;
+    if (order.returnStatus && ['REQUESTED', 'APPROVED', 'RECEIVED'].includes(order.returnStatus)) return false;
+    if (!order.completedAt) return false;
+    const deadline = new Date(order.completedAt);
     deadline.setDate(deadline.getDate() + 7);
     return new Date() < deadline;
   })();
 
   const returnDaysLeft = (() => {
-    if (!order.deliveredAt) return 0;
-    const deadline = new Date(order.deliveredAt);
+    if (!order.completedAt) return 0;
+    const deadline = new Date(order.completedAt);
     deadline.setDate(deadline.getDate() + 7);
     const diff = Math.ceil((deadline - new Date()) / (1000 * 60 * 60 * 24));
     return Math.max(0, diff);
@@ -110,14 +110,12 @@ const OrderDetailPage = () => {
                 {order.paymentMethod === 'COD' ? 'COD — Thanh toán khi nhận hàng' : 'VNPay'}
               </span></p>
               <p>Trạng thái: <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium ${
-                order.paymentStatus === 'SUCCESS' ? 'bg-green-100 text-green-700' :
+                order.paymentStatus === 'PAID' ? 'bg-green-100 text-green-700' :
                 order.paymentStatus === 'REFUNDED' ? 'bg-gray-100 text-gray-600' :
-                order.paymentStatus === 'FAILED' ? 'bg-red-100 text-red-700' :
                 'bg-yellow-100 text-yellow-700'
               }`}>
-                {order.paymentStatus === 'SUCCESS' ? 'Đã thanh toán' :
+                {order.paymentStatus === 'PAID' ? 'Đã thanh toán' :
                  order.paymentStatus === 'REFUNDED' ? 'Đã hoàn tiền' :
-                 order.paymentStatus === 'FAILED' ? 'Thất bại' :
                  'Chưa thanh toán'}
               </span></p>
               {order.paidAt && (
@@ -191,44 +189,46 @@ const OrderDetailPage = () => {
                     <span className="font-bold text-gray-900">{formatPrice(item.subtotal)}</span>
                   </div>
                   {/* Review button / badge */}
-                  <div className="mt-3">
-                    {item.canReview && (
-                      <button onClick={() => setReviewTarget({ item })}
-                        className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium text-amber-700 bg-amber-50 border border-amber-200 rounded-lg hover:bg-amber-100 transition-colors">
-                        <Star className="w-3.5 h-3.5" /> Viết đánh giá
-                      </button>
-                    )}
-                    {item.reviewId && (
-                      <div className="bg-gray-50 border border-gray-100 rounded-lg p-3">
-                        <div className="flex items-center justify-between mb-1.5">
-                          <div className="flex items-center gap-2">
-                            <span className="text-xs font-medium text-green-700 bg-green-100 px-2 py-0.5 rounded flex items-center gap-1">
-                              ✓ Đã đánh giá
-                            </span>
-                            <StarRating value={item.reviewRating || 0} size={14} />
+                  {canShowReviews && (
+                    <div className="mt-3">
+                      {item.canReview && (
+                        <button onClick={() => setReviewTarget({ item })}
+                          className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium text-amber-700 bg-amber-50 border border-amber-200 rounded-lg hover:bg-amber-100 transition-colors">
+                          <Star className="w-3.5 h-3.5" /> Viết đánh giá
+                        </button>
+                      )}
+                      {item.reviewId && (
+                        <div className="bg-gray-50 border border-gray-100 rounded-lg p-3">
+                          <div className="flex items-center justify-between mb-1.5">
+                            <div className="flex items-center gap-2">
+                              <span className="text-xs font-medium text-green-700 bg-green-100 px-2 py-0.5 rounded flex items-center gap-1">
+                                ✓ Đã đánh giá
+                              </span>
+                              <StarRating value={item.reviewRating || 0} size={14} />
+                            </div>
+                            <div className="flex gap-2">
+                              <button onClick={() => setReviewTarget({ 
+                                item, 
+                                existingReview: { id: item.reviewId, rating: item.reviewRating, comment: item.reviewComment } 
+                              })}
+                                className="text-gray-400 hover:text-blue-600 transition-colors" title="Sửa">
+                                <Pencil className="w-3.5 h-3.5" />
+                              </button>
+                              <button onClick={() => {
+                                if (window.confirm('Xóa đánh giá này?')) deleteMutation.mutate(item.reviewId);
+                              }}
+                                className="text-gray-400 hover:text-red-600 transition-colors" title="Xóa">
+                                <Trash2 className="w-3.5 h-3.5" />
+                              </button>
+                            </div>
                           </div>
-                          <div className="flex gap-2">
-                            <button onClick={() => setReviewTarget({ 
-                              item, 
-                              existingReview: { id: item.reviewId, rating: item.reviewRating, comment: item.reviewComment } 
-                            })}
-                              className="text-gray-400 hover:text-blue-600 transition-colors" title="Sửa">
-                              <Pencil className="w-3.5 h-3.5" />
-                            </button>
-                            <button onClick={() => {
-                              if (window.confirm('Xóa đánh giá này?')) deleteMutation.mutate(item.reviewId);
-                            }}
-                              className="text-gray-400 hover:text-red-600 transition-colors" title="Xóa">
-                              <Trash2 className="w-3.5 h-3.5" />
-                            </button>
-                          </div>
+                          {item.reviewComment && (
+                            <p className="text-sm text-gray-700 mt-1">{item.reviewComment}</p>
+                          )}
                         </div>
-                        {item.reviewComment && (
-                          <p className="text-sm text-gray-700 mt-1">{item.reviewComment}</p>
-                        )}
-                      </div>
-                    )}
-                  </div>
+                      )}
+                    </div>
+                  )}
                 </div>
               </div>
             ))}
@@ -278,54 +278,18 @@ const OrderDetailPage = () => {
         </div>
       )}
 
-      {order.status === 'DELIVERED' && (
-        <div className="space-y-3">
-          {canRequestReturn && returnDaysLeft > 0 && (
-            <p className="text-xs text-gray-500 text-right">
-              ⏳ Còn {returnDaysLeft} ngày để yêu cầu trả hàng
-            </p>
-          )}
-          <div className="flex gap-3 justify-end">
-            <Button
-              onClick={async () => {
-                if (!window.confirm('Xác nhận bạn đã nhận được hàng?')) return;
-                setConfirmingReceived(true);
-                try {
-                  await orderApi.confirmReceived(id);
-                  window.location.reload();
-                } catch (err) {
-                  alert(err?.response?.data?.message || 'Lỗi xác nhận nhận hàng');
-                } finally {
-                  setConfirmingReceived(false);
-                }
-              }}
-              loading={confirmingReceived}
-            >
-              <PackageCheck className="w-4 h-4 mr-2" />
-              Đã nhận hàng
-            </Button>
-            {canRequestReturn && (
-              <Button variant="secondary" onClick={() => setShowReturnModal(true)}>
-                <RotateCcw className="w-4 h-4 mr-2" />
-                Yêu cầu trả hàng
-              </Button>
-            )}
-          </div>
-        </div>
-      )}
-
       {/* Return for COMPLETED orders within window */}
       {order.status === 'COMPLETED' && canRequestReturn && (
         <div className="space-y-3">
           {returnDaysLeft > 0 && (
             <p className="text-xs text-gray-500 text-right">
-              ⏳ Còn {returnDaysLeft} ngày để yêu cầu trả hàng
+              ⏳ Còn {returnDaysLeft} ngày để tạo yêu cầu trả hàng
             </p>
           )}
           <div className="flex gap-3 justify-end">
             <Button variant="secondary" onClick={() => setShowReturnModal(true)}>
               <RotateCcw className="w-4 h-4 mr-2" />
-              Yêu cầu trả hàng
+               Yêu cầu trả hàng
             </Button>
           </div>
         </div>
@@ -344,6 +308,7 @@ const OrderDetailPage = () => {
     {showReturnModal && (
       <ReturnRequestModal
         orderId={order.id}
+        orderItems={order.items || []}
         onClose={() => setShowReturnModal(false)}
       />
     )}

@@ -23,6 +23,20 @@ public class IntentClassifier {
         "phoi do", "mac voi", "ket hop", "mix match", "outfit", "nen mac gi", "mac gi"
     );
 
+    // Thương hiệu cạnh tranh / chủ đề ngoài phạm vi
+    private static final Set<String> OUT_OF_SCOPE_BRANDS = Set.of(
+        "zara", "h&m", "hm", "gucci", "louis vuitton", "lv", "chanel", "prada",
+        "nike", "adidas", "uniqlo", "pull&bear", "mango", "shein", "temu",
+        "bershka", "forever21", "calvin klein", "tommy hilfiger"
+    );
+
+    // Câu hỏi hoàn toàn ngoài phạm vi thương mại
+    private static final Set<String> OUT_OF_SCOPE_TOPICS = Set.of(
+        "thoi tiet", "tin tuc", "bong da", "the thao", "chinh tri", "covid",
+        "nau an", "cong thuc", "bai tap", "hoc tap", "tieng anh", "toan",
+        "lam the nao de", "lich su", "dia ly", "khoa hoc"
+    );
+
     private static final Map<ChatIntent, Set<String>> INTENT_KEYWORDS = Map.of(
         ChatIntent.PRODUCT_SEARCH, Set.of(
             "áo", "quần", "váy", "giày", "dép", "túi", "mũ", "nón", "kính",
@@ -76,6 +90,13 @@ public class IntentClassifier {
             log.info("[AI_INTENT] message='{}' normalized='{}' intent={} reason=standalone_non_commerce",
                 shorten(message), normalizedMsg.trim(), ChatIntent.CHITCHAT);
             return ChatIntent.CHITCHAT;
+        }
+
+        // Kiểm tra câu hỏi ngoài phạm vi shop (thương hiệu khác, chủ đề không liên quan)
+        if (isOutOfScope(normalizedMsg)) {
+            log.info("[AI_INTENT] message='{}' normalized='{}' intent={} reason=out_of_scope",
+                shorten(message), normalizedMsg.trim(), ChatIntent.OUT_OF_SCOPE);
+            return ChatIntent.OUT_OF_SCOPE;
         }
 
         if (containsStrongOutfitSignal(normalizedMsg)) {
@@ -161,6 +182,22 @@ public class IntentClassifier {
             || normalizedMsg.contains(" tai sao ")
             || normalizedMsg.contains(" nhu the nao ");
         return looksLikeArithmetic || looksLikeGeneralQuestion;
+    }
+
+    private boolean isOutOfScope(String normalizedMsg) {
+        // Mention thương hiệu cạnh tranh
+        for (String brand : OUT_OF_SCOPE_BRANDS) {
+            if (normalizedMsg.contains(brand)) {
+                return true;
+            }
+        }
+        // Chủ đề hoàn toàn ngoài phạm vi
+        for (String topic : OUT_OF_SCOPE_TOPICS) {
+            if (normalizedMsg.contains(topic)) {
+                return true;
+            }
+        }
+        return false;
     }
 
     private boolean hasCommerceFollowUpSignal(String normalizedMsg) {

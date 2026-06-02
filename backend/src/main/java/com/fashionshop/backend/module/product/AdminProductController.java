@@ -20,8 +20,10 @@ import com.fashionshop.backend.domain.User;
 import com.fashionshop.backend.module.product.dto.request.ProductRequest;
 import com.fashionshop.backend.module.product.dto.request.ProductStatusRequest;
 import com.fashionshop.backend.module.product.dto.request.ProductTagSuggestRequest;
+import com.fashionshop.backend.module.product.dto.request.UpdateProductSaleRequest;
 import com.fashionshop.backend.module.product.dto.response.ProductDetailResponse;
 import com.fashionshop.backend.module.product.dto.response.ProductSummaryResponse;
+import com.fashionshop.backend.module.product.dto.response.StockAlertResponse;
 import com.fashionshop.backend.module.product.dto.response.ProductTagLibraryResponse;
 import com.fashionshop.backend.module.product.dto.response.ProductTagSuggestResponse;
 
@@ -38,6 +40,7 @@ import lombok.RequiredArgsConstructor;
 public class AdminProductController {
 
     private final ProductService productService;
+    private final StockAlertService stockAlertService;
     private final ProductTagSuggestionService tagSuggestionService;
     private final ColorFamilyBackfillService colorFamilyBackfillService;
 
@@ -75,6 +78,17 @@ public class AdminProductController {
             "Cập nhật trạng thái thành công", productService.updateStatus(id, request)));
     }
 
+    @PatchMapping("/{id}/sale")
+    @PreAuthorize("hasRole('ADMIN')")
+    @Operation(summary = "Cáº­p nháº­t giáº£m giÃ¡ sáº£n pháº©m", security = @SecurityRequirement(name = "cookieAuth"))
+    public ResponseEntity<ApiResponse<ProductDetailResponse>> updateSale(
+        @PathVariable Long id,
+        @RequestBody UpdateProductSaleRequest request
+    ) {
+        return ResponseEntity.ok(ApiResponse.success(
+            "Cáº­p nháº­t giáº£m giÃ¡ thÃ nh cÃ´ng", productService.updateSale(id, request)));
+    }
+
     @GetMapping
     @PreAuthorize("hasAnyRole('EMPLOYEE', 'ADMIN')")
     @Operation(summary = "Danh sách sản phẩm (Admin)", description = "Hiển thị cả ACTIVE và INACTIVE.",
@@ -89,6 +103,15 @@ public class AdminProductController {
     ) {
         return ResponseEntity.ok(ApiResponse.success(
             productService.listAdmin(keyword, categoryId, status, gender, page, size)));
+    }
+
+    @GetMapping("/stock-alerts")
+    @PreAuthorize("hasAnyRole('EMPLOYEE', 'ADMIN')")
+    @Operation(summary = "Cáº£nh bÃ¡o tá»“n kho theo biáº¿n thá»ƒ", security = @SecurityRequirement(name = "cookieAuth"))
+    public ResponseEntity<ApiResponse<StockAlertResponse>> stockAlerts(
+        @RequestParam(defaultValue = "10") int limit
+    ) {
+        return ResponseEntity.ok(ApiResponse.success(stockAlertService.getStockAlerts(limit)));
     }
 
     @GetMapping("/{id}")

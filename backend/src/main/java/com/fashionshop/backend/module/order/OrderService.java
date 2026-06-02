@@ -18,7 +18,6 @@ public interface OrderService {
     PageResponse<OrderSummaryResponse> getMyOrders(Long userId, OrderStatus status, String keyword, int page, int size);
     OrderDetailResponse getMyOrderById(Long userId, Long orderId);
     void cancelOrder(Long userId, Long orderId, CancelOrderRequest request);
-    void confirmReceived(Long userId, Long orderId);
 
     // ====== Staff / Admin ======
     PageResponse<OrderSummaryResponse> getAllOrders(OrderStatus status, String keyword, Long categoryId, int page, int size);
@@ -27,4 +26,5 @@ public interface OrderService {
     OrderDetailResponse updateOrderStatus(Long orderId, UpdateOrderStatusRequest request);
     void staffCancelOrder(Long orderId, CancelOrderRequest request);
     OrderDetailResponse confirmPacking(Long orderId, ConfirmPackingRequest request);
+    void confirmCompleted(Long orderId);
 }

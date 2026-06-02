@@ -1,5 +1,6 @@
 package com.fashionshop.backend.module.product.dto.response;
 
+import com.fashionshop.backend.common.enums.CategoryRole;
 import com.fashionshop.backend.domain.Category;
 import lombok.Builder;
 import lombok.Getter;
@@ -12,6 +13,7 @@ public class CategoryResponse {
     private String slug;
     private String description;
     private Integer parentId;
+    private CategoryRole role;
 
     public static CategoryResponse from(Category category) {
         return CategoryResponse.builder()
@@ -20,6 +22,7 @@ public class CategoryResponse {
             .slug(category.getSlug())
             .description(category.getDescription())
             .parentId(category.getParent() != null ? category.getParent().getId() : null)
+            .role(category.getRole())
             .build();
     }
 }

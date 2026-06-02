@@ -35,6 +35,8 @@ public enum ErrorCode {
     CATEGORY_HAS_ACTIVE_PRODUCTS("CATEGORY_004", "Danh mục đang có sản phẩm đang hoạt động"),
     CATEGORY_HAS_CHILDREN("CATEGORY_005", "Danh mục đang có danh mục con"),
 
+    CATEGORY_ROLE_REQUIRED("CATEGORY_006", "Danh muc con bat buoc phai co role cho AI"),
+
     // ORDER
     ORDER_NOT_FOUND("ORDER_001", "Đơn hàng không tồn tại"),
     ORDER_CANNOT_CANCEL("ORDER_002", "Không thể huỷ đơn hàng ở trạng thái này"),
@@ -88,15 +90,21 @@ public enum ErrorCode {
     MAX_ITEMS_EXCEEDED("ORDER_011", "Vượt quá số lượng sản phẩm tối đa cho mỗi đơn hàng"),
     MAX_QUANTITY_EXCEEDED("ORDER_012", "Vượt quá số lượng tối đa cho mỗi sản phẩm"),
     DUPLICATE_ORDER("ORDER_013", "Vui lòng đợi trước khi đặt đơn tiếp"),
+    ORDER_PAYMENT_NOT_PAID("ORDER_015", "Đơn VNPay chưa thanh toán thành công, không thể xử lý đơn."),
 
     // RETURN / REVIEW
-    RETURN_NOT_FOUND("RETURN_001", "Yêu cầu trả hàng không tồn tại"),
-    RETURN_NOT_ELIGIBLE("RETURN_002", "Đơn hàng chưa đủ điều kiện trả hàng"),
-    RETURN_WINDOW_EXPIRED("RETURN_003", "Đã quá 7 ngày kể từ khi giao hàng, không thể yêu cầu trả hàng"),
-    RETURN_ALREADY_EXISTS("RETURN_004", "Đã có yêu cầu trả hàng đang xử lý cho đơn này"),
-    RETURN_INVALID_STATUS("RETURN_005", "Không thể chuyển trạng thái yêu cầu trả hàng"),
+    RETURN_NOT_FOUND("RETURN_001", "Yêu cầu đổi/trả hoặc khiếu nại không tồn tại"),
+    RETURN_NOT_ELIGIBLE("RETURN_002", "Đơn hàng chưa đủ điều kiện tạo yêu cầu đổi/trả hoặc khiếu nại"),
+    RETURN_WINDOW_EXPIRED("RETURN_003", "Đã quá 7 ngày kể từ khi hoàn thành đơn, không thể tạo yêu cầu đổi/trả hoặc khiếu nại"),
+    RETURN_ALREADY_EXISTS("RETURN_004", "Đã có yêu cầu đổi/trả hoặc khiếu nại đang xử lý cho đơn này"),
+    RETURN_INVALID_STATUS("RETURN_005", "Không thể chuyển trạng thái yêu cầu đổi/trả hoặc khiếu nại"),
     RETURN_REJECT_NOTE_REQUIRED("RETURN_006", "Vui lòng nhập lý do từ chối"),
     INVALID_REFUND_AMOUNT("RETURN_007", "Số tiền hoàn không hợp lệ"),
+    RETURN_ITEM_NOT_IN_ORDER("RETURN_008", "Sản phẩm yêu cầu xử lý không thuộc đơn hàng này"),
+    RETURN_QUANTITY_EXCEEDED("RETURN_009", "Số lượng yêu cầu xử lý vượt quá số lượng có thể đổi/trả"),
+    RETURN_ITEM_REQUIRED("RETURN_010", "Vui lòng chọn ít nhất một sản phẩm cần xử lý"),
+    RETURN_EXCHANGE_REFUND_NOT_ALLOWED("RETURN_011", "Yêu cầu đổi hàng chưa hỗ trợ ghi nhận hoàn tiền trong giai đoạn này"),
+    RETURN_EXCHANGE_NOTE_REQUIRED("RETURN_012", "Vui lòng nhập ghi chú mô tả kết quả đổi hàng"),
 
     REVIEW_NOT_FOUND("REVIEW_001", "Đánh giá không tồn tại"),
     REVIEW_ALREADY_EXISTS("REVIEW_002", "Bạn đã đánh giá sản phẩm này"),

@@ -58,6 +58,8 @@ public interface OrderRepository extends JpaRepository<Order, Long> {
 
     long countByStatus(OrderStatus status);
 
+    long countByStatusAndPackingConfirmed(OrderStatus status, boolean packingConfirmed);
+
     // Scheduler
     List<Order> findByStatusAndCreatedAtBefore(OrderStatus status, LocalDateTime cutoff);
 
@@ -68,12 +70,38 @@ public interface OrderRepository extends JpaRepository<Order, Long> {
         Long userId, LocalDateTime after);
 
     // Dashboard Stats
-    @Query("SELECT SUM(o.totalAmount) FROM Order o WHERE o.status = 'COMPLETED'")
+    @Query(value = """
+                SELECT COALESCE(SUM(o.total_amount), 0)
+                FROM orders o
+                WHERE o.status = 'COMPLETED'
+                    AND (o.payment_status IS NULL OR o.payment_status <> 'REFUNDED')
+        """, nativeQuery = true)
     java.math.BigDecimal getTotalRevenue();
 
-    @Query("SELECT FUNCTION('DATE', o.createdAt) as date, SUM(o.totalAmount) FROM Order o WHERE o.status = 'COMPLETED' AND o.createdAt >= :startDate GROUP BY FUNCTION('DATE', o.createdAt) ORDER BY FUNCTION('DATE', o.createdAt) ASC")
+    @Query(value = """
+                SELECT DATE(o.created_at) AS date,
+                             COALESCE(SUM(o.total_amount), 0) AS revenue
+                FROM orders o
+                WHERE o.created_at >= :startDate
+                    AND o.status = 'COMPLETED'
+                    AND (o.payment_status IS NULL OR o.payment_status <> 'REFUNDED')
+                GROUP BY DATE(o.created_at)
+                ORDER BY DATE(o.created_at) ASC
+        """, nativeQuery = true)
     List<Object[]> getRevenueTrend(@Param("startDate") LocalDateTime startDate);
 
     @Query("SELECT o.status, COUNT(o) FROM Order o GROUP BY o.status")
     List<Object[]> getOrderStatusDistribution();
+
+    @Query("SELECT COALESCE(SUM(o.shippingFee), 0) FROM Order o " +
+           "WHERE o.createdAt >= :startDate AND o.status IN :statuses")
+    java.math.BigDecimal sumShippingFeeByCreatedAtAfterAndStatusIn(
+        @Param("startDate") LocalDateTime startDate,
+        @Param("statuses") List<OrderStatus> statuses);
+
+    @Query("SELECT COALESCE(AVG(o.shippingFee), 0) FROM Order o " +
+           "WHERE o.createdAt >= :startDate AND o.status IN :statuses")
+    java.math.BigDecimal avgShippingFeeByCreatedAtAfterAndStatusIn(
+        @Param("startDate") LocalDateTime startDate,
+        @Param("statuses") List<OrderStatus> statuses);
 }

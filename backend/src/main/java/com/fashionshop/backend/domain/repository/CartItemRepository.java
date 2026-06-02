@@ -2,6 +2,7 @@ package com.fashionshop.backend.domain.repository;
 
 import com.fashionshop.backend.domain.CartItem;
 import org.springframework.data.jpa.repository.JpaRepository;
+import org.springframework.data.jpa.repository.Modifying;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
 
@@ -34,6 +35,15 @@ public interface CartItemRepository extends JpaRepository<CartItem, Long> {
      * Xóa toàn bộ cart của 1 user — gọi sau khi tạo order thành công.
      */
     void deleteAllByUserId(Long userId);
+
+    @Modifying
+    @Query("""
+        DELETE FROM CartItem ci
+        WHERE ci.user.id = :userId
+          AND ci.variant.id IN :variantIds
+    """)
+    void deleteByUserIdAndVariantIds(@Param("userId") Long userId,
+                                     @Param("variantIds") List<Long> variantIds);
 
     /**
      * Kiểm tra variant có đang nằm trong giỏ hàng nào không.

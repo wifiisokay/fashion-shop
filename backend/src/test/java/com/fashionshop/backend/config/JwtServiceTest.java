@@ -58,6 +58,17 @@ class JwtServiceTest {
     }
 
     @Test
+    void generatedToken_containsJtiUserIdRoleAndTokenVersion() {
+        User user = activeUser("user@example.com");
+        user.setTokenVersion(3);
+        String token = jwtService.generateToken(user);
+
+        assertThat(jwtService.extractJti(token)).isNotBlank();
+        assertThat(jwtService.extractUserId(token)).isEqualTo(1L);
+        assertThat(jwtService.extractTokenVersion(token)).isEqualTo(3);
+    }
+
+    @Test
     void isValid_withMatchingUser_returnsTrue() {
         User user = activeUser("user@example.com");
         String token = jwtService.generateToken(user);
@@ -72,6 +83,24 @@ class JwtServiceTest {
         String token = jwtService.generateToken(user);
 
         assertThat(jwtService.isValid(token, another)).isFalse();
+    }
+
+    @Test
+    void isValid_withChangedTokenVersion_returnsFalse() {
+        User user = activeUser("user@example.com");
+        String token = jwtService.generateToken(user);
+        user.setTokenVersion(1);
+
+        assertThat(jwtService.isValid(token, user)).isFalse();
+    }
+
+    @Test
+    void isValid_withLockedUser_returnsFalse() {
+        User user = activeUser("user@example.com");
+        String token = jwtService.generateToken(user);
+        user.setStatus(UserStatus.LOCKED);
+
+        assertThat(jwtService.isValid(token, user)).isFalse();
     }
 
     @Test

@@ -18,7 +18,6 @@ import java.util.List;
 /**
  * Scheduled jobs cho Order:
  * 1. Auto-cancel: AWAITING_PAYMENT quá 15 phút → CANCELLED + hoàn stock.
- * 2. Auto-complete: DELIVERED quá 7 ngày (không có return request) → COMPLETED.
  */
 @Slf4j
 @Component
@@ -48,27 +47,6 @@ public class OrderScheduler {
             order.setCancelReason("Quá hạn thanh toán (tự động hủy sau 15 phút)");
             orderRepository.save(order);
             log.info("Auto-cancelled order #{}", order.getId());
-        }
-    }
-
-    /**
-     * Mỗi ngày 00:00: tìm đơn DELIVERED quá 7 ngày → auto-complete.
-     */
-    @Scheduled(cron = "0 0 0 * * *") // 00:00 hàng ngày
-    @Transactional
-    public void autoCompleteDelivered() {
-        LocalDateTime cutoff = LocalDateTime.now().minusDays(7);
-        List<Order> delivered = orderRepository
-            .findByStatusAndDeliveredAtBefore(OrderStatus.DELIVERED, cutoff);
-
-        if (delivered.isEmpty()) return;
-
-        log.info("Auto-complete: found {} DELIVERED orders older than 7 days", delivered.size());
-
-        for (Order order : delivered) {
-            order.setStatus(OrderStatus.COMPLETED);
-            orderRepository.save(order);
-            log.info("Auto-completed order #{}", order.getId());
         }
     }
 

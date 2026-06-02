@@ -17,4 +17,8 @@ public class ProductContextDto {
     private Long colorId;
     private String name;
     private String colorName;
+    private String categoryName;
+    private String categorySlug;
+    private String categoryRole;
+    private String parentCategoryName;
 }

@@ -1,6 +1,7 @@
 package com.fashionshop.backend.module.payment;
 
 import com.fashionshop.backend.common.PageResponse;
+import com.fashionshop.backend.common.enums.OrderPaymentStatus;
 import com.fashionshop.backend.common.enums.OrderStatus;
 import com.fashionshop.backend.common.enums.PaymentMethod;
 import com.fashionshop.backend.common.enums.PaymentStatus;
@@ -8,6 +9,7 @@ import com.fashionshop.backend.domain.Order;
 import com.fashionshop.backend.domain.Payment;
 import com.fashionshop.backend.domain.repository.OrderRepository;
 import com.fashionshop.backend.domain.repository.PaymentRepository;
+import com.fashionshop.backend.domain.repository.ProductVariantRepository;
 import com.fashionshop.backend.exception.BusinessException;
 import com.fashionshop.backend.exception.ErrorCode;
 import com.fashionshop.backend.module.payment.dto.response.PaymentResponse;
@@ -32,6 +34,7 @@ public class PaymentServiceImpl implements PaymentService {
 
     private final PaymentRepository paymentRepository;
     private final OrderRepository orderRepository;
+    private final ProductVariantRepository variantRepository;
     private final VnPayService vnPayService;
 
     // ================================================================
@@ -114,11 +117,13 @@ public class PaymentServiceImpl implements PaymentService {
 
             // Chuyển order từ AWAITING_PAYMENT → PENDING
             Order order = payment.getOrder();
+            order.setPaymentStatus(OrderPaymentStatus.PAID);
             if (order.getStatus() == OrderStatus.AWAITING_PAYMENT) {
                 order.setStatus(OrderStatus.PENDING);
                 orderRepository.save(order);
                 log.info("Order #{} → PENDING (VNPay payment success)", order.getId());
             }
+            orderRepository.save(order);
         } else {
             // Thanh toán thất bại
             payment.setStatus(PaymentStatus.FAILED);
@@ -172,11 +177,13 @@ public class PaymentServiceImpl implements PaymentService {
                 payment.setPaidAt(LocalDateTime.now());
 
                 Order order = payment.getOrder();
+                order.setPaymentStatus(OrderPaymentStatus.PAID);
                 if (order.getStatus() == OrderStatus.AWAITING_PAYMENT) {
                     order.setStatus(OrderStatus.PENDING);
                     orderRepository.save(order);
                     log.info("Return fallback: Order #{} → PENDING", order.getId());
                 }
+                orderRepository.save(order);
             } else {
                 payment.setStatus(PaymentStatus.FAILED);
 
@@ -267,6 +274,8 @@ public class PaymentServiceImpl implements PaymentService {
         payment.setStatus(PaymentStatus.REFUNDED);
         payment.setRefundedAt(LocalDateTime.now());
         payment.setRefundReason(reason);
+        payment.getOrder().setPaymentStatus(OrderPaymentStatus.REFUNDED);
+        orderRepository.save(payment.getOrder());
         paymentRepository.save(payment);
 
         log.info("Payment #{} refunded — amount={} — reason={}",
@@ -281,8 +290,7 @@ public class PaymentServiceImpl implements PaymentService {
     private void restoreStockAndCancel(Order order) {
         order.getItems().forEach(item -> {
             if (item.getVariant() != null) {
-                item.getVariant().setStockQuantity(
-                    item.getVariant().getStockQuantity() + item.getQuantity());
+                variantRepository.increaseStock(item.getVariant().getId(), item.getQuantity());
             }
         });
         order.setStatus(OrderStatus.CANCELLED);

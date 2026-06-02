@@ -33,7 +33,15 @@ const CategoryManagePage = () => {
   const [isDialogOpen, setIsDialogOpen] = useState(false);
   const [editingCat, setEditingCat] = useState(null);
   const [deleteTarget, setDeleteTarget] = useState(null);
-  const [formData, setFormData] = useState({ name: '', description: '', parentId: '' });
+  const [formData, setFormData] = useState({ name: '', description: '', parentId: '', role: '' });
+
+  const ROLE_OPTIONS = [
+    { value: 'ROOT', label: 'ROOT (Danh muc goc)' },
+    { value: 'TOP', label: 'TOP (Ao)' },
+    { value: 'BOTTOM', label: 'BOTTOM (Quan)' },
+    { value: 'OUTER', label: 'OUTER (Ao khoac)' },
+    { value: 'DRESS', label: 'DRESS (Vay/Dam)' },
+  ];
 
   // === Flatten tree thành list hiển thị có indent ===
   const flatList = [];
@@ -51,8 +59,13 @@ const CategoryManagePage = () => {
     setEditingCat(cat);
     setFormData(
       cat
-        ? { name: cat.name, description: cat.description || '', parentId: cat.parentId?.toString() || '' }
-        : { name: '', description: '', parentId: '' }
+        ? {
+          name: cat.name,
+          description: cat.description || '',
+          parentId: cat.parentId?.toString() || '',
+          role: cat.role || '',
+        }
+        : { name: '', description: '', parentId: '', role: '' }
     );
     setIsDialogOpen(true);
   };
@@ -63,6 +76,7 @@ const CategoryManagePage = () => {
       name: formData.name.trim(),
       description: formData.description.trim() || null,
       parentId: formData.parentId ? parseInt(formData.parentId) : null,
+      role: formData.role || null,
     };
 
     try {
@@ -120,6 +134,7 @@ const CategoryManagePage = () => {
               <TableHead>Tên danh mục</TableHead>
               <TableHead>Slug</TableHead>
               <TableHead>Mô tả</TableHead>
+              <TableHead className="w-32">Role</TableHead>
               <TableHead className="w-32 text-center">Danh mục con</TableHead>
               <TableHead className="w-28 text-right">Hành động</TableHead>
             </TableRow>
@@ -127,7 +142,7 @@ const CategoryManagePage = () => {
           <TableBody>
             {flatList.length === 0 ? (
               <TableRow>
-                <TableCell colSpan={6} className="text-center py-8 text-gray-500">
+                <TableCell colSpan={7} className="text-center py-8 text-gray-500">
                   Không có danh mục nào
                 </TableCell>
               </TableRow>
@@ -146,6 +161,15 @@ const CategoryManagePage = () => {
                   </TableCell>
                   <TableCell className="text-gray-500 max-w-xs truncate">
                     {cat.description || '—'}
+                  </TableCell>
+                  <TableCell>
+                    {cat.role ? (
+                      <Badge variant="outline" className="text-[10px] font-semibold">
+                        {cat.role}
+                      </Badge>
+                    ) : (
+                      <span className="text-gray-400">—</span>
+                    )}
                   </TableCell>
                   <TableCell className="text-center">
                     {cat.level === 0 && cat.childCount > 0 && (
@@ -191,7 +215,7 @@ const CategoryManagePage = () => {
             <div className="space-y-2">
               <Label htmlFor="cat-parent">Danh mục cha</Label>
               <Select
-                value={formData.parentId}
+                value={formData.parentId || '_none'}
                 onValueChange={(val) => setFormData({ ...formData, parentId: val === '_none' ? '' : val })}
               >
                 <SelectTrigger>
@@ -208,6 +232,28 @@ const CategoryManagePage = () => {
               </Select>
             </div>
             <div className="space-y-2">
+              <Label htmlFor="cat-role">Role (cho AI)</Label>
+              <Select
+                value={formData.role || '_none'}
+                onValueChange={(val) => setFormData({ ...formData, role: val === '_none' ? '' : val })}
+              >
+                <SelectTrigger>
+                  <SelectValue placeholder="Chua set" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="_none">Chua set</SelectItem>
+                  {ROLE_OPTIONS.map((opt) => (
+                    <SelectItem key={opt.value} value={opt.value}>
+                      {opt.label}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+              {formData.parentId && !formData.role && (
+                <p className="text-xs text-red-600">Danh muc con bat buoc phai chon role.</p>
+              )}
+            </div>
+            <div className="space-y-2">
               <Label htmlFor="cat-desc">Mô tả</Label>
               <Textarea
                 id="cat-desc"
@@ -221,7 +267,7 @@ const CategoryManagePage = () => {
               <Button type="button" variant="outline" onClick={() => setIsDialogOpen(false)}>
                 Hủy
               </Button>
-              <Button type="submit" disabled={createMutation.isPending || updateMutation.isPending}>
+              <Button type="submit" disabled={createMutation.isPending || updateMutation.isPending || (formData.parentId && !formData.role)}>
                 {(createMutation.isPending || updateMutation.isPending) && (
                   <span className="w-4 h-4 border-2 border-current border-t-transparent rounded-full animate-spin" />
                 )}

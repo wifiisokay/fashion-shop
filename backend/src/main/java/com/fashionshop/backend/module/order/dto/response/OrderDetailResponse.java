@@ -29,6 +29,7 @@ public class OrderDetailResponse {
     private Map<String, Object> addressSnapshot;
     private List<OrderItemResponse> items;
     private LocalDateTime deliveredAt;
+    private LocalDateTime completedAt;
     private LocalDateTime createdAt;
     private LocalDateTime updatedAt;
     private LocalDate expectedDeliveryDate;
@@ -45,6 +46,8 @@ public class OrderDetailResponse {
     private Integer volumetricWeight;
     private Integer chargeableWeight;
     private Boolean packingConfirmed;
+    private BigDecimal estimatedShippingFee;
+    private BigDecimal shippingFeeDifference;
     @Builder.Default
     private List<String> packingWarnings = new ArrayList<>();
 
@@ -59,19 +62,23 @@ public class OrderDetailResponse {
     private BigDecimal returnRefundAmount;
 
     public static OrderDetailResponse from(Order order, String statusLabel) {
-        return from(order, statusLabel, Map.of(), null, null, null, null, null, null, null);
+        return from(order, statusLabel, Map.of(), null, null, null, null, null, null, null,
+            null, null, null);
     }
 
     public static OrderDetailResponse from(Order order, String statusLabel,
                                            Map<Long, Review> itemIdToReview) {
-        return from(order, statusLabel, itemIdToReview, null, null, null, null, null, null, null);
+        return from(order, statusLabel, itemIdToReview, null, null, null, null, null, null, null,
+            null, null, null);
     }
 
     public static OrderDetailResponse from(Order order, String statusLabel,
                                            Map<Long, Review> itemIdToReview,
                                            Long returnId, String returnStatus, String returnStatusLabel,
                                            String returnReason, String returnAdminNote,
-                                           List<String> returnEvidenceImages, BigDecimal returnRefundAmount) {
+                                           List<String> returnEvidenceImages, BigDecimal returnRefundAmount,
+                                           BigDecimal estimatedShippingFee, BigDecimal shippingFeeDifference,
+                                           List<String> packingWarnings) {
         boolean canReviewOrder = order.getStatus() == OrderStatus.DELIVERED
             || order.getStatus() == OrderStatus.COMPLETED;
 
@@ -87,7 +94,9 @@ public class OrderDetailResponse {
             })
             .toList();
 
-        List<String> warnings = buildPackingWarnings(order);
+        List<String> warnings = packingWarnings != null
+            ? packingWarnings
+            : buildPackingWarnings(order, estimatedShippingFee, shippingFeeDifference);
 
         return OrderDetailResponse.builder()
             .id(order.getId())
@@ -102,6 +111,7 @@ public class OrderDetailResponse {
             .addressSnapshot(order.getAddressSnapshot())
             .items(itemResponses)
             .deliveredAt(order.getDeliveredAt())
+            .completedAt(order.getCompletedAt())
             .createdAt(order.getCreatedAt())
             .updatedAt(order.getUpdatedAt())
             .expectedDeliveryDate(order.getExpectedDeliveryDate())
@@ -113,9 +123,11 @@ public class OrderDetailResponse {
             .volumetricWeight(order.getVolumetricWeight())
             .chargeableWeight(order.getChargeableWeight())
             .packingConfirmed(order.getPackingConfirmed())
+            .estimatedShippingFee(estimatedShippingFee)
+            .shippingFeeDifference(shippingFeeDifference)
             .packingWarnings(warnings)
             // Payment info
-            .paymentStatus(order.getPayment() != null ? order.getPayment().getStatus().name() : null)
+            .paymentStatus(order.getPaymentStatus() != null ? order.getPaymentStatus().name() : null)
             .paidAt(order.getPayment() != null ? order.getPayment().getPaidAt() : null)
             // Return info
             .returnId(returnId)
@@ -131,7 +143,9 @@ public class OrderDetailResponse {
     /**
      * Cảnh báo nghiệp vụ cho Staff khi đóng gói.
      */
-    private static List<String> buildPackingWarnings(Order order) {
+    private static List<String> buildPackingWarnings(Order order,
+                                                     BigDecimal estimatedShippingFee,
+                                                     BigDecimal shippingFeeDifference) {
         List<String> warnings = new ArrayList<>();
         if (order.getPackageLength() == null) return warnings;
 
@@ -144,6 +158,15 @@ public class OrderDetailResponse {
             int maxW = Math.max(order.getActualWeight(), order.getVolumetricWeight());
             if (maxW > 0 && (double) diff / maxW > 0.5) {
                 warnings.add("Chênh lệch > 50% giữa cân nặng thực tế và quy đổi — có nguy cơ lệch cước");
+            }
+        }
+
+        if (estimatedShippingFee != null && shippingFeeDifference != null) {
+            int cmp = shippingFeeDifference.compareTo(BigDecimal.ZERO);
+            if (cmp > 0) {
+                warnings.add("Phí ship ước tính cao hơn phí khách đã trả. Staff/Admin cần kiểm tra trước khi giao.");
+            } else if (cmp < 0) {
+                warnings.add("Phí ship ước tính thấp hơn phí khách đã trả.");
             }
         }
 

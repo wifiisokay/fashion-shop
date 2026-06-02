@@ -23,10 +23,7 @@ public class OrderStatusService {
         Map.entry(PENDING,          Set.of(CONFIRMED, CANCELLED)),
         Map.entry(CONFIRMED,        Set.of(SHIPPING, CANCELLED)),
         Map.entry(SHIPPING,         Set.of(DELIVERED, CANCELLED)),
-        Map.entry(DELIVERED,        Set.of(COMPLETED, RETURN_REQUESTED)),
-        Map.entry(COMPLETED,        Set.of(RETURN_REQUESTED)),
-        Map.entry(RETURN_REQUESTED, Set.of(RETURNING)),
-        Map.entry(RETURNING,        Set.of(RETURNED))
+        Map.entry(DELIVERED,        Set.of(COMPLETED))
     );
 
     private static final Map<OrderStatus, String> STATUS_LABELS = Map.ofEntries(
@@ -36,10 +33,7 @@ public class OrderStatusService {
         Map.entry(SHIPPING,         "Đang giao hàng"),
         Map.entry(DELIVERED,        "Đã giao hàng"),
         Map.entry(COMPLETED,        "Hoàn thành"),
-        Map.entry(CANCELLED,        "Đã hủy"),
-        Map.entry(RETURN_REQUESTED, "Yêu cầu trả hàng"),
-        Map.entry(RETURNING,        "Đang trả hàng"),
-        Map.entry(RETURNED,         "Đã trả hàng")
+        Map.entry(CANCELLED,        "Đã hủy")
     );
 
     /** Validate chuyển trạng thái hợp lệ — throw nếu không hợp lệ. */

@@ -1,6 +1,7 @@
 package com.fashionshop.backend.module.product;
 
 import java.math.BigDecimal;
+import java.time.LocalDateTime;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
@@ -29,12 +30,14 @@ import com.fashionshop.backend.exception.BusinessException;
 import com.fashionshop.backend.exception.ErrorCode;
 import com.fashionshop.backend.module.product.dto.request.ProductRequest;
 import com.fashionshop.backend.module.product.dto.request.ProductStatusRequest;
+import com.fashionshop.backend.module.product.dto.request.UpdateProductSaleRequest;
 import com.fashionshop.backend.module.product.dto.response.ProductDetailResponse;
 import com.fashionshop.backend.module.product.dto.response.ProductSummaryResponse;
 
 import jakarta.persistence.criteria.Join;
 import jakarta.persistence.criteria.JoinType;
 import jakarta.persistence.criteria.Predicate;
+import jakarta.persistence.criteria.Expression;
 import lombok.RequiredArgsConstructor;
 
 @Service
@@ -44,6 +47,7 @@ public class ProductServiceImpl implements ProductService {
     private final ProductRepository productRepository;
     private final CategoryRepository categoryRepository;
     private final ReviewRepository reviewRepository;
+    private final ProductPriceService productPriceService;
 
     // ===================== ADMIN =====================
 
@@ -60,10 +64,13 @@ public class ProductServiceImpl implements ProductService {
             .description(request.getDescription())
             .basePrice(request.getBasePrice())
             .salePrice(request.getSalePrice())
+            .saleStartAt(request.getSaleStartAt())
+            .saleEndAt(request.getSaleEndAt())
             .isSale(request.getIsSale())
             .gender(request.getGender())
             .material(request.getMaterial())
             .estimatedWeight(request.getEstimatedWeight() != null ? request.getEstimatedWeight() : 300)
+            .lowStockThreshold(request.getLowStockThreshold() != null ? request.getLowStockThreshold() : 10)
             .fitType(request.getFitType())
             .season(request.getSeason())
             .styleTags(request.getStyleTags() != null ? request.getStyleTags() : new ArrayList<>())
@@ -72,7 +79,7 @@ public class ProductServiceImpl implements ProductService {
             .createdBy(currentUser)
             .build();
 
-        return ProductDetailResponse.from(productRepository.save(product));
+        return ProductDetailResponse.from(productRepository.save(product), productPriceService);
     }
 
     @Override
@@ -88,17 +95,35 @@ public class ProductServiceImpl implements ProductService {
         product.setDescription(request.getDescription());
         product.setBasePrice(request.getBasePrice());
         product.setSalePrice(request.getSalePrice());
+        product.setSaleStartAt(request.getSaleStartAt());
+        product.setSaleEndAt(request.getSaleEndAt());
         product.setIsSale(request.getIsSale());
         product.setGender(request.getGender());
         product.setMaterial(request.getMaterial());
         product.setEstimatedWeight(request.getEstimatedWeight() != null ? request.getEstimatedWeight() : product.getEstimatedWeight());
+        product.setLowStockThreshold(request.getLowStockThreshold() != null ? request.getLowStockThreshold() : product.getLowStockThreshold());
         product.setFitType(request.getFitType());
         product.setSeason(request.getSeason());
         product.setStyleTags(request.getStyleTags() != null ? request.getStyleTags() : new ArrayList<>());
         product.setOccasionTags(request.getOccasionTags() != null ? request.getOccasionTags() : new ArrayList<>());
         product.setCategory(category);
 
-        return ProductDetailResponse.from(productRepository.save(product));
+        return ProductDetailResponse.from(productRepository.save(product), productPriceService);
+    }
+
+    @Override
+    @Transactional
+    public ProductDetailResponse updateSale(Long id, UpdateProductSaleRequest request) {
+        Product product = findProductOrThrow(id);
+        validateSaleRequest(product.getBasePrice(), Boolean.TRUE.equals(request.getIsSale()),
+            request.getSalePrice(), request.getSaleStartAt(), request.getSaleEndAt());
+
+        product.setIsSale(Boolean.TRUE.equals(request.getIsSale()));
+        product.setSalePrice(request.getSalePrice());
+        product.setSaleStartAt(request.getSaleStartAt());
+        product.setSaleEndAt(request.getSaleEndAt());
+
+        return ProductDetailResponse.from(productRepository.save(product), productPriceService);
     }
 
     @Override
@@ -106,13 +131,13 @@ public class ProductServiceImpl implements ProductService {
     public ProductDetailResponse updateStatus(Long id, ProductStatusRequest request) {
         Product product = findProductOrThrow(id);
         product.setStatus(request.getStatus());
-        return ProductDetailResponse.from(productRepository.save(product));
+        return ProductDetailResponse.from(productRepository.save(product), productPriceService);
     }
 
     @Override
     @Transactional(readOnly = true)
     public ProductDetailResponse getByIdAdmin(Long id) {
-        return ProductDetailResponse.from(findProductOrThrow(id));
+        return ProductDetailResponse.from(findProductOrThrow(id), productPriceService);
     }
 
     @Override
@@ -151,7 +176,7 @@ public class ProductServiceImpl implements ProductService {
     /** Batch fill avgRating + reviewCount cho listing page. */
     private PageResponse<ProductSummaryResponse> enrichWithReviewStats(Page<Product> products) {
         List<ProductSummaryResponse> summaries = products.getContent().stream()
-            .map(ProductSummaryResponse::from).collect(Collectors.toList());
+            .map(product -> ProductSummaryResponse.from(product, productPriceService)).collect(Collectors.toList());
 
         List<Long> productIds = summaries.stream().map(ProductSummaryResponse::getId).toList();
         if (!productIds.isEmpty()) {
@@ -183,7 +208,7 @@ public class ProductServiceImpl implements ProductService {
             throw new BusinessException(ErrorCode.PRODUCT_NOT_FOUND, HttpStatus.NOT_FOUND,
                 "Sản phẩm không tồn tại");
         }
-        return ProductDetailResponse.from(product);
+        return ProductDetailResponse.from(product, productPriceService);
     }
 
     // ===================== PRIVATE =====================
@@ -199,6 +224,8 @@ public class ProductServiceImpl implements ProductService {
     }
 
     private void validateSalePrice(ProductRequest req) {
+        validateSaleRequest(req.getBasePrice(), Boolean.TRUE.equals(req.getIsSale()),
+            req.getSalePrice(), req.getSaleStartAt(), req.getSaleEndAt());
         if (Boolean.TRUE.equals(req.getIsSale())) {
             if (req.getSalePrice() == null || req.getSalePrice().compareTo(req.getBasePrice()) >= 0) {
                 throw new BusinessException(ErrorCode.INVALID_SALE_PRICE, HttpStatus.BAD_REQUEST,
@@ -208,6 +235,20 @@ public class ProductServiceImpl implements ProductService {
     }
 
     /** Validate style_tags và occasion_tags phải nằm trong ProductTagLibrary. */
+    private void validateSaleRequest(BigDecimal basePrice, boolean isSale, BigDecimal salePrice,
+                                     LocalDateTime saleStartAt, LocalDateTime saleEndAt) {
+        if (isSale) {
+            if (salePrice == null || salePrice.compareTo(BigDecimal.ZERO) <= 0 || salePrice.compareTo(basePrice) >= 0) {
+                throw new BusinessException(ErrorCode.INVALID_SALE_PRICE, HttpStatus.BAD_REQUEST,
+                    "GiÃ¡ khuyáº¿n mÃ£i pháº£i lá»›n hÆ¡n 0 vÃ  nhá» hÆ¡n giÃ¡ gá»‘c");
+            }
+        }
+        if (saleStartAt != null && saleEndAt != null && !saleEndAt.isAfter(saleStartAt)) {
+            throw new BusinessException(ErrorCode.INVALID_SALE_PRICE, HttpStatus.BAD_REQUEST,
+                "Thá»i gian káº¿t thÃºc sale pháº£i sau thá»i gian báº¯t Ä‘áº§u");
+        }
+    }
+
     private void validateTags(ProductRequest req) {
         if (req.getStyleTags() != null && !req.getStyleTags().isEmpty()) {
             List<String> invalidStyle = req.getStyleTags().stream()
@@ -252,6 +293,18 @@ public class ProductServiceImpl implements ProductService {
                                              BigDecimal minPrice, BigDecimal maxPrice, boolean publicOnly) {
         return (root, query, cb) -> {
             List<Predicate> predicates = new ArrayList<>();
+            LocalDateTime now = LocalDateTime.now();
+            Predicate currentlyOnSale = cb.and(
+                cb.isTrue(root.<Boolean>get("isSale")),
+                cb.isNotNull(root.get("salePrice")),
+                cb.greaterThan(root.<BigDecimal>get("salePrice"), BigDecimal.ZERO),
+                cb.lessThan(root.<BigDecimal>get("salePrice"), root.<BigDecimal>get("basePrice")),
+                cb.or(cb.isNull(root.get("saleStartAt")), cb.lessThanOrEqualTo(root.<LocalDateTime>get("saleStartAt"), now)),
+                cb.or(cb.isNull(root.get("saleEndAt")), cb.greaterThanOrEqualTo(root.<LocalDateTime>get("saleEndAt"), now))
+            );
+            Expression<BigDecimal> effectivePrice = cb.<BigDecimal>selectCase()
+                .when(currentlyOnSale, root.<BigDecimal>get("salePrice"))
+                .otherwise(root.<BigDecimal>get("basePrice"));
 
             if (publicOnly) {
                 predicates.add(cb.equal(root.get("status"), ProductStatus.ACTIVE));
@@ -296,14 +349,14 @@ public class ProductServiceImpl implements ProductService {
             }
 
             if (isSale != null) {
-                predicates.add(cb.equal(root.get("isSale"), isSale));
+                predicates.add(Boolean.TRUE.equals(isSale) ? currentlyOnSale : cb.not(currentlyOnSale));
             }
 
             if (minPrice != null) {
-                predicates.add(cb.greaterThanOrEqualTo(root.get("basePrice"), minPrice));
+                predicates.add(cb.greaterThanOrEqualTo(effectivePrice, minPrice));
             }
             if (maxPrice != null) {
-                predicates.add(cb.lessThanOrEqualTo(root.get("basePrice"), maxPrice));
+                predicates.add(cb.lessThanOrEqualTo(effectivePrice, maxPrice));
             }
 
             return cb.and(predicates.toArray(new Predicate[0]));

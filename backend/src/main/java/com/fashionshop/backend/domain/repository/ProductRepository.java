@@ -11,4 +11,5 @@ public interface ProductRepository extends JpaRepository<Product, Long>,
     boolean existsByCategoryId(Integer categoryId);
 
     long countByStatus(com.fashionshop.backend.common.enums.ProductStatus status);
+
 }
