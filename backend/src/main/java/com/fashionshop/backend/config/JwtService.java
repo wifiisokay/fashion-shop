@@ -3,6 +3,7 @@ package com.fashionshop.backend.config;
 import java.nio.charset.StandardCharsets;
 import java.util.Date;
 import java.util.function.Function;
+import java.util.UUID;
 
 import javax.crypto.SecretKey;
 
@@ -52,6 +53,8 @@ public class JwtService {
             .subject(user.getEmail())
             .claim("userId", user.getId())
             .claim("role", user.getRole().name())
+            .id(UUID.randomUUID().toString())
+            .claim("tokenVersion", user.getTokenVersion())
             .issuedAt(new Date())
             .expiration(new Date(System.currentTimeMillis() + jwtProperties.getExpiration()))
             .signWith(cachedSigningKey)
@@ -73,13 +76,36 @@ public class JwtService {
         return extractClaim(token, Claims::getExpiration);
     }
 
+    public String extractJti(String token) {
+        return extractClaim(token, Claims::getId);
+    }
+
+    public Long extractUserId(String token) {
+        return extractClaim(token, claims -> claims.get("userId", Long.class));
+    }
+
+    public Integer extractTokenVersion(String token) {
+        return extractClaim(token, claims -> claims.get("tokenVersion", Integer.class));
+    }
+
+    public boolean shouldRenew(String token) {
+        return getExpiry(token).getTime() - System.currentTimeMillis() < jwtProperties.getRenewThreshold();
+    }
+
     /**
      * Validate: token chưa expired + khớp với UserDetails.
      */
     public boolean isValid(String token, UserDetails userDetails) {
         try {
             String email = extractEmail(token);
-            return email.equals(userDetails.getUsername()) && !isExpired(token);
+            if (!email.equals(userDetails.getUsername()) || isExpired(token)) {
+                return false;
+            }
+            if (userDetails instanceof User user) {
+                return user.isEnabled() && user.isAccountNonLocked()
+                    && java.util.Objects.equals(extractTokenVersion(token), user.getTokenVersion());
+            }
+            return true;
         } catch (JwtException | IllegalArgumentException e) {
             log.debug("JWT validation failed: {}", e.getMessage());
             return false;

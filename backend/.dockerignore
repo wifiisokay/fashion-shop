@@ -1,0 +1,12 @@
+target/
+.git/
+.idea/
+.vscode/
+*.iml
+.env
+logs/
+node_modules/
+Dockerfile
+.dockerignore
+mvnw.cmd
+HELP.md

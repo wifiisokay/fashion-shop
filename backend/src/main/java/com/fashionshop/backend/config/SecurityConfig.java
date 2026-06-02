@@ -1,6 +1,7 @@
 package com.fashionshop.backend.config;
 
 import lombok.RequiredArgsConstructor;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.http.HttpMethod;
@@ -34,6 +35,9 @@ public class SecurityConfig {
     private final RateLimitFilter rateLimitFilter;
     private final UserDetailsService userDetailsService;
 
+    @Value("${app.cors.allowed-origins}")
+    private String allowedOrigins;
+
     @Bean
     public SecurityFilterChain filterChain(HttpSecurity http) throws Exception {
         return http
@@ -41,12 +45,14 @@ public class SecurityConfig {
             .cors(cors -> cors.configurationSource(corsConfigurationSource()))
             .sessionManagement(s -> s.sessionCreationPolicy(SessionCreationPolicy.STATELESS))
             .authorizeHttpRequests(auth -> auth
-                // Public — Auth
+                // Public — Auth & Health
                 .requestMatchers(
                     "/api/auth/register",
                     "/api/auth/login",
+                    "/api/auth/logout",
                     "/api/auth/forgot-password",
-                    "/api/auth/reset-password"
+                    "/api/auth/reset-password",
+                    "/api/health"
                 ).permitAll()
 
                 // Public — Catalog
@@ -114,23 +120,22 @@ public class SecurityConfig {
     public CorsConfigurationSource corsConfigurationSource() {
         var config = new CorsConfiguration();
 
-        // Build allowed origins — đọc từ env var để hỗ trợ ngrok/pinggy khi test
-        List<String> origins = new java.util.ArrayList<>(List.of(
-            "http://localhost:5173",    // Vite dev (HTTP)
-            "https://localhost:5173",   // Vite dev (HTTPS — sau khi bật basic-ssl)
-            "http://localhost:3000",    // Fallback
-            "https://localhost:3000"
-        ));
+        List<String> origins = new java.util.ArrayList<>();
+        if (allowedOrigins != null && !allowedOrigins.isBlank()) {
+            for (String origin : allowedOrigins.split(",")) {
+                origins.add(origin.trim());
+            }
+        }
 
-        // Nếu có biến môi trường FRONTEND_URL (ngrok/pinggy url) → thêm vào
+        // Nếu có biến môi trường FRONTEND_URL (ngrok/pinggy url) → thêm vào (fallback)
         String frontendUrl = System.getenv("FRONTEND_URL");
-        if (frontendUrl != null && !frontendUrl.isBlank()) {
-            origins.add(frontendUrl);
+        if (frontendUrl != null && !frontendUrl.isBlank() && !origins.contains(frontendUrl.trim())) {
+            origins.add(frontendUrl.trim());
         }
 
         config.setAllowedOrigins(origins);
         config.setAllowedMethods(List.of("GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"));
-        config.setAllowedHeaders(List.of("*"));
+        config.setAllowedHeaders(List.of("Authorization", "Content-Type", "X-Requested-With"));
         config.setAllowCredentials(true);  // Bắt buộc để cookie hoạt động cross-origin
         config.setMaxAge(3600L);
 

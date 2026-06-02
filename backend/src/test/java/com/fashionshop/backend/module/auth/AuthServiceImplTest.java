@@ -245,6 +245,7 @@ class AuthServiceImplTest {
         authService.changePassword("change@example.com", request);
 
         assertThat(user.getPassword()).isEqualTo("new-encoded");
+        assertThat(user.getTokenVersion()).isEqualTo(1);
         verify(userRepository).save(user);
     }
 
@@ -351,6 +352,7 @@ class AuthServiceImplTest {
         authService.resetPassword(request);
 
         assertThat(user.getPassword()).isEqualTo("new-encoded");
+        assertThat(user.getTokenVersion()).isEqualTo(1);
         verify(userRepository).save(user);
     }
 

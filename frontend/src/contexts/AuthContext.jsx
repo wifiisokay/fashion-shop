@@ -3,7 +3,6 @@ import { createContext, useContext, useState, useEffect } from 'react';
 import { authApi } from '../api/authApi';
 
 const AuthContext = createContext(null);
-const USER_STORAGE_KEY = 'user';
 
 /**
  * Normalize user object từ backend response.
@@ -24,28 +23,14 @@ const normalizeUser = (rawUser) => {
   };
 };
 
-const getStoredUser = () => {
-  try {
-    const raw = localStorage.getItem(USER_STORAGE_KEY);
-    return raw ? normalizeUser(JSON.parse(raw)) : null;
-  } catch {
-    return null;
-  }
-};
-
 export const AuthProvider = ({ children }) => {
-  const [user, setUser] = useState(getStoredUser);
+  const [user, setUser] = useState(null);
   const [isLoading, setIsLoading] = useState(true);
 
   const setAuthUser = (rawUser) => {
     const nextUser = normalizeUser(rawUser);
     setUser(nextUser);
 
-    if (nextUser) {
-      localStorage.setItem(USER_STORAGE_KEY, JSON.stringify(nextUser));
-    } else {
-      localStorage.removeItem(USER_STORAGE_KEY);
-    }
   };
 
   useEffect(() => {
