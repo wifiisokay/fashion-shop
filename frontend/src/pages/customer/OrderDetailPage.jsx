@@ -41,20 +41,20 @@ const OrderDetailPage = () => {
   const canCancel = order.status === 'PENDING';
   const canShowReviews = order.status === 'COMPLETED';
 
-  // Return window: 7 days from completedAt
+  // Return window: 7 days from deliveredAt
   const canRequestReturn = (() => {
     if (order.status !== 'COMPLETED') return false;
     if (order.paymentStatus === 'REFUNDED') return false;
     if (order.returnStatus && ['REQUESTED', 'APPROVED', 'RECEIVED'].includes(order.returnStatus)) return false;
-    if (!order.completedAt) return false;
-    const deadline = new Date(order.completedAt);
+    if (!order.deliveredAt) return false;
+    const deadline = new Date(order.deliveredAt);
     deadline.setDate(deadline.getDate() + 7);
     return new Date() < deadline;
   })();
 
   const returnDaysLeft = (() => {
-    if (!order.completedAt) return 0;
-    const deadline = new Date(order.completedAt);
+    if (!order.deliveredAt) return 0;
+    const deadline = new Date(order.deliveredAt);
     deadline.setDate(deadline.getDate() + 7);
     const diff = Math.ceil((deadline - new Date()) / (1000 * 60 * 60 * 24));
     return Math.max(0, diff);

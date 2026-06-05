@@ -116,7 +116,7 @@ public class DashboardServiceImpl implements DashboardService {
         long confirmedPacked = orderRepository.countByStatusAndPackingConfirmed(OrderStatus.CONFIRMED, true);
 
         LocalDateTime monthStart = LocalDate.now().withDayOfMonth(1).atStartOfDay();
-        List<OrderStatus> feeStatuses = List.of(OrderStatus.SHIPPING, OrderStatus.DELIVERED, OrderStatus.COMPLETED);
+        List<OrderStatus> feeStatuses = List.of(OrderStatus.SHIPPING, OrderStatus.COMPLETED);
         BigDecimal shippingFeeTotalThisMonth = orderRepository
             .sumShippingFeeByCreatedAtAfterAndStatusIn(monthStart, feeStatuses);
         BigDecimal shippingFeeAvgThisMonth = orderRepository
@@ -172,7 +172,7 @@ public class DashboardServiceImpl implements DashboardService {
         BigDecimal pendingRevenue = queryBigDecimal("""
             SELECT COALESCE(SUM(o.total_amount), 0)
             FROM orders o
-            WHERE o.status IN ('DELIVERED', 'RETURN_REQUESTED', 'RETURNING')
+            WHERE o.status IN ('SHIPPING', 'RETURN_REQUESTED', 'RETURNING')
               AND o.payment_status IN ('PAID', 'REFUNDED')
               AND o.created_at >= :fromDate
               AND o.created_at < :toDateExclusive

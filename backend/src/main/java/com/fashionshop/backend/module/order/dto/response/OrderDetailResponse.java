@@ -1,17 +1,18 @@
 package com.fashionshop.backend.module.order.dto.response;
 
-import com.fashionshop.backend.common.enums.OrderStatus;
-import com.fashionshop.backend.domain.Order;
-import com.fashionshop.backend.domain.Review;
-import lombok.Builder;
-import lombok.Getter;
-
 import java.math.BigDecimal;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
+
+import com.fashionshop.backend.common.enums.OrderStatus;
+import com.fashionshop.backend.domain.Order;
+import com.fashionshop.backend.domain.Review;
+
+import lombok.Builder;
+import lombok.Getter;
 
 @Getter
 @Builder
@@ -34,24 +35,20 @@ public class OrderDetailResponse {
     private LocalDateTime updatedAt;
     private LocalDate expectedDeliveryDate;
 
-    // Payment
     private String paymentStatus;
     private LocalDateTime paidAt;
 
-    // Packing
     private Integer packageLength;
     private Integer packageWidth;
     private Integer packageHeight;
     private Integer actualWeight;
-    private Integer volumetricWeight;
-    private Integer chargeableWeight;
     private Boolean packingConfirmed;
     private BigDecimal estimatedShippingFee;
     private BigDecimal shippingFeeDifference;
+    private Boolean shippingFeeFallback;
     @Builder.Default
     private List<String> packingWarnings = new ArrayList<>();
 
-    // Return
     private Long returnId;
     private String returnStatus;
     private String returnStatusLabel;
@@ -79,8 +76,19 @@ public class OrderDetailResponse {
                                            List<String> returnEvidenceImages, BigDecimal returnRefundAmount,
                                            BigDecimal estimatedShippingFee, BigDecimal shippingFeeDifference,
                                            List<String> packingWarnings) {
-        boolean canReviewOrder = order.getStatus() == OrderStatus.DELIVERED
-            || order.getStatus() == OrderStatus.COMPLETED;
+        return from(order, statusLabel, itemIdToReview, returnId, returnStatus, returnStatusLabel, returnReason,
+            returnAdminNote, returnEvidenceImages, returnRefundAmount, estimatedShippingFee, shippingFeeDifference,
+            packingWarnings, null);
+    }
+
+    public static OrderDetailResponse from(Order order, String statusLabel,
+                                           Map<Long, Review> itemIdToReview,
+                                           Long returnId, String returnStatus, String returnStatusLabel,
+                                           String returnReason, String returnAdminNote,
+                                           List<String> returnEvidenceImages, BigDecimal returnRefundAmount,
+                                           BigDecimal estimatedShippingFee, BigDecimal shippingFeeDifference,
+                                           List<String> packingWarnings, Boolean shippingFeeFallback) {
+        boolean canReviewOrder = order.getStatus() == OrderStatus.COMPLETED;
 
         List<OrderItemResponse> itemResponses = order.getItems().stream()
             .map(item -> {
@@ -115,21 +123,17 @@ public class OrderDetailResponse {
             .createdAt(order.getCreatedAt())
             .updatedAt(order.getUpdatedAt())
             .expectedDeliveryDate(order.getExpectedDeliveryDate())
-            // Packing
             .packageLength(order.getPackageLength())
             .packageWidth(order.getPackageWidth())
             .packageHeight(order.getPackageHeight())
             .actualWeight(order.getActualWeight())
-            .volumetricWeight(order.getVolumetricWeight())
-            .chargeableWeight(order.getChargeableWeight())
             .packingConfirmed(order.getPackingConfirmed())
             .estimatedShippingFee(estimatedShippingFee)
             .shippingFeeDifference(shippingFeeDifference)
+            .shippingFeeFallback(shippingFeeFallback)
             .packingWarnings(warnings)
-            // Payment info
             .paymentStatus(order.getPaymentStatus() != null ? order.getPaymentStatus().name() : null)
             .paidAt(order.getPayment() != null ? order.getPayment().getPaidAt() : null)
-            // Return info
             .returnId(returnId)
             .returnStatus(returnStatus)
             .returnStatusLabel(returnStatusLabel)
@@ -140,33 +144,24 @@ public class OrderDetailResponse {
             .build();
     }
 
-    /**
-     * Cảnh báo nghiệp vụ cho Staff khi đóng gói.
-     */
     private static List<String> buildPackingWarnings(Order order,
                                                      BigDecimal estimatedShippingFee,
                                                      BigDecimal shippingFeeDifference) {
         List<String> warnings = new ArrayList<>();
-        if (order.getPackageLength() == null) return warnings;
-
-        if (order.getPackageLength() > 30 || order.getPackageWidth() > 30 || order.getPackageHeight() > 30) {
-            warnings.add("Có chiều > 30cm — GHN có thể cân đo lại khi lấy hàng");
+        if (order.getPackageLength() == null) {
+            return warnings;
         }
 
-        if (order.getActualWeight() != null && order.getVolumetricWeight() != null) {
-            int diff = Math.abs(order.getActualWeight() - order.getVolumetricWeight());
-            int maxW = Math.max(order.getActualWeight(), order.getVolumetricWeight());
-            if (maxW > 0 && (double) diff / maxW > 0.5) {
-                warnings.add("Chênh lệch > 50% giữa cân nặng thực tế và quy đổi — có nguy cơ lệch cước");
-            }
+        if (order.getPackageLength() > 30 || order.getPackageWidth() > 30 || order.getPackageHeight() > 30) {
+            warnings.add("Co chieu > 30cm, GHN co the can do lai khi lay hang");
         }
 
         if (estimatedShippingFee != null && shippingFeeDifference != null) {
             int cmp = shippingFeeDifference.compareTo(BigDecimal.ZERO);
             if (cmp > 0) {
-                warnings.add("Phí ship ước tính cao hơn phí khách đã trả. Staff/Admin cần kiểm tra trước khi giao.");
+                warnings.add("Phi ship GHN theo kien that cao hon phi khach da tra.");
             } else if (cmp < 0) {
-                warnings.add("Phí ship ước tính thấp hơn phí khách đã trả.");
+                warnings.add("Phi ship GHN theo kien that thap hon phi khach da tra.");
             }
         }
 

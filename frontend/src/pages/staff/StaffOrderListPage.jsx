@@ -121,7 +121,7 @@ const StaffOrderListPage = () => {
     { label: 'Tổng đơn', value: stats?.totalOrders || 0, icon: ShoppingBag, color: 'bg-indigo-50 text-indigo-600' },
     { label: 'Chờ xác nhận', value: stats?.pendingCount || 0, icon: Clock, color: 'bg-yellow-50 text-yellow-600' },
     { label: 'Đang giao', value: stats?.shippingCount || 0, icon: Truck, color: 'bg-cyan-50 text-cyan-600' },
-    { label: 'Đã giao', value: stats?.deliveredCount || 0, icon: CheckCircle, color: 'bg-green-50 text-green-600' },
+    { label: 'Hoàn thành', value: stats?.completedCount || 0, icon: CheckCircle, color: 'bg-green-50 text-green-600' },
     { label: 'Trả hàng', value: stats?.returnCount || 0, icon: RotateCcw, color: 'bg-orange-50 text-orange-600' },
     { label: 'Đã hủy', value: stats?.cancelledCount || 0, icon: XCircle, color: 'bg-red-50 text-red-600' },
   ];
@@ -175,7 +175,6 @@ const StaffOrderListPage = () => {
             <option value="PENDING">Chờ xác nhận</option>
             <option value="CONFIRMED">Đã xác nhận</option>
             <option value="SHIPPING">Đang giao</option>
-            <option value="DELIVERED">Đã giao</option>
             <option value="COMPLETED">Hoàn thành</option>
             <option value="CANCELLED">Đã hủy</option>
           </select>

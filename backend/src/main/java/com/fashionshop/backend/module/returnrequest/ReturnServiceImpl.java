@@ -70,7 +70,7 @@ public class ReturnServiceImpl implements ReturnService {
         if (order.getStatus() != OrderStatus.COMPLETED) {
             throw new BusinessException(ErrorCode.RETURN_NOT_ELIGIBLE, HttpStatus.BAD_REQUEST);
         }
-        if (order.getCompletedAt() == null || order.getCompletedAt().plusDays(7).isBefore(LocalDateTime.now())) {
+        if (order.getDeliveredAt() == null || order.getDeliveredAt().plusDays(7).isBefore(LocalDateTime.now())) {
             throw new BusinessException(ErrorCode.RETURN_WINDOW_EXPIRED, HttpStatus.BAD_REQUEST);
         }
         if (order.getPaymentStatus() == OrderPaymentStatus.REFUNDED) {

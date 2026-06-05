@@ -18,6 +18,7 @@ import com.fashionshop.backend.module.cart.dto.request.AddToCartRequest;
 import com.fashionshop.backend.module.cart.dto.request.UpdateCartRequest;
 import com.fashionshop.backend.module.cart.dto.response.CartItemResponse;
 import com.fashionshop.backend.module.cart.dto.response.CartSummaryResponse;
+import com.fashionshop.backend.module.product.ProductPriceService;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Nested;
@@ -47,6 +48,7 @@ class CartServiceImplTest {
     @Mock private ProductVariantRepository variantRepository;
     @Mock private ProductImageRepository imageRepository;
     @Mock private UserRepository userRepository;
+    @Mock private ProductPriceService productPriceService;
     @InjectMocks private CartServiceImpl cartService;
 
     // ── Fixtures ──────────────────────────────────────────────────────
@@ -125,6 +127,16 @@ class CartServiceImplTest {
         existingItem = CartItem.builder()
             .id(1L).user(user).variant(variant).quantity(2)
             .build();
+
+        lenient().when(productPriceService.getFinalUnitPrice(any(Product.class), any(ProductVariant.class)))
+            .thenAnswer(inv -> {
+                Product p = inv.getArgument(0);
+                ProductVariant v = inv.getArgument(1);
+                BigDecimal price = Boolean.TRUE.equals(p.getIsSale()) && p.getSalePrice() != null
+                    ? p.getSalePrice()
+                    : p.getBasePrice();
+                return v.getPriceAdjustment() != null ? price.add(v.getPriceAdjustment()) : price;
+            });
     }
 
     // =================================================================

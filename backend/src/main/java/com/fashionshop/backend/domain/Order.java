@@ -1,28 +1,43 @@
 package com.fashionshop.backend.domain;
 
-import com.fashionshop.backend.common.enums.OrderPaymentStatus;
-import com.fashionshop.backend.common.enums.OrderStatus;
-import com.fashionshop.backend.common.enums.PaymentMethod;
-import jakarta.persistence.*;
-import lombok.*;
-import org.hibernate.annotations.CreationTimestamp;
-import org.hibernate.annotations.JdbcTypeCode;
-import org.hibernate.annotations.UpdateTimestamp;
-import org.hibernate.type.SqlTypes;
-
 import java.math.BigDecimal;
+import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 
-    /**
-     * Đơn hàng.
-     * addressSnapshot: JSON snapshot địa chỉ tại thời điểm đặt hàng — không FK vào Address.
-     * deliveredAt: set khi chuyển SHIPPING → DELIVERED.
-     * completedAt: set khi admin xác nhận hoàn thành đơn.
-     */
+import org.hibernate.annotations.CreationTimestamp;
+import org.hibernate.annotations.JdbcTypeCode;
+import org.hibernate.annotations.UpdateTimestamp;
+import org.hibernate.type.SqlTypes;
+
+import com.fashionshop.backend.common.enums.OrderPaymentStatus;
+import com.fashionshop.backend.common.enums.OrderStatus;
+import com.fashionshop.backend.common.enums.PaymentMethod;
+
+import jakarta.persistence.CascadeType;
+import jakarta.persistence.Column;
+import jakarta.persistence.Entity;
+import jakarta.persistence.EnumType;
+import jakarta.persistence.Enumerated;
+import jakarta.persistence.FetchType;
+import jakarta.persistence.GeneratedValue;
+import jakarta.persistence.GenerationType;
+import jakarta.persistence.Id;
+import jakarta.persistence.Index;
+import jakarta.persistence.JoinColumn;
+import jakarta.persistence.ManyToOne;
+import jakarta.persistence.OneToMany;
+import jakarta.persistence.OneToOne;
+import jakarta.persistence.Table;
+import lombok.AllArgsConstructor;
+import lombok.Builder;
+import lombok.Getter;
+import lombok.NoArgsConstructor;
+import lombok.Setter;
+
 @Entity
 @Table(name = "orders", indexes = {
     @Index(name = "idx_orders_user", columnList = "user_id"),
@@ -76,24 +91,17 @@ public class Order {
     @Builder.Default
     private Map<String, Object> addressSnapshot = new LinkedHashMap<>();
 
-    // ====== Packing / Kích thước kiện hàng ======
     @Column(name = "package_length")
-    private Integer packageLength;       // cm
+    private Integer packageLength;
 
     @Column(name = "package_width")
-    private Integer packageWidth;        // cm
+    private Integer packageWidth;
 
     @Column(name = "package_height")
-    private Integer packageHeight;       // cm
+    private Integer packageHeight;
 
     @Column(name = "actual_weight")
-    private Integer actualWeight;        // gram
-
-    @Column(name = "volumetric_weight")
-    private Integer volumetricWeight;    // gram (auto: L×W×H/5000 × 1000)
-
-    @Column(name = "chargeable_weight")
-    private Integer chargeableWeight;    // gram = max(actual, volumetric)
+    private Integer actualWeight;
 
     @Column(name = "packing_confirmed")
     @Builder.Default
@@ -106,7 +114,7 @@ public class Order {
     private LocalDateTime completedAt;
 
     @Column(name = "expected_delivery_date")
-    private java.time.LocalDate expectedDeliveryDate;
+    private LocalDate expectedDeliveryDate;
 
     @CreationTimestamp
     @Column(name = "created_at", updatable = false)

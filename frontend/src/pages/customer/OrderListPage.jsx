@@ -14,7 +14,6 @@ const STATUS_TABS = [
   { key: 'PENDING', label: 'Chờ xác nhận' },
   { key: 'CONFIRMED', label: 'Đã xác nhận' },
   { key: 'SHIPPING', label: 'Đang giao' },
-  { key: 'DELIVERED', label: 'Đã giao' },
   { key: 'COMPLETED', label: 'Hoàn thành' },
   { key: 'CANCELLED', label: 'Đã hủy' },
 ];

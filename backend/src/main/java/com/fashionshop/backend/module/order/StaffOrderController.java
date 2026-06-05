@@ -19,6 +19,7 @@ import com.fashionshop.backend.module.order.dto.request.ConfirmPackingRequest;
 import com.fashionshop.backend.module.order.dto.request.UpdateOrderStatusRequest;
 import com.fashionshop.backend.module.order.dto.response.OrderDetailResponse;
 import com.fashionshop.backend.module.order.dto.response.OrderSummaryResponse;
+import com.fashionshop.backend.module.order.dto.response.StaffShippingPreviewResponse;
 
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.security.SecurityRequirement;
@@ -68,6 +69,16 @@ public class StaffOrderController {
     ) {
         return ResponseEntity.ok(ApiResponse.success(
             "Cập nhật trạng thái thành công", orderService.updateOrderStatus(id, request)));
+    }
+
+    @PostMapping("/{id}/shipping/preview")
+    @Operation(summary = "Tinh phi GHN Sandbox theo kien hang thuc te",
+               security = @SecurityRequirement(name = "cookieAuth"))
+    public ResponseEntity<ApiResponse<StaffShippingPreviewResponse>> previewShipping(
+        @PathVariable Long id,
+        @Valid @RequestBody ConfirmPackingRequest request
+    ) {
+        return ResponseEntity.ok(ApiResponse.success(orderService.previewActualShippingFee(id, request)));
     }
 
     @PatchMapping("/{id}/packing")

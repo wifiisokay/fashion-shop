@@ -22,8 +22,7 @@ public class OrderStatusService {
         Map.entry(AWAITING_PAYMENT, Set.of(PENDING, CANCELLED)),
         Map.entry(PENDING,          Set.of(CONFIRMED, CANCELLED)),
         Map.entry(CONFIRMED,        Set.of(SHIPPING, CANCELLED)),
-        Map.entry(SHIPPING,         Set.of(DELIVERED, CANCELLED)),
-        Map.entry(DELIVERED,        Set.of(COMPLETED))
+        Map.entry(SHIPPING,         Set.of(COMPLETED))
     );
 
     private static final Map<OrderStatus, String> STATUS_LABELS = Map.ofEntries(

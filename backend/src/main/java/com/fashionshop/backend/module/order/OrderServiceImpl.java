@@ -49,11 +49,13 @@ import com.fashionshop.backend.module.order.dto.response.CreateOrderResponse;
 import com.fashionshop.backend.module.order.dto.response.OrderDetailResponse;
 import com.fashionshop.backend.module.order.dto.response.OrderStatsResponse;
 import com.fashionshop.backend.module.order.dto.response.OrderSummaryResponse;
-import com.fashionshop.backend.module.order.shipping.PackingShippingEstimate;
-import com.fashionshop.backend.module.order.shipping.ShippingFeeEstimator;
+import com.fashionshop.backend.module.order.dto.response.StaffShippingPreviewResponse;
 import com.fashionshop.backend.module.payment.PaymentService;
 import com.fashionshop.backend.module.product.ProductPriceService;
 import com.fashionshop.backend.module.returnrequest.ReturnStatusService;
+import com.fashionshop.backend.module.shipping.ActualShippingFeeResult;
+import com.fashionshop.backend.module.shipping.CheckoutShippingFeeResult;
+import com.fashionshop.backend.module.shipping.ShippingCalculationService;
 
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -79,44 +81,46 @@ public class OrderServiceImpl implements OrderService {
     private final OrderStatusService statusService;
     private final PaymentService paymentService;
     private final ReturnStatusService returnStatusService;
-    private final ShippingFeeEstimator shippingFeeEstimator;
     private final ProductPriceService productPriceService;
+    private final ShippingCalculationService shippingCalculationService;
 
     @Override
     @Transactional
     public CreateOrderResponse createOrder(Long userId, CreateOrderRequest request, String ipAddress) {
         orderRepository.findFirstByUserIdAndCreatedAtAfterOrderByCreatedAtDesc(
-            userId, LocalDateTime.now().minusSeconds(DUPLICATE_GUARD_SECONDS))
-            .ifPresent(o -> {
-                throw new BusinessException(ErrorCode.DUPLICATE_ORDER, HttpStatus.BAD_REQUEST,
-                    "Vui long doi " + DUPLICATE_GUARD_SECONDS + " giay truoc khi dat don tiep");
-            });
+                userId, LocalDateTime.now().minusSeconds(DUPLICATE_GUARD_SECONDS))
+                .ifPresent(o -> {
+                    throw new BusinessException(ErrorCode.DUPLICATE_ORDER, HttpStatus.BAD_REQUEST,
+                            "Vui long doi " + DUPLICATE_GUARD_SECONDS + " giay truoc khi dat don tiep");
+                });
 
         Map<Long, Integer> requestedItems = normalizeOrderItems(request.getItems());
         if (requestedItems.size() > MAX_ITEMS_PER_ORDER) {
             throw new BusinessException(ErrorCode.MAX_ITEMS_EXCEEDED, HttpStatus.BAD_REQUEST,
-                "Moi don hang toi da " + MAX_ITEMS_PER_ORDER + " san pham");
+                    "Moi don hang toi da " + MAX_ITEMS_PER_ORDER + " san pham");
         }
 
         Address address = addressRepository.findByIdAndUser_Id(request.getAddressId(), userId)
-            .orElseThrow(() -> new BusinessException(
-                ErrorCode.ADDRESS_NOT_BELONG_TO_USER, HttpStatus.FORBIDDEN));
+                .orElseThrow(() -> new BusinessException(
+                        ErrorCode.ADDRESS_NOT_BELONG_TO_USER, HttpStatus.FORBIDDEN));
 
-        BigDecimal shippingFee = BigDecimal.valueOf(request.getShippingFee());
+        CheckoutShippingFeeResult shippingResult = shippingCalculationService.calculateCheckoutFee(
+                userId, request.getAddressId(), requestedItems);
+        BigDecimal shippingFee = BigDecimal.valueOf(shippingResult.shippingFee());
         OrderStatus initialStatus = request.getPaymentMethod() == PaymentMethod.COD
-            ? OrderStatus.PENDING
-            : OrderStatus.AWAITING_PAYMENT;
+                ? OrderStatus.PENDING
+                : OrderStatus.AWAITING_PAYMENT;
 
         User userRef = userRepository.getReferenceById(userId);
         Order order = Order.builder()
-            .user(userRef)
-            .status(initialStatus)
-            .paymentMethod(request.getPaymentMethod())
-            .paymentStatus(OrderPaymentStatus.UNPAID)
-            .shippingFee(shippingFee)
-            .note(request.getNote())
-            .addressSnapshot(buildAddressSnapshot(address))
-            .build();
+                .user(userRef)
+                .status(initialStatus)
+                .paymentMethod(request.getPaymentMethod())
+                .paymentStatus(OrderPaymentStatus.UNPAID)
+                .shippingFee(shippingFee)
+                .note(request.getNote())
+                .addressSnapshot(buildAddressSnapshot(address))
+                .build();
 
         BigDecimal subtotal = BigDecimal.ZERO;
         List<OrderItem> orderItems = new ArrayList<>();
@@ -126,23 +130,23 @@ public class OrderServiceImpl implements OrderService {
             int quantity = entry.getValue();
 
             ProductVariant variant = variantRepository.findById(variantId)
-                .orElseThrow(() -> new BusinessException(ErrorCode.VARIANT_NOT_FOUND, HttpStatus.NOT_FOUND));
+                    .orElseThrow(() -> new BusinessException(ErrorCode.VARIANT_NOT_FOUND, HttpStatus.NOT_FOUND));
 
             if (quantity > MAX_QUANTITY_PER_ITEM) {
                 throw new BusinessException(ErrorCode.MAX_QUANTITY_EXCEEDED, HttpStatus.BAD_REQUEST,
-                    "San pham " + variant.getProduct().getName() + " toi da " + MAX_QUANTITY_PER_ITEM + " cai/don");
+                        "San pham " + variant.getProduct().getName() + " toi da " + MAX_QUANTITY_PER_ITEM + " cai/don");
             }
 
             Product product = variant.getProduct();
             if (product.getStatus() != ProductStatus.ACTIVE) {
                 throw new BusinessException(ErrorCode.PRODUCT_OUT_OF_STOCK, HttpStatus.BAD_REQUEST,
-                    "San pham " + product.getName() + " khong con ban");
+                        "San pham " + product.getName() + " khong con ban");
             }
 
             int affected = variantRepository.decreaseStock(variantId, quantity);
             if (affected == 0) {
                 throw new BusinessException(ErrorCode.INSUFFICIENT_STOCK, HttpStatus.BAD_REQUEST,
-                    "San pham " + product.getName() + " (" + variant.getSize() + ") khong du ton kho");
+                        "San pham " + product.getName() + " (" + variant.getSize() + ") khong du ton kho");
             }
 
             BigDecimal unitPrice = productPriceService.getFinalUnitPrice(product, variant);
@@ -150,17 +154,17 @@ public class OrderServiceImpl implements OrderService {
             String imageUrl = resolveVariantImageUrl(variant);
 
             OrderItem orderItem = OrderItem.builder()
-                .order(order)
-                .variant(variant)
-                .productId(product.getId())
-                .productName(product.getName())
-                .colorName(variant.getColor() != null ? variant.getColor().getColorName() : null)
-                .size(variant.getSize())
-                .imageUrl(imageUrl)
-                .unitPrice(unitPrice)
-                .quantity(quantity)
-                .subtotal(itemSubtotal)
-                .build();
+                    .order(order)
+                    .variant(variant)
+                    .productId(product.getId())
+                    .productName(product.getName())
+                    .colorName(variant.getColor() != null ? variant.getColor().getColorName() : null)
+                    .size(variant.getSize())
+                    .imageUrl(imageUrl)
+                    .unitPrice(unitPrice)
+                    .quantity(quantity)
+                    .subtotal(itemSubtotal)
+                    .build();
 
             orderItems.add(orderItem);
             subtotal = subtotal.add(itemSubtotal);
@@ -170,24 +174,22 @@ public class OrderServiceImpl implements OrderService {
         order.setTotalAmount(subtotal.add(shippingFee));
         order.setItems(orderItems);
 
-        if (request.getEstimatedDays() != null) {
-            order.setExpectedDeliveryDate(java.time.LocalDate.now().plusDays(request.getEstimatedDays()));
-        }
+        order.setExpectedDeliveryDate(shippingResult.expectedDeliveryDate());
 
         Order savedOrder = orderRepository.save(order);
 
         Payment payment = Payment.builder()
-            .order(savedOrder)
-            .method(request.getPaymentMethod())
-            .status(PaymentStatus.PENDING)
-            .amount(savedOrder.getTotalAmount())
-            .build();
+                .order(savedOrder)
+                .method(request.getPaymentMethod())
+                .status(PaymentStatus.PENDING)
+                .amount(savedOrder.getTotalAmount())
+                .build();
         paymentRepository.save(payment);
 
         cartService.clearByVariantIds(userId, new ArrayList<>(requestedItems.keySet()));
 
         log.info("Order #{} created by user {} - status={}, total={}",
-            savedOrder.getId(), userId, initialStatus, savedOrder.getTotalAmount());
+                savedOrder.getId(), userId, initialStatus, savedOrder.getTotalAmount());
 
         String paymentUrl = null;
         if (request.getPaymentMethod() == PaymentMethod.VNPAY && ipAddress != null) {
@@ -195,17 +197,17 @@ public class OrderServiceImpl implements OrderService {
         }
 
         return CreateOrderResponse.builder()
-            .orderId(savedOrder.getId())
-            .status(savedOrder.getStatus())
-            .totalAmount(savedOrder.getTotalAmount())
-            .paymentUrl(paymentUrl)
-            .build();
+                .orderId(savedOrder.getId())
+                .status(savedOrder.getStatus())
+                .totalAmount(savedOrder.getTotalAmount())
+                .paymentUrl(paymentUrl)
+                .build();
     }
 
     @Override
     @Transactional(readOnly = true)
     public PageResponse<OrderSummaryResponse> getMyOrders(Long userId, OrderStatus status, String keyword,
-                                                          int page, int size) {
+            int page, int size) {
         PageRequest pageable = PageRequest.of(page, size);
         String kw = (keyword != null && !keyword.trim().isEmpty()) ? keyword.trim() : null;
 
@@ -214,8 +216,8 @@ public class OrderServiceImpl implements OrderService {
             orders = orderRepository.findCustomerOrders(userId, status, kw, pageable);
         } else {
             orders = status != null
-                ? orderRepository.findByUserIdAndStatusOrderByCreatedAtDesc(userId, status, pageable)
-                : orderRepository.findByUserIdOrderByCreatedAtDesc(userId, pageable);
+                    ? orderRepository.findByUserIdAndStatusOrderByCreatedAtDesc(userId, status, pageable)
+                    : orderRepository.findByUserIdOrderByCreatedAtDesc(userId, pageable);
         }
 
         return buildPageResponse(orders);
@@ -225,33 +227,30 @@ public class OrderServiceImpl implements OrderService {
     @Transactional(readOnly = true)
     public OrderDetailResponse getMyOrderById(Long userId, Long orderId) {
         Order order = orderRepository.findByIdAndUserId(orderId, userId)
-            .orElseThrow(() -> new BusinessException(ErrorCode.ORDER_NOT_FOUND, HttpStatus.NOT_FOUND));
+                .orElseThrow(() -> new BusinessException(ErrorCode.ORDER_NOT_FOUND, HttpStatus.NOT_FOUND));
 
         List<Long> itemIds = order.getItems().stream().map(OrderItem::getId).toList();
         Map<Long, Review> itemIdToReview = new HashMap<>();
         reviewRepository.findByOrderItemIdIn(itemIds)
-            .forEach(r -> itemIdToReview.put(r.getOrderItem().getId(), r));
+                .forEach(r -> itemIdToReview.put(r.getOrderItem().getId(), r));
 
         ReturnInfo returnInfo = loadLatestReturnInfo(orderId);
-        PackingShippingEstimate estimate = shippingFeeEstimator.estimateFromOrder(order);
 
         return OrderDetailResponse.from(order, statusService.getLabel(order.getStatus()),
-            itemIdToReview, returnInfo.returnId(), returnInfo.status(), returnInfo.statusLabel(),
-            returnInfo.reason(), returnInfo.adminNote(), returnInfo.evidenceImages(), returnInfo.refundAmount(),
-            estimate != null ? estimate.estimatedShippingFee() : null,
-            estimate != null ? estimate.shippingFeeDifference() : null,
-            estimate != null ? estimate.warnings() : null);
+                itemIdToReview, returnInfo.returnId(), returnInfo.status(), returnInfo.statusLabel(),
+                returnInfo.reason(), returnInfo.adminNote(), returnInfo.evidenceImages(), returnInfo.refundAmount(),
+                null, null, null);
     }
 
     @Override
     @Transactional
     public void cancelOrder(Long userId, Long orderId, CancelOrderRequest request) {
         Order order = orderRepository.findByIdAndUserId(orderId, userId)
-            .orElseThrow(() -> new BusinessException(ErrorCode.ORDER_NOT_FOUND, HttpStatus.NOT_FOUND));
+                .orElseThrow(() -> new BusinessException(ErrorCode.ORDER_NOT_FOUND, HttpStatus.NOT_FOUND));
 
         if (!statusService.canCustomerCancel(order.getStatus())) {
             throw new BusinessException(ErrorCode.ORDER_CANNOT_CANCEL, HttpStatus.BAD_REQUEST,
-                "Chi co the huy don khi dang cho xac nhan");
+                    "Chi co the huy don khi dang cho xac nhan");
         }
 
         restoreStock(order);
@@ -266,19 +265,21 @@ public class OrderServiceImpl implements OrderService {
     @Transactional
     public void confirmCompleted(Long orderId) {
         Order order = orderRepository.findById(orderId)
-            .orElseThrow(() -> new BusinessException(ErrorCode.ORDER_NOT_FOUND, HttpStatus.NOT_FOUND));
+                .orElseThrow(() -> new BusinessException(ErrorCode.ORDER_NOT_FOUND, HttpStatus.NOT_FOUND));
 
-        if (order.getStatus() != OrderStatus.DELIVERED) {
+        if (order.getStatus() != OrderStatus.SHIPPING) {
             throw new BusinessException(ErrorCode.INVALID_STATUS_TRANSITION, HttpStatus.BAD_REQUEST,
-                "Chi co the hoan thanh don khi don da giao");
+                    "Chi co the hoan thanh don khi don dang giao");
         }
 
+        LocalDateTime now = LocalDateTime.now();
         order.setStatus(OrderStatus.COMPLETED);
-        order.setCompletedAt(LocalDateTime.now());
+        order.setDeliveredAt(now);
+        order.setCompletedAt(now);
 
         paymentRepository.findByOrderId(orderId).ifPresent(payment -> {
             if (payment.getMethod() == PaymentMethod.COD
-                && payment.getStatus() == PaymentStatus.PENDING) {
+                    && payment.getStatus() == PaymentStatus.PENDING) {
                 payment.setStatus(PaymentStatus.SUCCESS);
                 payment.setPaidAt(LocalDateTime.now());
                 order.setPaymentStatus(OrderPaymentStatus.PAID);
@@ -294,7 +295,7 @@ public class OrderServiceImpl implements OrderService {
     @Override
     @Transactional(readOnly = true)
     public PageResponse<OrderSummaryResponse> getAllOrders(OrderStatus status, String keyword,
-                                                           Long categoryId, int page, int size) {
+            Long categoryId, int page, int size) {
         PageRequest pageable = PageRequest.of(page, size);
         String kw = (keyword != null && !keyword.isBlank()) ? keyword.trim() : null;
         Page<Order> orders = orderRepository.searchOrders(status, kw, categoryId, pageable);
@@ -305,39 +306,36 @@ public class OrderServiceImpl implements OrderService {
     @Transactional(readOnly = true)
     public OrderStatsResponse getOrderStats() {
         return OrderStatsResponse.builder()
-            .totalOrders(orderRepository.count())
-            .pendingCount(orderRepository.countByStatus(OrderStatus.PENDING))
-            .confirmedCount(orderRepository.countByStatus(OrderStatus.CONFIRMED))
-            .shippingCount(orderRepository.countByStatus(OrderStatus.SHIPPING))
-            .deliveredCount(orderRepository.countByStatus(OrderStatus.DELIVERED))
-            .completedCount(orderRepository.countByStatus(OrderStatus.COMPLETED))
-            .cancelledCount(orderRepository.countByStatus(OrderStatus.CANCELLED))
-            .returnCount(returnRequestRepository.count())
-            .build();
+                .totalOrders(orderRepository.count())
+                .pendingCount(orderRepository.countByStatus(OrderStatus.PENDING))
+                .confirmedCount(orderRepository.countByStatus(OrderStatus.CONFIRMED))
+                .shippingCount(orderRepository.countByStatus(OrderStatus.SHIPPING))
+                .deliveredCount(orderRepository.countByStatus(OrderStatus.DELIVERED))
+                .completedCount(orderRepository.countByStatus(OrderStatus.COMPLETED))
+                .cancelledCount(orderRepository.countByStatus(OrderStatus.CANCELLED))
+                .returnCount(returnRequestRepository.count())
+                .build();
     }
 
     @Override
     @Transactional(readOnly = true)
     public OrderDetailResponse getOrderById(Long orderId) {
         Order order = orderRepository.findById(orderId)
-            .orElseThrow(() -> new BusinessException(ErrorCode.ORDER_NOT_FOUND, HttpStatus.NOT_FOUND));
+                .orElseThrow(() -> new BusinessException(ErrorCode.ORDER_NOT_FOUND, HttpStatus.NOT_FOUND));
 
         ReturnInfo returnInfo = loadLatestReturnInfo(orderId);
-        PackingShippingEstimate estimate = shippingFeeEstimator.estimateFromOrder(order);
 
         return OrderDetailResponse.from(order, statusService.getLabel(order.getStatus()),
-            Map.of(), returnInfo.returnId(), returnInfo.status(), returnInfo.statusLabel(),
-            returnInfo.reason(), returnInfo.adminNote(), returnInfo.evidenceImages(), returnInfo.refundAmount(),
-            estimate != null ? estimate.estimatedShippingFee() : null,
-            estimate != null ? estimate.shippingFeeDifference() : null,
-            estimate != null ? estimate.warnings() : null);
+                Map.of(), returnInfo.returnId(), returnInfo.status(), returnInfo.statusLabel(),
+                returnInfo.reason(), returnInfo.adminNote(), returnInfo.evidenceImages(), returnInfo.refundAmount(),
+                null, null, null);
     }
 
     @Override
     @Transactional
     public OrderDetailResponse updateOrderStatus(Long orderId, UpdateOrderStatusRequest request) {
         Order order = orderRepository.findById(orderId)
-            .orElseThrow(() -> new BusinessException(ErrorCode.ORDER_NOT_FOUND, HttpStatus.NOT_FOUND));
+                .orElseThrow(() -> new BusinessException(ErrorCode.ORDER_NOT_FOUND, HttpStatus.NOT_FOUND));
 
         OrderStatus oldStatus = order.getStatus();
         OrderStatus newStatus = request.getStatus();
@@ -352,7 +350,11 @@ public class OrderServiceImpl implements OrderService {
 
         if (newStatus == OrderStatus.COMPLETED) {
             throw new BusinessException(ErrorCode.INVALID_STATUS_TRANSITION, HttpStatus.BAD_REQUEST,
-                "Chi admin moi duoc xac nhan hoan thanh don hang");
+                    "Chi admin moi duoc xac nhan hoan thanh don hang");
+        }
+        if (newStatus == OrderStatus.DELIVERED) {
+            throw new BusinessException(ErrorCode.INVALID_STATUS_TRANSITION, HttpStatus.BAD_REQUEST,
+                    "Khong con su dung trang thai DELIVERED trong flow moi");
         }
 
         statusService.validateTransition(order.getStatus(), newStatus);
@@ -363,9 +365,6 @@ public class OrderServiceImpl implements OrderService {
         }
 
         order.setStatus(newStatus);
-        if (newStatus == OrderStatus.DELIVERED) {
-            order.setDeliveredAt(LocalDateTime.now());
-        }
 
         orderRepository.save(order);
         log.info("Order #{} status updated: {} -> {}", orderId, oldStatus, newStatus);
@@ -377,11 +376,11 @@ public class OrderServiceImpl implements OrderService {
     @Transactional
     public void staffCancelOrder(Long orderId, CancelOrderRequest request) {
         Order order = orderRepository.findById(orderId)
-            .orElseThrow(() -> new BusinessException(ErrorCode.ORDER_NOT_FOUND, HttpStatus.NOT_FOUND));
+                .orElseThrow(() -> new BusinessException(ErrorCode.ORDER_NOT_FOUND, HttpStatus.NOT_FOUND));
 
         if (!statusService.canStaffCancel(order.getStatus())) {
             throw new BusinessException(ErrorCode.ORDER_CANNOT_CANCEL, HttpStatus.BAD_REQUEST,
-                "Khong the huy don o trang thai " + statusService.getLabel(order.getStatus()));
+                    "Khong the huy don o trang thai " + statusService.getLabel(order.getStatus()));
         }
 
         if (request == null || request.getReason() == null || request.getReason().isBlank()) {
@@ -397,7 +396,7 @@ public class OrderServiceImpl implements OrderService {
             if (payment.getMethod() == PaymentMethod.VNPAY
                     && payment.getStatus() == PaymentStatus.SUCCESS) {
                 paymentService.processRefund(payment.getId(),
-                    "Don hang bi huy: " + request.getReason());
+                        "Don hang bi huy: " + request.getReason());
                 log.info("Auto-refund triggered for order #{}", orderId);
             } else if (payment.getStatus() == PaymentStatus.PENDING) {
                 payment.setStatus(PaymentStatus.FAILED);
@@ -409,23 +408,39 @@ public class OrderServiceImpl implements OrderService {
     }
 
     @Override
+    @Transactional(readOnly = true)
+    public StaffShippingPreviewResponse previewActualShippingFee(Long orderId, ConfirmPackingRequest request) {
+        Order order = orderRepository.findById(orderId)
+                .orElseThrow(() -> new BusinessException(ErrorCode.ORDER_NOT_FOUND, HttpStatus.NOT_FOUND));
+        ActualShippingFeeResult estimate = shippingCalculationService.calculateActualFee(order, request);
+        return StaffShippingPreviewResponse.builder()
+                .provider(ShippingCalculationService.PROVIDER)
+                .customerShippingFee(order.getShippingFee())
+                .actualGhnFee(estimate.actualShippingFee())
+                .difference(estimate.shippingFeeDifference())
+                .actualWeight(estimate.actualWeight())
+                .packageLength(estimate.packageLength())
+                .packageWidth(estimate.packageWidth())
+                .packageHeight(estimate.packageHeight())
+                .build();
+    }
+
+    @Override
     @Transactional
     public OrderDetailResponse confirmPacking(Long orderId, ConfirmPackingRequest request) {
         Order order = orderRepository.findById(orderId)
-            .orElseThrow(() -> new BusinessException(ErrorCode.ORDER_NOT_FOUND, HttpStatus.NOT_FOUND));
+                .orElseThrow(() -> new BusinessException(ErrorCode.ORDER_NOT_FOUND, HttpStatus.NOT_FOUND));
 
         if (order.getStatus() != OrderStatus.CONFIRMED) {
             throw new BusinessException(ErrorCode.PACKING_INVALID_STATUS, HttpStatus.BAD_REQUEST);
         }
 
-        PackingShippingEstimate estimate = shippingFeeEstimator.estimate(order, request);
+        ActualShippingFeeResult estimate = shippingCalculationService.calculateActualFee(order, request);
 
-        order.setPackageLength(request.getLength());
-        order.setPackageWidth(request.getWidth());
-        order.setPackageHeight(request.getHeight());
+        order.setPackageLength(request.getPackageLength());
+        order.setPackageWidth(request.getPackageWidth());
+        order.setPackageHeight(request.getPackageHeight());
         order.setActualWeight(request.getActualWeight());
-        order.setVolumetricWeight(estimate.volumetricWeight());
-        order.setChargeableWeight(estimate.chargeableWeight());
 
         if (request.getPackingNote() != null && !request.getPackingNote().isBlank()) {
             String existingNote = order.getNote() != null ? order.getNote() + "\n" : "";
@@ -433,15 +448,16 @@ public class OrderServiceImpl implements OrderService {
         }
 
         order.setPackingConfirmed(true);
+        order.setStatus(OrderStatus.SHIPPING);
         orderRepository.save(order);
 
-        log.info("Order #{} packing confirmed: {}x{}x{} cm, actual={}g, chargeable={}g",
-            orderId, request.getLength(), request.getWidth(), request.getHeight(),
-            request.getActualWeight(), order.getChargeableWeight());
+        log.info("Order #{} packing confirmed: {}x{}x{} cm, actual={}g",
+                orderId, request.getPackageLength(), request.getPackageWidth(), request.getPackageHeight(),
+                request.getActualWeight());
 
         return OrderDetailResponse.from(order, statusService.getLabel(order.getStatus()),
-            Map.of(), null, null, null, null, null, null, null,
-            estimate.estimatedShippingFee(), estimate.shippingFeeDifference(), estimate.warnings());
+                Map.of(), null, null, null, null, null, null, null,
+                estimate.actualShippingFee(), estimate.shippingFeeDifference(), null);
     }
 
     private Map<Long, Integer> normalizeOrderItems(List<OrderItemRequest> items) {
@@ -461,14 +477,13 @@ public class OrderServiceImpl implements OrderService {
 
     private void guardVnPayPaidBeforeProcessing(Order order, OrderStatus newStatus) {
         boolean processingStatus = newStatus == OrderStatus.CONFIRMED
-            || newStatus == OrderStatus.SHIPPING
-            || newStatus == OrderStatus.DELIVERED
-            || newStatus == OrderStatus.COMPLETED;
+                || newStatus == OrderStatus.SHIPPING
+                || newStatus == OrderStatus.COMPLETED;
         if (processingStatus
-            && order.getPaymentMethod() == PaymentMethod.VNPAY
-            && order.getPaymentStatus() != OrderPaymentStatus.PAID) {
+                && order.getPaymentMethod() == PaymentMethod.VNPAY
+                && order.getPaymentStatus() != OrderPaymentStatus.PAID) {
             throw new BusinessException(ErrorCode.ORDER_PAYMENT_NOT_PAID, HttpStatus.BAD_REQUEST,
-                "Don VNPay chua thanh toan thanh cong, khong the xu ly don.");
+                    "Don VNPay chua thanh toan thanh cong, khong the xu ly don.");
         }
     }
 
@@ -479,9 +494,11 @@ public class OrderServiceImpl implements OrderService {
         snapshot.put("province", address.getProvince());
         snapshot.put("district", address.getDistrict());
         snapshot.put("ward", address.getWard());
+        snapshot.put("districtCode", address.getDistrictCode());
+        snapshot.put("wardCode", address.getWardCode());
         snapshot.put("street", address.getStreet());
         snapshot.put("fullAddress", address.getStreet() + ", " + address.getWard()
-            + ", " + address.getDistrict() + ", " + address.getProvince());
+                + ", " + address.getDistrict() + ", " + address.getProvince());
         return snapshot;
     }
 
@@ -507,8 +524,8 @@ public class OrderServiceImpl implements OrderService {
         }
 
         return imageRepository.findPrimaryByProductId(productId)
-            .map(ProductImage::getImageUrl)
-            .orElse(null);
+                .map(ProductImage::getImageUrl)
+                .orElse(null);
     }
 
     private ReturnInfo loadLatestReturnInfo(Long orderId) {
@@ -519,32 +536,31 @@ public class OrderServiceImpl implements OrderService {
 
         var ret = latestReturn.get();
         return new ReturnInfo(
-            ret.getId(),
-            ret.getStatus().name(),
-            returnStatusService.getLabel(ret.getStatus()),
-            ret.getReason(),
-            ret.getAdminNote(),
-            ret.getEvidenceImages(),
-            ret.getRefundAmount());
+                ret.getId(),
+                ret.getStatus().name(),
+                returnStatusService.getLabel(ret.getStatus()),
+                ret.getReason(),
+                ret.getAdminNote(),
+                ret.getEvidenceImages(),
+                ret.getRefundAmount());
     }
 
     private PageResponse<OrderSummaryResponse> buildPageResponse(Page<Order> orders) {
         var content = orders.getContent().stream()
-            .map(o -> OrderSummaryResponse.from(o, statusService.getLabel(o.getStatus())))
-            .toList();
+                .map(o -> OrderSummaryResponse.from(o, statusService.getLabel(o.getStatus())))
+                .toList();
 
         return PageResponse.from(content, orders);
     }
 
     private record ReturnInfo(
-        Long returnId,
-        String status,
-        String statusLabel,
-        String reason,
-        String adminNote,
-        List<String> evidenceImages,
-        BigDecimal refundAmount
-    ) {
+            Long returnId,
+            String status,
+            String statusLabel,
+            String reason,
+            String adminNote,
+            List<String> evidenceImages,
+            BigDecimal refundAmount) {
         private static ReturnInfo empty() {
             return new ReturnInfo(null, null, null, null, null, null, null);
         }

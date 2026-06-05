@@ -5,7 +5,6 @@ const MAIN_STEPS = [
   { key: 'PENDING', label: 'Chờ xác nhận' },
   { key: 'CONFIRMED', label: 'Đã xác nhận' },
   { key: 'SHIPPING', label: 'Đang giao' },
-  { key: 'DELIVERED', label: 'Đã giao' },
   { key: 'COMPLETED', label: 'Hoàn thành' },
 ];
 
@@ -15,19 +14,20 @@ const RETURN_STEPS = [
   { key: 'RETURNED', label: 'Đã xử lý' },
 ];
 
-const STATUS_ORDER = ['AWAITING_PAYMENT', 'PENDING', 'CONFIRMED', 'SHIPPING', 'DELIVERED', 'COMPLETED'];
+const STATUS_ORDER = ['AWAITING_PAYMENT', 'PENDING', 'CONFIRMED', 'SHIPPING', 'COMPLETED'];
 const RETURN_ORDER = ['RETURN_REQUESTED', 'RETURNING', 'RETURNED'];
 
 const OrderStatusTimeline = ({ status }) => {
-  const isCancelled = status === 'CANCELLED';
-  const isReturn = RETURN_ORDER.includes(status);
-  const isAwaitingPayment = status === 'AWAITING_PAYMENT';
+  const normalizedStatus = status === 'DELIVERED' ? 'COMPLETED' : status;
+  const isCancelled = normalizedStatus === 'CANCELLED';
+  const isReturn = RETURN_ORDER.includes(normalizedStatus);
+  const isAwaitingPayment = normalizedStatus === 'AWAITING_PAYMENT';
 
-  const currentMainIndex = STATUS_ORDER.indexOf(status);
-  const currentReturnIndex = RETURN_ORDER.indexOf(status);
+  const currentMainIndex = STATUS_ORDER.indexOf(normalizedStatus);
+  const currentReturnIndex = RETURN_ORDER.indexOf(normalizedStatus);
 
-  // For return statuses, the main timeline should show up to DELIVERED as completed
-  const mainCompletedUpTo = isReturn ? STATUS_ORDER.indexOf('DELIVERED') : currentMainIndex;
+  // For return statuses, the main timeline should show up to COMPLETED as completed
+  const mainCompletedUpTo = isReturn ? STATUS_ORDER.indexOf('COMPLETED') : currentMainIndex;
 
   return (
     <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-6">

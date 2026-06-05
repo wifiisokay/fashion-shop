@@ -30,6 +30,7 @@ public class ProductSummaryResponse {
     private Long totalStock;
     private String stockStatus;
     private String gender;
+    private Integer estimatedWeight;
     private String colorFamily;
     private String fitType;
     private String season;
@@ -76,6 +77,7 @@ public class ProductSummaryResponse {
             .totalStock(priceService.getTotalStock(product))
             .stockStatus(priceService.getStockStatus(product))
             .gender(product.getGender() != null ? product.getGender().name() : null)
+            .estimatedWeight(product.getEstimatedWeight())
             .colorFamily(primaryColorFamily(product))
             .fitType(product.getFitType())
             .season(product.getSeason())

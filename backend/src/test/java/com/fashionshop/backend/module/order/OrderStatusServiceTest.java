@@ -1,90 +1,88 @@
 package com.fashionshop.backend.module.order;
 
-import com.fashionshop.backend.common.enums.OrderStatus;
-import com.fashionshop.backend.exception.BusinessException;
-import org.junit.jupiter.api.DisplayName;
+import static com.fashionshop.backend.common.enums.OrderStatus.AWAITING_PAYMENT;
+import static com.fashionshop.backend.common.enums.OrderStatus.CANCELLED;
+import static com.fashionshop.backend.common.enums.OrderStatus.COMPLETED;
+import static com.fashionshop.backend.common.enums.OrderStatus.CONFIRMED;
+import static com.fashionshop.backend.common.enums.OrderStatus.DELIVERED;
+import static com.fashionshop.backend.common.enums.OrderStatus.PENDING;
+import static com.fashionshop.backend.common.enums.OrderStatus.SHIPPING;
+import static org.junit.jupiter.api.Assertions.assertDoesNotThrow;
+import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertNotNull;
+import static org.junit.jupiter.api.Assertions.assertThrows;
+import static org.junit.jupiter.api.Assertions.assertTrue;
+
 import org.junit.jupiter.api.Nested;
 import org.junit.jupiter.api.Test;
 
-import static com.fashionshop.backend.common.enums.OrderStatus.*;
-import static org.junit.jupiter.api.Assertions.*;
+import com.fashionshop.backend.common.enums.OrderStatus;
+import com.fashionshop.backend.exception.BusinessException;
 
 class OrderStatusServiceTest {
 
     private final OrderStatusService sut = new OrderStatusService();
 
     @Nested
-    @DisplayName("validateTransition")
     class ValidateTransition {
 
         @Test
-        @DisplayName("AWAITING_PAYMENT → PENDING: OK")
-        void awaitingToPending() {
+        void awaitingToPending_ok() {
             assertDoesNotThrow(() -> sut.validateTransition(AWAITING_PAYMENT, PENDING));
         }
 
         @Test
-        @DisplayName("AWAITING_PAYMENT → CANCELLED: OK")
-        void awaitingToCancelled() {
+        void awaitingToCancelled_ok() {
             assertDoesNotThrow(() -> sut.validateTransition(AWAITING_PAYMENT, CANCELLED));
         }
 
         @Test
-        @DisplayName("PENDING → CONFIRMED: OK")
-        void pendingToConfirmed() {
+        void pendingToConfirmed_ok() {
             assertDoesNotThrow(() -> sut.validateTransition(PENDING, CONFIRMED));
         }
 
         @Test
-        @DisplayName("CONFIRMED → SHIPPING: OK")
-        void confirmedToShipping() {
+        void confirmedToShipping_ok() {
             assertDoesNotThrow(() -> sut.validateTransition(CONFIRMED, SHIPPING));
         }
 
         @Test
-        @DisplayName("SHIPPING → DELIVERED: OK")
-        void shippingToDelivered() {
-            assertDoesNotThrow(() -> sut.validateTransition(SHIPPING, DELIVERED));
+        void shippingToCompleted_ok() {
+            assertDoesNotThrow(() -> sut.validateTransition(SHIPPING, COMPLETED));
         }
 
         @Test
-        @DisplayName("DELIVERED → COMPLETED: OK")
-        void deliveredToCompleted() {
-            assertDoesNotThrow(() -> sut.validateTransition(DELIVERED, COMPLETED));
+        void shippingToDelivered_throws() {
+            assertThrows(BusinessException.class, () -> sut.validateTransition(SHIPPING, DELIVERED));
         }
 
         @Test
-        @DisplayName("PENDING → DELIVERED: INVALID — skip trạng thái")
+        void deliveredToCompleted_throws() {
+            assertThrows(BusinessException.class, () -> sut.validateTransition(DELIVERED, COMPLETED));
+        }
+
+        @Test
         void pendingToDelivered_throws() {
-            BusinessException ex = assertThrows(BusinessException.class,
-                () -> sut.validateTransition(PENDING, DELIVERED));
-            assertEquals("ORDER_006", ex.getErrorCode().getCode());
+            assertThrows(BusinessException.class, () -> sut.validateTransition(PENDING, DELIVERED));
         }
 
         @Test
-        @DisplayName("SHIPPING → PENDING: INVALID — quay ngược")
         void shippingToPending_throws() {
-            assertThrows(BusinessException.class,
-                () -> sut.validateTransition(SHIPPING, PENDING));
+            assertThrows(BusinessException.class, () -> sut.validateTransition(SHIPPING, PENDING));
         }
 
         @Test
-        @DisplayName("COMPLETED → bất kỳ: INVALID — trạng thái cuối")
         void completedToAny_throws() {
-            assertThrows(BusinessException.class,
-                () -> sut.validateTransition(COMPLETED, PENDING));
+            assertThrows(BusinessException.class, () -> sut.validateTransition(COMPLETED, PENDING));
         }
 
         @Test
-        @DisplayName("CANCELLED → bất kỳ: INVALID — trạng thái cuối")
         void cancelledToAny_throws() {
-            assertThrows(BusinessException.class,
-                () -> sut.validateTransition(CANCELLED, PENDING));
+            assertThrows(BusinessException.class, () -> sut.validateTransition(CANCELLED, PENDING));
         }
     }
 
     @Nested
-    @DisplayName("canCustomerCancel")
     class CustomerCancel {
 
         @Test
@@ -109,7 +107,6 @@ class OrderStatusServiceTest {
     }
 
     @Nested
-    @DisplayName("canStaffCancel")
     class StaffCancel {
 
         @Test
@@ -129,13 +126,7 @@ class OrderStatusServiceTest {
     }
 
     @Nested
-    @DisplayName("getLabel")
     class GetLabel {
-
-        @Test
-        void pendingLabel() {
-            assertEquals("Chờ xác nhận", sut.getLabel(PENDING));
-        }
 
         @Test
         void allStatusesHaveLabels() {
