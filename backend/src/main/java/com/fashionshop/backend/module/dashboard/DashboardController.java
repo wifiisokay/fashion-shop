@@ -1,12 +1,17 @@
 package com.fashionshop.backend.module.dashboard;
 
 import com.fashionshop.backend.common.ApiResponse;
+import com.fashionshop.backend.module.dashboard.dto.AdminDashboardResponse;
 import com.fashionshop.backend.module.dashboard.dto.DashboardStatsResponse;
 import lombok.RequiredArgsConstructor;
+import org.springframework.format.annotation.DateTimeFormat;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.RequestMapping;
+import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
+
+import java.time.LocalDate;
 
 @RestController
 @RequestMapping("/api/admin/dashboard")
@@ -14,6 +19,15 @@ import org.springframework.web.bind.annotation.RestController;
 public class DashboardController {
 
     private final DashboardService dashboardService;
+
+    @GetMapping
+    @PreAuthorize("hasRole('ADMIN')")
+    public ApiResponse<AdminDashboardResponse> getAdminDashboard(
+        @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate from,
+        @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate to
+    ) {
+        return ApiResponse.success(dashboardService.getAdminDashboard(from, to));
+    }
 
     @GetMapping("/stats")
     @PreAuthorize("hasRole('ADMIN')")

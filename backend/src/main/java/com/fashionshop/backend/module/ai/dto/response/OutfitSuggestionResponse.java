@@ -19,6 +19,7 @@ public class OutfitSuggestionResponse {
     private Long productId;
     private Long colorId;
     private boolean cached;
+    private String provider;          // "GEMINI" hoặc "RULE"
     private LocalDateTime createdAt;
     private List<OutfitComboResponse> combos;
 }

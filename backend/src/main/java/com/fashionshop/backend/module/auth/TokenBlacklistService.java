@@ -1,75 +1,58 @@
 package com.fashionshop.backend.module.auth;
 
-import lombok.RequiredArgsConstructor;
-import lombok.extern.slf4j.Slf4j;
+import java.time.LocalDateTime;
+import java.time.ZoneId;
+
+import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
 
-import java.util.Date;
-import java.util.Map;
-import java.util.concurrent.ConcurrentHashMap;
+import com.fashionshop.backend.config.JwtService;
+import com.fashionshop.backend.domain.TokenBlacklist;
+import com.fashionshop.backend.domain.repository.TokenBlacklistRepository;
+import com.fashionshop.backend.domain.repository.UserRepository;
 
-/**
- * In-memory token blacklist cho logout.
- * Cleanup tự động mỗi giờ để tránh memory leak.
- *
- * NOTE: Token sẽ mất khi restart server — đây là giới hạn đã biết của in-memory store.
- * TODO: Migrate sang Redis hoặc DB khi cần persistence.
- *
- * isBlacklisted() tự cleanup token expired (eager cleanup) để không trả nhầm `true`
- * cho token đã hết hạn mà chưa được cleanup định kỳ xử lý.
- */
+import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
+
 @Slf4j
 @Service
 @RequiredArgsConstructor
 public class TokenBlacklistService {
 
-    // token → expiry time
-    private final Map<String, Date> blacklist = new ConcurrentHashMap<>();
+    private final TokenBlacklistRepository tokenBlacklistRepository;
+    private final UserRepository userRepository;
+    private final JwtService jwtService;
 
-    /**
-     * Thêm token vào blacklist khi user logout.
-     *
-     * @param token  raw JWT token
-     * @param expiry thời điểm token hết hạn (lấy từ claims) — dùng để cleanup sau
-     */
-    public void blacklist(String token, Date expiry) {
-        blacklist.put(token, expiry);
-        log.debug("Token blacklisted, expires at: {}", expiry);
+    @Transactional
+    public void blacklistToken(String token, String reason) {
+        String jti = jwtService.extractJti(token);
+        if (jti == null || jti.isBlank() || tokenBlacklistRepository.existsByJti(jti)) {
+            return;
+        }
+        Long userId = jwtService.extractUserId(token);
+        TokenBlacklist entry = TokenBlacklist.builder()
+            .jti(jti)
+            .user(userId != null ? userRepository.findById(userId).orElse(null) : null)
+            .expiresAt(jwtService.getExpiry(token).toInstant().atZone(ZoneId.systemDefault()).toLocalDateTime())
+            .reason(reason)
+            .createdAt(LocalDateTime.now())
+            .build();
+        try {
+            tokenBlacklistRepository.save(entry);
+        } catch (DataIntegrityViolationException ignored) {
+            log.debug("JWT jti already blacklisted: {}", jti);
+        }
     }
 
-    /**
-     * Kiểm tra token có bị blacklist không.
-     *
-     * <p>Thực hiện eager cleanup: nếu token tìm thấy trong blacklist nhưng đã expired,
-     * xóa nó luôn và trả về {@code false} (token invalid anyway, không cần block).
-     * Tránh race condition với scheduled cleanup chạy mỗi giờ.
-     */
-    public boolean isBlacklisted(String token) {
-        Date expiry = blacklist.get(token);
-        if (expiry == null) {
-            return false;
-        }
-        if (expiry.before(new Date())) {
-            // Eager cleanup — token đã expired, xóa khỏi map
-            blacklist.remove(token);
-            return false;
-        }
-        return true;
+    public boolean isBlacklisted(String jti) {
+        return jti != null && !jti.isBlank() && tokenBlacklistRepository.existsByJti(jti);
     }
 
-    /**
-     * Cleanup token đã hết hạn — chạy mỗi giờ.
-     * isBlacklisted() đã eager-cleanup từng token nên đây chỉ là safety net.
-     */
-    @Scheduled(fixedRate = 3_600_000)
-    public void cleanup() {
-        Date now = new Date();
-        int sizeBefore = blacklist.size();
-        blacklist.entrySet().removeIf(e -> e.getValue().before(now));
-        int removed = sizeBefore - blacklist.size();
-        if (removed > 0) {
-            log.debug("Blacklist cleanup: removed {} expired tokens", removed);
-        }
+    @Scheduled(cron = "0 0 3 * * *")
+    @Transactional
+    public void cleanupExpiredTokens() {
+        tokenBlacklistRepository.deleteByExpiresAtBefore(LocalDateTime.now());
     }
 }

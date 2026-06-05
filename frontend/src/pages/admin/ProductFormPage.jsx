@@ -1,4 +1,5 @@
 import { useState, useEffect } from 'react';
+import dayjs from 'dayjs';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import { ArrowLeft, Save, Plus, Trash2, Upload } from 'lucide-react';
 import { toast } from 'sonner';
@@ -46,6 +47,15 @@ const SEASON_LABELS = {
   'FALL_WINTER': 'Thu/Đông'
 };
 
+const normalizeSeason = (val) => {
+  if (!val) return 'ALL_SEASON';
+  const clean = val.toString().trim().toUpperCase();
+  if (clean === 'ALL_SEASON' || clean === '4 MÙA' || clean === '4MUA' || clean === 'MÙA') return 'ALL_SEASON';
+  if (clean === 'SPRING_SUMMER' || clean === 'XUÂN/HÈ' || clean === 'XUAN/HE' || clean === 'XUÂN HÈ') return 'SPRING_SUMMER';
+  if (clean === 'FALL_WINTER' || clean === 'THU/ĐÔNG' || clean === 'THU/DONG' || clean === 'THU ĐÔNG') return 'FALL_WINTER';
+  return 'ALL_SEASON';
+};
+
 const COLOR_FAMILY_LABELS = {
   neutral: 'Trung tinh',
   cool: 'Tong lanh',
@@ -83,7 +93,8 @@ const ProductFormPage = () => {
     name: '', description: '', basePrice: '', salePrice: '',
     isSale: false, gender: 'MALE', material: '', estimatedWeight: '300', colorFamily: '',
     categoryId: '', styleTags: [], occasionTags: [],
-    fitType: '', season: '',
+    fitType: '', season: 'ALL_SEASON',
+    saleStartAt: '', saleEndAt: '', lowStockThreshold: '10',
     aiSuggestedStyleTags: [], aiSuggestedOccasionTags: []
   });
 
@@ -126,7 +137,10 @@ const ProductFormPage = () => {
         styleTags: product.styleTags || [],
         occasionTags: product.occasionTags || [],
         fitType: product.fitType || '',
-        season: product.season || '',
+        season: normalizeSeason(product.season),
+        saleStartAt: product.saleStartAt ? dayjs(product.saleStartAt).format('YYYY-MM-DDTHH:mm') : '',
+        saleEndAt: product.saleEndAt ? dayjs(product.saleEndAt).format('YYYY-MM-DDTHH:mm') : '',
+        lowStockThreshold: product.lowStockThreshold?.toString() || '10',
         aiSuggestedStyleTags: [],
         aiSuggestedOccasionTags: []
       });
@@ -158,6 +172,9 @@ const ProductFormPage = () => {
       occasionTags: form.occasionTags,
       fitType: form.fitType || null,
       season: form.season || null,
+      saleStartAt: form.saleStartAt || null,
+      saleEndAt: form.saleEndAt || null,
+      lowStockThreshold: form.lowStockThreshold ? parseInt(form.lowStockThreshold) : 10,
     };
 
     try {
@@ -281,7 +298,12 @@ const ProductFormPage = () => {
 
   const handleColorSubmit = async (e) => {
     e.preventDefault();
-    const payload = { productId: parseInt(productId), ...colorForm };
+    const payload = {
+      productId: parseInt(productId),
+      colorName: colorForm.colorName.trim(),
+      colorCode: colorForm.colorCode ? colorForm.colorCode.trim() : null,
+      displayOrder: colorForm.displayOrder
+    };
     try {
       if (editColor) {
         await updateColorMutation.mutateAsync({ ...payload, colorId: editColor.id });
@@ -428,7 +450,7 @@ const ProductFormPage = () => {
               </div>
               <div className="space-y-2">
                 <Label>Danh mục *</Label>
-                <Select value={form.categoryId} onValueChange={(val) => setForm({ ...form, categoryId: val })}>
+                <Select key={form.categoryId} value={form.categoryId} onValueChange={(val) => setForm({ ...form, categoryId: val })}>
                   <SelectTrigger><SelectValue placeholder="Chọn danh mục" /></SelectTrigger>
                   <SelectContent>
                     {categoryOptions.map((opt) => (
@@ -444,7 +466,7 @@ const ProductFormPage = () => {
               </div>
               <div className="space-y-2">
                 <Label>Giới tính *</Label>
-                <Select value={form.gender} onValueChange={(val) => setForm({ ...form, gender: val })}>
+                <Select key={form.gender} value={form.gender} onValueChange={(val) => setForm({ ...form, gender: val })}>
                   <SelectTrigger><SelectValue /></SelectTrigger>
                   <SelectContent>
                     {GENDER_OPTIONS.map((opt) => (
@@ -466,6 +488,13 @@ const ProductFormPage = () => {
                 <p className="text-xs text-gray-400">Dùng tính phí ship. Mặc định 300g cho quần áo.</p>
               </div>
               <div className="space-y-2">
+                <Label>Ngưỡng cảnh báo tồn kho *</Label>
+                <Input type="number" required min="0" value={form.lowStockThreshold}
+                  onChange={(e) => setForm({ ...form, lowStockThreshold: e.target.value })}
+                  placeholder="10" />
+                <p className="text-xs text-gray-400">Cảnh báo khi tồn kho biến thể ít hơn hoặc bằng số này.</p>
+              </div>
+              <div className="space-y-2">
                 <Label>Nhóm màu</Label>
                 <div className="rounded-md border border-gray-200 bg-gray-50 px-3 py-2 text-sm text-gray-700">
                   {COLOR_FAMILY_LABELS[form.colorFamily] || form.colorFamily || 'Tu dong theo mau chinh'}
@@ -477,17 +506,39 @@ const ProductFormPage = () => {
             <Separator />
 
             {/* Sale */}
-            <div className="space-y-4">
+            <div className="space-y-4 border p-4 rounded-xl bg-gray-50/50">
               <div className="flex items-center gap-3">
                 <Switch checked={form.isSale}
                   onCheckedChange={(checked) => setForm({ ...form, isSale: checked })} />
-                <Label>Đang khuyến mãi</Label>
+                <Label className="font-bold text-gray-900">Áp dụng chương trình giảm giá</Label>
               </div>
+              
               {form.isSale && (
-                <div className="space-y-2">
-                  <Label>Giá khuyến mãi (VNĐ) *</Label>
-                  <Input type="number" min="0" value={form.salePrice}
-                    onChange={(e) => setForm({ ...form, salePrice: e.target.value })} placeholder="Phải nhỏ hơn giá gốc" />
+                <div className="grid grid-cols-1 md:grid-cols-3 gap-4 pt-2">
+                  <div className="space-y-2">
+                    <Label>Giá khuyến mãi (VNĐ) *</Label>
+                    <Input type="number" min="0" value={form.salePrice}
+                      onChange={(e) => setForm({ ...form, salePrice: e.target.value })} placeholder="Phải nhỏ hơn giá gốc" />
+                  </div>
+                  <div className="space-y-2">
+                    <Label>Thời gian bắt đầu</Label>
+                    <Input type="datetime-local" value={form.saleStartAt}
+                      onChange={(e) => setForm({ ...form, saleStartAt: e.target.value })} />
+                  </div>
+                  <div className="space-y-2">
+                    <Label>Thời gian kết thúc</Label>
+                    <Input type="datetime-local" value={form.saleEndAt}
+                      onChange={(e) => setForm({ ...form, saleEndAt: e.target.value })} />
+                  </div>
+                  
+                  {form.basePrice && form.salePrice && parseFloat(form.basePrice) > 0 && (
+                    <div className="md:col-span-3 text-xs font-bold text-emerald-700 bg-emerald-50 px-3 py-2.5 rounded-lg border border-emerald-200/50 flex items-center justify-between">
+                      <span>Tỷ lệ giảm giá dự kiến:</span>
+                      <span className="font-black text-sm text-emerald-800">
+                        -{Math.round((1 - parseFloat(form.salePrice) / parseFloat(form.basePrice)) * 100)}%
+                      </span>
+                    </div>
+                  )}
                 </div>
               )}
             </div>
@@ -520,7 +571,7 @@ const ProductFormPage = () => {
 
               <div className="space-y-2">
                 <Label>Kiểu dáng (Fit Type)</Label>
-                <Select value={form.fitType} onValueChange={(val) => setForm({ ...form, fitType: val })}>
+                <Select key={form.fitType} value={form.fitType} onValueChange={(val) => setForm({ ...form, fitType: val })}>
                   <SelectTrigger><SelectValue placeholder="Chọn kiểu dáng" /></SelectTrigger>
                   <SelectContent>
                     {(tagLibrary?.fitTypes || []).map((f) => <SelectItem key={f} value={f}>{f}</SelectItem>)}
@@ -529,11 +580,11 @@ const ProductFormPage = () => {
               </div>
               <div className="space-y-2">
                 <Label>Mùa (Season)</Label>
-                <Select value={form.season} onValueChange={(val) => setForm({ ...form, season: val })}>
+                <Select key={form.season} value={form.season} onValueChange={(val) => setForm({ ...form, season: val })}>
                   <SelectTrigger><SelectValue placeholder="Chọn mùa" /></SelectTrigger>
                   <SelectContent>
-                    {(tagLibrary?.seasons || []).map((s) => (
-                      <SelectItem key={s} value={s}>{SEASON_LABELS[s] || s}</SelectItem>
+                    {Object.keys(SEASON_LABELS).map((s) => (
+                      <SelectItem key={s} value={s}>{SEASON_LABELS[s]}</SelectItem>
                     ))}
                   </SelectContent>
                 </Select>

@@ -60,7 +60,26 @@ const StaffOrderListPage = () => {
       render: (val) => <span className="text-sm text-gray-700">{val || '—'}</span>
     },
     { title: 'Tổng tiền', dataIndex: 'totalAmount', key: 'totalAmount', render: (val) => <span className="font-medium text-gray-900">{formatPrice(val)}</span> },
-    { title: 'Thanh toán', dataIndex: 'paymentMethod', key: 'paymentMethod', render: (val) => val === 'COD' ? 'COD' : 'VNPAY' },
+    {
+      title: 'Thanh toán',
+      dataIndex: 'paymentMethod',
+      key: 'paymentMethod',
+      render: (val, row) => (
+        <div className="space-y-1">
+          <div>{val === 'COD' ? 'COD' : 'VNPAY'}</div>
+          <span className={clsx(
+            'inline-flex rounded-full px-2 py-0.5 text-xs font-medium',
+            row.paymentStatus === 'PAID' ? 'bg-green-100 text-green-700'
+              : row.paymentStatus === 'REFUNDED' ? 'bg-gray-100 text-gray-600'
+              : 'bg-yellow-100 text-yellow-700'
+          )}>
+            {row.paymentStatus === 'PAID' ? 'Đã thanh toán'
+              : row.paymentStatus === 'REFUNDED' ? 'Đã hoàn tiền'
+              : 'Chưa thanh toán'}
+          </span>
+        </div>
+      )
+    },
     { 
       title: 'Trạng thái', 
       dataIndex: 'status', 
@@ -102,7 +121,7 @@ const StaffOrderListPage = () => {
     { label: 'Tổng đơn', value: stats?.totalOrders || 0, icon: ShoppingBag, color: 'bg-indigo-50 text-indigo-600' },
     { label: 'Chờ xác nhận', value: stats?.pendingCount || 0, icon: Clock, color: 'bg-yellow-50 text-yellow-600' },
     { label: 'Đang giao', value: stats?.shippingCount || 0, icon: Truck, color: 'bg-cyan-50 text-cyan-600' },
-    { label: 'Đã giao', value: stats?.deliveredCount || 0, icon: CheckCircle, color: 'bg-green-50 text-green-600' },
+    { label: 'Hoàn thành', value: stats?.completedCount || 0, icon: CheckCircle, color: 'bg-green-50 text-green-600' },
     { label: 'Trả hàng', value: stats?.returnCount || 0, icon: RotateCcw, color: 'bg-orange-50 text-orange-600' },
     { label: 'Đã hủy', value: stats?.cancelledCount || 0, icon: XCircle, color: 'bg-red-50 text-red-600' },
   ];
@@ -156,12 +175,8 @@ const StaffOrderListPage = () => {
             <option value="PENDING">Chờ xác nhận</option>
             <option value="CONFIRMED">Đã xác nhận</option>
             <option value="SHIPPING">Đang giao</option>
-            <option value="DELIVERED">Đã giao</option>
             <option value="COMPLETED">Hoàn thành</option>
             <option value="CANCELLED">Đã hủy</option>
-            <option value="RETURN_REQUESTED">Yêu cầu trả hàng</option>
-            <option value="RETURNING">Đang trả hàng</option>
-            <option value="RETURNED">Đã trả hàng</option>
           </select>
           <select
             value={categoryFilter}

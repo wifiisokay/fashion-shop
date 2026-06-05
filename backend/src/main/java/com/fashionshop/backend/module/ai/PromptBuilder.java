@@ -29,25 +29,16 @@ import java.util.List;
 public class PromptBuilder {
 
     private final SystemPromptProvider systemPromptProvider;
-    private final UserPreferenceService userPreferenceService;
 
     // =====================================
     // Public API
     // =====================================
 
     /**
-     * Build system prompt cho authenticated user (có userId → nhúng preferences).
+     * Build system prompt cho authenticated user (không dùng preferences nữa).
      */
     public String buildSystemPrompt(ChatIntent intent, String retrievedData, Long userId) {
         StringBuilder prompt = new StringBuilder(systemPromptProvider.forIntent(intent));
-
-        // Phần 2: User Preferences
-        String prefs = userPreferenceService.formatForPrompt(userId);
-        if (!prefs.isBlank()) {
-            prompt.append("\n\n## [SỞ THÍCH CỦA KHÁCH HÀNG NÀY]\n")
-                  .append("(Học từ lịch sử chat — dùng để cá nhân hoá gợi ý)\n")
-                  .append(prefs);
-        }
 
         // Phần 3: Retrieved Data
         appendRetrievedData(prompt, retrievedData);

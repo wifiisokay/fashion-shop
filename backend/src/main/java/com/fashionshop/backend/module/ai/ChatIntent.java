@@ -1,7 +1,7 @@
 package com.fashionshop.backend.module.ai;
 
 /**
- * 6 intent phân loại tin nhắn chat.
+ * 7 intent phân loại tin nhắn chat.
  */
 public enum ChatIntent {
     PRODUCT_SEARCH,
@@ -9,5 +9,6 @@ public enum ChatIntent {
     ORDER_INQUIRY,
     RETURN_SUPPORT,
     GENERAL_SUPPORT,
-    CHITCHAT
+    CHITCHAT,
+    OUT_OF_SCOPE
 }

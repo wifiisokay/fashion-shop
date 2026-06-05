@@ -19,10 +19,13 @@ public class ChatMessageResponse {
     private String content;    // text content
     private List<ChatProductCard> products;  // nullable — chỉ có khi PRODUCT_SEARCH / OUTFIT_SUGGEST
     private List<OutfitComboResponse> outfitCombos;
+    private List<String> styleTips;
     private List<String> suggestedQuestions; // nullable — gợi ý câu hỏi tiếp theo
     private Integer totalCount;
     private String countType;
     private ProductContextDto productContext;
+    private ChatContextDto context;
+    private Boolean isFromFallback;
     private String intent;     // nullable — intent đã classify
     private LocalDateTime createdAt;
 }

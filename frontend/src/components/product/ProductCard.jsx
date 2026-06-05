@@ -2,7 +2,7 @@ import { Link } from 'react-router-dom';
 import { formatPrice } from '../../utils/format';
 
 const ProductCard = ({ product }) => {
-  const hasActiveSale = product.isSale && product.salePrice;
+  const hasActiveSale = product.isCurrentlyOnSale !== undefined ? product.isCurrentlyOnSale : (product.isSale && product.salePrice);
   const avgRating = Number(product.avgRating || 0);
   const reviewCount = Number(product.reviewCount || 0);
 
@@ -16,8 +16,8 @@ const ProductCard = ({ product }) => {
           referrerPolicy="no-referrer"
         />
         {hasActiveSale && (
-          <div className="absolute top-3 right-3 bg-red-500 text-white text-[10px] font-bold uppercase tracking-wider px-2 py-1 rounded-sm z-10">
-            Sale
+          <div className="absolute top-3 right-3 bg-red-500 text-white text-[10px] font-bold uppercase tracking-wider px-2 py-1 rounded-md z-10 shadow-sm">
+            Sale {product.discountPercent ? `-${product.discountPercent}%` : ''}
           </div>
         )}
       </Link>

@@ -186,7 +186,26 @@ const ProductManagePage = () => {
                   <TableRow key={p.id}>
                     <TableCell className="font-medium text-gray-500">#{p.id}</TableCell>
                     <TableCell>
-                      <span className="font-medium text-gray-900">{p.name}</span>
+                      <div className="flex flex-col">
+                        <span className="font-medium text-gray-900">{p.name}</span>
+                        <div className="flex flex-wrap gap-1.5 mt-1">
+                          {p.isCurrentlyOnSale && (
+                            <Badge className="bg-red-50 text-red-700 border-red-200 text-[9px] font-bold px-1.5 py-0" variant="outline">
+                              Đang Sale {p.discountPercent ? `-${p.discountPercent}%` : ''}
+                            </Badge>
+                          )}
+                          {p.stockStatus === 'OUT_OF_STOCK' && (
+                            <Badge className="bg-gray-50 text-gray-700 border-gray-200 text-[9px] font-bold px-1.5 py-0" variant="outline">
+                              Hết hàng
+                            </Badge>
+                          )}
+                          {p.stockStatus === 'LOW_STOCK' && (
+                            <Badge className="bg-amber-50 text-amber-700 border-amber-250 text-[9px] font-bold px-1.5 py-0" variant="outline">
+                              Sắp hết ({p.totalStock})
+                            </Badge>
+                          )}
+                        </div>
+                      </div>
                     </TableCell>
                     <TableCell>
                       {p.isSale && p.salePrice ? (

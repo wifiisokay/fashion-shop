@@ -5,6 +5,7 @@ import com.fashionshop.backend.domain.repository.CategoryRepository;
 import com.fashionshop.backend.domain.repository.ProductRepository;
 import com.fashionshop.backend.exception.BusinessException;
 import com.fashionshop.backend.exception.ErrorCode;
+import com.fashionshop.backend.module.ai.CategoryKeywordMapper;
 import com.fashionshop.backend.module.product.dto.request.CategoryRequest;
 import com.fashionshop.backend.module.product.dto.response.CategoryResponse;
 import com.fashionshop.backend.module.product.dto.response.CategoryTreeResponse;
@@ -21,6 +22,7 @@ public class CategoryServiceImpl implements CategoryService {
 
     private final CategoryRepository categoryRepository;
     private final ProductRepository productRepository;
+    private final CategoryKeywordMapper categoryKeywordMapper;
 
     @Override
     @Transactional(readOnly = true)
@@ -49,6 +51,7 @@ public class CategoryServiceImpl implements CategoryService {
             .name(request.getName().trim())
             .slug(slug)
             .description(request.getDescription())
+            .role(request.getRole())
             .build();
 
         if (request.getParentId() != null) {
@@ -56,8 +59,11 @@ public class CategoryServiceImpl implements CategoryService {
             validateParentIsRoot(parent);
             category.setParent(parent);
         }
+        validateChildRole(category);
 
-        return CategoryResponse.from(categoryRepository.save(category));
+        CategoryResponse response = CategoryResponse.from(categoryRepository.save(category));
+        categoryKeywordMapper.invalidateCache();
+        return response;
     }
 
     @Override
@@ -77,7 +83,9 @@ public class CategoryServiceImpl implements CategoryService {
         category.setName(request.getName().trim());
         category.setSlug(newSlug);
         category.setDescription(request.getDescription());
-
+        if (request.getRole() != null) {
+            category.setRole(request.getRole());
+        }
         if (request.getParentId() != null) {
             // Không cho tự tham chiếu
             if (request.getParentId().equals(id)) {
@@ -90,8 +98,11 @@ public class CategoryServiceImpl implements CategoryService {
         } else {
             category.setParent(null);
         }
+        validateChildRole(category);
 
-        return CategoryResponse.from(categoryRepository.save(category));
+        CategoryResponse response = CategoryResponse.from(categoryRepository.save(category));
+        categoryKeywordMapper.invalidateCache();
+        return response;
     }
 
     @Override
@@ -121,6 +132,12 @@ public class CategoryServiceImpl implements CategoryService {
         if (parent.getParent() != null) {
             throw new BusinessException(ErrorCode.CATEGORY_INVALID_PARENT, HttpStatus.BAD_REQUEST,
                 "Chỉ hỗ trợ cây 2 cấp — danh mục cha phải là danh mục gốc");
+        }
+    }
+
+    private void validateChildRole(Category category) {
+        if (category.getParent() != null && category.getRole() == null) {
+            throw new BusinessException(ErrorCode.CATEGORY_ROLE_REQUIRED, HttpStatus.BAD_REQUEST);
         }
     }
 

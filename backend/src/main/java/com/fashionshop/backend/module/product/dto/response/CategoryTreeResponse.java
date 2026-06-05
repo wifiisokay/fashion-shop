@@ -1,5 +1,6 @@
 package com.fashionshop.backend.module.product.dto.response;
 
+import com.fashionshop.backend.common.enums.CategoryRole;
 import com.fashionshop.backend.domain.Category;
 import lombok.Builder;
 import lombok.Getter;
@@ -16,6 +17,7 @@ public class CategoryTreeResponse {
     private String name;
     private String slug;
     private String description;
+    private CategoryRole role;
     private List<CategoryResponse> children;
 
     public static CategoryTreeResponse from(Category parent) {
@@ -28,6 +30,7 @@ public class CategoryTreeResponse {
             .name(parent.getName())
             .slug(parent.getSlug())
             .description(parent.getDescription())
+            .role(parent.getRole())
             .children(childList)
             .build();
     }

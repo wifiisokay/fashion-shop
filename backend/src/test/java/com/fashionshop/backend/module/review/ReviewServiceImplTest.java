@@ -67,7 +67,7 @@ class ReviewServiceImplTest {
 
     private Review mockReview(Long userId) {
         User user = mockUser(userId);
-        Order order = mockOrder(OrderStatus.DELIVERED, userId);
+        Order order = mockOrder(OrderStatus.COMPLETED, userId);
         OrderItem item = mockOrderItem(order);
         return Review.builder()
             .id(1L).user(user).orderItem(item).product(mockProduct())
@@ -90,9 +90,9 @@ class ReviewServiceImplTest {
     class CreateReview {
 
         @Test
-        @DisplayName("Tạo review thành công cho đơn DELIVERED")
+        @DisplayName("Tạo review thành công cho đơn COMPLETED")
         void success_delivered() {
-            Order order = mockOrder(OrderStatus.DELIVERED, 1L);
+            Order order = mockOrder(OrderStatus.COMPLETED, 1L);
             OrderItem item = mockOrderItem(order);
             Product product = mockProduct();
 
@@ -149,7 +149,7 @@ class ReviewServiceImplTest {
         @Test
         @DisplayName("Lỗi — không phải chủ đơn hàng")
         void fail_notOwner() {
-            Order order = mockOrder(OrderStatus.DELIVERED, 2L); // user 2 là chủ
+            Order order = mockOrder(OrderStatus.COMPLETED, 2L); // user 2 là chủ
             OrderItem item = mockOrderItem(order);
             when(orderItemRepository.findById(10L)).thenReturn(Optional.of(item));
 
@@ -173,7 +173,7 @@ class ReviewServiceImplTest {
         @Test
         @DisplayName("Lỗi — đã review rồi (duplicate)")
         void fail_alreadyReviewed() {
-            Order order = mockOrder(OrderStatus.DELIVERED, 1L);
+            Order order = mockOrder(OrderStatus.COMPLETED, 1L);
             OrderItem item = mockOrderItem(order);
             when(orderItemRepository.findById(10L)).thenReturn(Optional.of(item));
             when(reviewRepository.existsByOrderItemId(10L)).thenReturn(true);

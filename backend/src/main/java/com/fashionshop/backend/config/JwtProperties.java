@@ -16,8 +16,8 @@ import org.springframework.context.annotation.Configuration;
 public class JwtProperties {
 
     private String secret;
-    private long expiration = 86400000L;          // 24h
-    private long refreshExpiration = 604800000L;  // 7 days
+    private long expiration = 14400000L;          // 4h
+    private long renewThreshold = 1800000L;       // 30 minutes
 
     private Cookie cookie = new Cookie();
 
@@ -27,8 +27,7 @@ public class JwtProperties {
         private String name = "access_token";
         private boolean httpOnly = true;
         private boolean secure = false;           // true khi production (HTTPS)
-        private String sameSite = "Strict";
-        private String path = "/api";
-        private int maxAge = 86400;               // seconds (24h)
+        private String sameSite = "Lax";
+        private String path = "/";
     }
 }

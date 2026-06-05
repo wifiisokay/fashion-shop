@@ -5,6 +5,8 @@ import com.fashionshop.backend.domain.repository.CategoryRepository;
 import com.fashionshop.backend.domain.repository.ProductRepository;
 import com.fashionshop.backend.exception.BusinessException;
 import com.fashionshop.backend.exception.ErrorCode;
+import com.fashionshop.backend.module.ai.CategoryKeywordMapper;
+import com.fashionshop.backend.common.enums.CategoryRole;
 import com.fashionshop.backend.module.product.dto.request.CategoryRequest;
 import com.fashionshop.backend.module.product.dto.response.CategoryResponse;
 import com.fashionshop.backend.module.product.dto.response.CategoryTreeResponse;
@@ -31,6 +33,7 @@ class CategoryServiceImplTest {
 
     @Mock private CategoryRepository categoryRepository;
     @Mock private ProductRepository productRepository;
+    @Mock private CategoryKeywordMapper categoryKeywordMapper;
     @InjectMocks private CategoryServiceImpl categoryService;
 
     private Category rootCategory;
@@ -194,6 +197,18 @@ class CategoryServiceImplTest {
             .hasFieldOrPropertyWithValue("errorCode", ErrorCode.CATEGORY_INVALID_PARENT);
     }
 
+    @Test
+    void create_throwsBadRequest_whenChildRoleIsMissing() {
+        CategoryRequest request = buildCategoryRequest("Ao Hoodie Nam", 1);
+        request.setRole(null);
+        when(categoryRepository.existsBySlug("ao-hoodie-nam")).thenReturn(false);
+        when(categoryRepository.findById(1)).thenReturn(Optional.of(rootCategory));
+
+        assertThatThrownBy(() -> categoryService.create(request))
+            .isInstanceOf(BusinessException.class)
+            .hasFieldOrPropertyWithValue("errorCode", ErrorCode.CATEGORY_ROLE_REQUIRED);
+    }
+
     // ================================================================
     // update
     // ================================================================
@@ -312,6 +327,9 @@ class CategoryServiceImplTest {
         r.setName(name);
         r.setDescription("Mô tả " + name);
         r.setParentId(parentId);
+        if (parentId != null) {
+            r.setRole(CategoryRole.TOP);
+        }
         return r;
     }
 }

@@ -4,11 +4,13 @@ import { useStaffOrder } from '../../hooks/useStaffOrder';
 import { useConfirmPacking } from '../../hooks/useConfirmPacking';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { returnApi } from '../../api/returnApi';
+import { orderApi } from '../../api/orderApi';
+import { shippingApi } from '../../api/shippingApi';
 import { useAuth } from '../../contexts/AuthContext';
 import Spinner from '../../components/ui/Spinner';
 import Button from '../../components/ui/Button';
 import OrderStatusTimeline from '../../components/order/OrderStatusTimeline';
-import { formatPrice, formatDate, formatOrderStatus } from '../../utils/format';
+import { formatPrice, formatDate, formatOrderStatus, parseReturnReason } from '../../utils/format';
 import { ArrowLeft, Package, Truck, CheckCircle, XCircle, Clock, AlertTriangle, Ruler, RotateCcw } from 'lucide-react';
 import { clsx } from 'clsx';
 import { toast } from 'sonner';
@@ -26,32 +28,44 @@ const StaffOrderDetailPage = () => {
   const [cancelReason, setCancelReason] = useState('');
 
   // Packing form
-  const [packing, setPacking] = useState({ length: '', width: '', height: '', actualWeight: '', packingNote: '' });
+  const [packing, setPacking] = useState({ packageLength: '', packageWidth: '', packageHeight: '', actualWeight: '', packingNote: '' });
+  const [previewData, setPreviewData] = useState(null);
+  const [isPreviewLoading, setIsPreviewLoading] = useState(false);
 
   // Return actions
   const [rejectNote, setRejectNote] = useState('');
   const [showRejectDialog, setShowRejectDialog] = useState(false);
-  const [refundAmount, setRefundAmount] = useState('');
+  const [completeNote, setCompleteNote] = useState('');
   const [showCompleteDialog, setShowCompleteDialog] = useState(false);
 
   const approveMutation = useMutation({
-    mutationFn: () => returnApi.approveReturn(order?.returnId, { note: '' }),
-    onSuccess: () => { toast.success('Đã duyệt yêu cầu trả hàng'); refetch?.(); queryClient.invalidateQueries({ queryKey: ['staffOrders'] }); },
+    mutationFn: () => (authUser?.role === 'ADMIN'
+      ? returnApi.adminApprove(order?.returnId, { note: '' })
+      : returnApi.approveReturn(order?.returnId, { note: '' })),
+    onSuccess: () => { toast.success('Đã duyệt yêu cầu'); refetch?.(); queryClient.invalidateQueries({ queryKey: ['staffOrders'] }); },
     onError: (err) => toast.error(err.response?.data?.message || 'Lỗi'),
   });
   const rejectMutation = useMutation({
-    mutationFn: (note) => returnApi.rejectReturn(order?.returnId, { note }),
+    mutationFn: (note) => (authUser?.role === 'ADMIN'
+      ? returnApi.adminReject(order?.returnId, { note })
+      : returnApi.rejectReturn(order?.returnId, { note })),
     onSuccess: () => { toast.success('Đã từ chối yêu cầu'); setShowRejectDialog(false); refetch?.(); queryClient.invalidateQueries({ queryKey: ['staffOrders'] }); },
     onError: (err) => toast.error(err.response?.data?.message || 'Lỗi'),
   });
   const receiveMutation = useMutation({
-    mutationFn: () => returnApi.receiveReturn(order?.returnId),
+    mutationFn: () => returnApi.markReceived(order?.returnId, { note: '' }),
     onSuccess: () => { toast.success('Đã xác nhận nhận hàng'); refetch?.(); },
     onError: (err) => toast.error(err.response?.data?.message || 'Lỗi'),
   });
   const completeMutation = useMutation({
-    mutationFn: (amt) => returnApi.completeReturn(order?.returnId, { refundAmount: amt || null }),
-    onSuccess: () => { toast.success('Đã hoàn tất trả hàng'); setShowCompleteDialog(false); refetch?.(); },
+    mutationFn: ({ note }) => returnApi.completeReturn(order?.returnId, { note: note || null }),
+    onSuccess: () => { toast.success('Đã xác nhận hoàn tiền'); setShowCompleteDialog(false); setCompleteNote(''); refetch?.(); },
+    onError: (err) => toast.error(err.response?.data?.message || 'Lỗi'),
+  });
+
+  const confirmCompletedMutation = useMutation({
+    mutationFn: () => orderApi.confirmCompleted(order?.id),
+    onSuccess: () => { toast.success('Đã xác nhận hoàn thành đơn'); refetch?.(); },
     onError: (err) => toast.error(err.response?.data?.message || 'Lỗi'),
   });
 
@@ -59,6 +73,21 @@ const StaffOrderDetailPage = () => {
   if (isError || !order) return <div className="text-center py-20 text-red-500">Lỗi tải chi tiết đơn hàng</div>;
 
   const address = order.addressSnapshot || {};
+  const feeDiffValue = order.shippingFeeDifference != null ? Number(order.shippingFeeDifference) : null;
+  const feeDiffLabel = feeDiffValue == null
+    ? null
+    : feeDiffValue > 0
+      ? `+${formatPrice(feeDiffValue)}`
+      : feeDiffValue < 0
+        ? `-${formatPrice(Math.abs(feeDiffValue))}`
+        : formatPrice(0);
+  const feeDiffClass = feeDiffValue == null
+    ? 'text-gray-600'
+    : feeDiffValue > 0
+      ? 'text-red-600'
+      : feeDiffValue < 0
+        ? 'text-green-600'
+        : 'text-gray-700';
 
   const handleUpdateStatus = async (newStatus) => {
     try {
@@ -87,20 +116,60 @@ const StaffOrderDetailPage = () => {
     }
   };
 
+  const handlePreviewFee = async () => {
+    const { packageLength, packageWidth, packageHeight, actualWeight } = packing;
+    const lengthNum = Number(packageLength);
+    const widthNum = Number(packageWidth);
+    const heightNum = Number(packageHeight);
+    const weightNum = Number(actualWeight);
+
+    if (isNaN(lengthNum) || lengthNum <= 0 ||
+        isNaN(widthNum) || widthNum <= 0 ||
+        isNaN(heightNum) || heightNum <= 0 ||
+        isNaN(weightNum) || weightNum <= 0) {
+      alert('Kích thước và cân nặng phải lớn hơn 0');
+      return;
+    }
+
+    try {
+      setIsPreviewLoading(true);
+      const res = await shippingApi.previewActualFee(id, {
+        packageLength: lengthNum,
+        packageWidth: widthNum,
+        packageHeight: heightNum,
+        actualWeight: weightNum
+      });
+      setPreviewData(res.data?.data || null);
+      toast.success('Đã tải phí ship thực tế từ GHN');
+    } catch (error) {
+      alert(error?.response?.data?.message || 'Lỗi khi xem trước phí ship');
+    } finally {
+      setIsPreviewLoading(false);
+    }
+  };
+
   const handleConfirmPacking = async () => {
-    const { length, width, height, actualWeight, packingNote } = packing;
-    if (!length || !width || !height || !actualWeight) {
-      alert('Vui lòng nhập đầy đủ kích thước và cân nặng');
+    const { packageLength, packageWidth, packageHeight, actualWeight, packingNote } = packing;
+    const lengthNum = Number(packageLength);
+    const widthNum = Number(packageWidth);
+    const heightNum = Number(packageHeight);
+    const weightNum = Number(actualWeight);
+
+    if (isNaN(lengthNum) || lengthNum <= 0 ||
+        isNaN(widthNum) || widthNum <= 0 ||
+        isNaN(heightNum) || heightNum <= 0 ||
+        isNaN(weightNum) || weightNum <= 0) {
+      alert('Kích thước và cân nặng phải lớn hơn 0');
       return;
     }
     try {
       await confirmPacking.mutateAsync({
         orderId: id,
         data: {
-          length: Number(length),
-          width: Number(width),
-          height: Number(height),
-          actualWeight: Number(actualWeight),
+          packageLength: lengthNum,
+          packageWidth: widthNum,
+          packageHeight: heightNum,
+          actualWeight: weightNum,
           packingNote: packingNote || null,
         },
       });
@@ -204,17 +273,17 @@ const StaffOrderDetailPage = () => {
               <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 mb-4">
                 <div>
                   <label className="block text-xs text-gray-500 mb-1">Dài (cm)</label>
-                  <input type="number" min="1" max="200" value={packing.length} onChange={e => setPacking(p => ({...p, length: e.target.value}))}
+                  <input type="number" min="1" max="200" value={packing.packageLength} onChange={e => setPacking(p => ({...p, packageLength: e.target.value}))}
                     className="w-full border border-gray-300 rounded-lg p-2 text-sm focus:ring-blue-500 focus:border-blue-500" placeholder="cm" />
                 </div>
                 <div>
                   <label className="block text-xs text-gray-500 mb-1">Rộng (cm)</label>
-                  <input type="number" min="1" max="200" value={packing.width} onChange={e => setPacking(p => ({...p, width: e.target.value}))}
+                  <input type="number" min="1" max="200" value={packing.packageWidth} onChange={e => setPacking(p => ({...p, packageWidth: e.target.value}))}
                     className="w-full border border-gray-300 rounded-lg p-2 text-sm focus:ring-blue-500 focus:border-blue-500" placeholder="cm" />
                 </div>
                 <div>
                   <label className="block text-xs text-gray-500 mb-1">Cao (cm)</label>
-                  <input type="number" min="1" max="200" value={packing.height} onChange={e => setPacking(p => ({...p, height: e.target.value}))}
+                  <input type="number" min="1" max="200" value={packing.packageHeight} onChange={e => setPacking(p => ({...p, packageHeight: e.target.value}))}
                     className="w-full border border-gray-300 rounded-lg p-2 text-sm focus:ring-blue-500 focus:border-blue-500" placeholder="cm" />
                 </div>
                 <div>
@@ -228,6 +297,37 @@ const StaffOrderDetailPage = () => {
                 <input type="text" value={packing.packingNote} onChange={e => setPacking(p => ({...p, packingNote: e.target.value}))}
                   className="w-full border border-gray-300 rounded-lg p-2 text-sm focus:ring-blue-500 focus:border-blue-500" placeholder="VD: Bọc thêm bubble wrap..." />
               </div>
+
+              <div className="flex flex-wrap gap-3 mb-4">
+                <Button type="button" onClick={handlePreviewFee} loading={isPreviewLoading} variant="outline" className="text-blue-600 border-blue-200 hover:bg-blue-50">
+                  Tính thử phí ship GHN
+                </Button>
+              </div>
+
+              {previewData && (
+                <div className="mb-4 p-4 bg-blue-50 border border-blue-200 rounded-lg space-y-2 text-sm text-gray-700">
+                  <div className="flex justify-between">
+                    <span>Phí ship khách đã trả:</span>
+                    <span className="font-semibold text-gray-900">{formatPrice(previewData.customerShippingFee)}</span>
+                  </div>
+                  <div className="flex justify-between">
+                    <span>Phí ship thực tế (GHN):</span>
+                    <span className="font-semibold text-gray-900">{formatPrice(previewData.actualGhnFee)}</span>
+                  </div>
+                  <div className="flex justify-between">
+                    <span>Chênh lệch:</span>
+                    <span className={`font-bold ${
+                      Number(previewData.difference) > 0 ? 'text-red-600' :
+                      Number(previewData.difference) < 0 ? 'text-green-600' : 'text-gray-700'
+                    }`}>
+                      {Number(previewData.difference) > 0 ? `+${formatPrice(previewData.difference)}` :
+                       Number(previewData.difference) < 0 ? `-${formatPrice(Math.abs(previewData.difference))}` :
+                       formatPrice(0)}
+                    </span>
+                  </div>
+                </div>
+              )}
+
               <Button onClick={handleConfirmPacking} loading={confirmPacking.isPending} className="bg-blue-600 hover:bg-blue-700">
                 <Package className="w-4 h-4 mr-2" /> Xác nhận đóng gói
               </Button>
@@ -241,12 +341,41 @@ const StaffOrderDetailPage = () => {
                 <CheckCircle className="w-5 h-5 text-green-600" />
                 Đã đóng gói
               </h2>
-              <div className="grid grid-cols-2 sm:grid-cols-4 gap-4 text-sm">
+              <div className="grid grid-cols-2 sm:grid-cols-3 gap-4 text-sm">
                 <div><span className="text-gray-500 block">Kích thước</span><span className="font-medium">{order.packageLength}×{order.packageWidth}×{order.packageHeight} cm</span></div>
-                <div><span className="text-gray-500 block">Cân thực</span><span className="font-medium">{order.actualWeight}g</span></div>
-                <div><span className="text-gray-500 block">KL quy đổi</span><span className="font-medium">{order.volumetricWeight}g</span></div>
-                <div><span className="text-gray-500 block">Tính cước</span><span className="font-bold text-blue-700">{order.chargeableWeight}g</span></div>
+                <div><span className="text-gray-500 block">Cân nặng</span><span className="font-medium">{order.actualWeight}g</span></div>
+                {order.packingNote && (
+                  <div><span className="text-gray-500 block">Ghi chú đóng gói</span><span className="font-medium">{order.packingNote}</span></div>
+                )}
               </div>
+
+              {order.estimatedShippingFee != null && (
+                <div className="mt-4 grid grid-cols-1 sm:grid-cols-3 gap-4 text-sm">
+                  <div>
+                    <span className="text-gray-500 block">Phí ship khách đã trả</span>
+                    <span className="font-medium">{formatPrice(order.shippingFee)}</span>
+                  </div>
+                  <div>
+                    <span className="text-gray-500 block">Phí ship ước tính</span>
+                    <span className="font-medium">{formatPrice(order.estimatedShippingFee)}</span>
+                  </div>
+                  <div>
+                    <span className="text-gray-500 block">Chênh lệch</span>
+                    <span className={`font-semibold ${feeDiffClass}`}>{feeDiffLabel}</span>
+                  </div>
+                </div>
+              )}
+
+              {order.paymentMethod === 'VNPAY' && (
+                <p className="text-xs text-gray-500 mt-3">
+                  Đơn thanh toán online. Phí ship ước tính chỉ dùng để kiểm tra nội bộ, không tự động thu thêm khách.
+                </p>
+              )}
+              {order.paymentMethod === 'COD' && (
+                <p className="text-xs text-gray-500 mt-3">
+                  Phí ship ước tính dùng để staff tham khảo khi giao COD.
+                </p>
+              )}
               {/* Warnings */}
               {order.packingWarnings?.length > 0 && (
                 <div className="mt-3 space-y-1">
@@ -272,10 +401,6 @@ const StaffOrderDetailPage = () => {
                   <AlertTriangle className="w-5 h-5" /> Đơn hàng đang trong quá trình xử lý Trả hàng.
                 </p>
               </div>
-            ) : order.status === 'DELIVERED' ? (
-              <p className="text-green-600 font-medium flex items-center gap-2">
-                <CheckCircle className="w-5 h-5" /> Đơn hàng đã giao. Hệ thống sẽ tự động hoàn thành sau 7 ngày.
-              </p>
             ) : (
               <div className="flex flex-wrap gap-3">
                 {order.status === 'AWAITING_PAYMENT' && (
@@ -309,9 +434,13 @@ const StaffOrderDetailPage = () => {
                     </Button>
                   </>
                 )}
-                {order.status === 'SHIPPING' && (
-                  <Button onClick={() => handleUpdateStatus('DELIVERED')} loading={isUpdating} className="bg-green-600 hover:bg-green-700">
-                    <CheckCircle className="w-4 h-4 mr-2" /> Đã giao thành công
+                {(order.status === 'SHIPPING' || order.status === 'DELIVERED') && (
+                  <Button
+                    onClick={() => confirmCompletedMutation.mutate()}
+                    loading={confirmCompletedMutation.isPending}
+                    className="bg-green-600 hover:bg-green-700"
+                  >
+                    <CheckCircle className="w-4 h-4 mr-2" /> Xác nhận hoàn thành
                   </Button>
                 )}
               </div>
@@ -352,8 +481,15 @@ const StaffOrderDetailPage = () => {
               </div>
               {order.returnReason && (
                 <div>
-                  <h3 className="text-sm font-bold text-gray-900 mb-1">Lý do trả hàng</h3>
-                  <p className="text-sm text-gray-700 bg-white rounded-lg p-3 whitespace-pre-line">{order.returnReason}</p>
+                  <div className="flex items-center gap-2 mb-1">
+                    <h3 className="text-sm font-bold text-gray-900">Nội dung yêu cầu</h3>
+                    <span className="px-2 py-0.5 rounded-full text-xs font-medium bg-blue-50 text-blue-700">
+                      {parseReturnReason(order.returnReason).typeLabel}
+                    </span>
+                  </div>
+                  <p className="text-sm text-gray-700 bg-white rounded-lg p-3 whitespace-pre-line">
+                    {parseReturnReason(order.returnReason).cleanReason}
+                  </p>
                 </div>
               )}
               {order.returnAdminNote && (
@@ -376,9 +512,9 @@ const StaffOrderDetailPage = () => {
               )}
               {/* Return Actions */}
               <div className="flex flex-wrap gap-2 pt-2 border-t border-orange-200">
-                {order.returnStatus === 'PENDING' && (
+                {order.returnStatus === 'REQUESTED' && (
                   <>
-                    <Button onClick={() => { if (window.confirm('Duyệt yêu cầu trả hàng?')) approveMutation.mutate(); }} loading={approveMutation.isPending} className="bg-blue-600 hover:bg-blue-700">
+                    <Button onClick={() => { if (window.confirm('Duyệt yêu cầu này?')) approveMutation.mutate(); }} loading={approveMutation.isPending} className="bg-blue-600 hover:bg-blue-700">
                       <CheckCircle className="w-4 h-4 mr-1" /> Duyệt
                     </Button>
                     <Button variant="danger" onClick={() => setShowRejectDialog(true)}>
@@ -387,13 +523,13 @@ const StaffOrderDetailPage = () => {
                   </>
                 )}
                 {order.returnStatus === 'APPROVED' && authUser?.role === 'ADMIN' && (
-                  <Button onClick={() => { if (window.confirm('Xác nhận đã nhận hàng trả lại?')) receiveMutation.mutate(); }} loading={receiveMutation.isPending} className="bg-purple-600 hover:bg-purple-700">
-                    <Package className="w-4 h-4 mr-1" /> Xác nhận nhận hàng
+                  <Button onClick={() => { if (window.confirm('Xác nhận đã nhận hàng/ghi nhận xử lý?')) receiveMutation.mutate(); }} loading={receiveMutation.isPending} className="bg-purple-600 hover:bg-purple-700">
+                    <Package className="w-4 h-4 mr-1" /> Xác nhận xử lý
                   </Button>
                 )}
                 {order.returnStatus === 'RECEIVED' && authUser?.role === 'ADMIN' && (
                   <Button onClick={() => setShowCompleteDialog(true)} className="bg-green-600 hover:bg-green-700">
-                    <CheckCircle className="w-4 h-4 mr-1" /> Hoàn tất
+                    <CheckCircle className="w-4 h-4 mr-1" /> Xác nhận hoàn tiền
                   </Button>
                 )}
               </div>
@@ -435,14 +571,12 @@ const StaffOrderDetailPage = () => {
               <div className="flex justify-between items-center">
                 <span className="text-gray-500">Trạng thái TT</span>
                 <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium ${
-                  order.paymentStatus === 'SUCCESS' ? 'bg-green-100 text-green-700' :
+                  order.paymentStatus === 'PAID' ? 'bg-green-100 text-green-700' :
                   order.paymentStatus === 'REFUNDED' ? 'bg-gray-100 text-gray-600' :
-                  order.paymentStatus === 'FAILED' ? 'bg-red-100 text-red-700' :
                   'bg-yellow-100 text-yellow-700'
                 }`}>
-                  {order.paymentStatus === 'SUCCESS' ? 'Đã thanh toán' :
+                  {order.paymentStatus === 'PAID' ? 'Đã thanh toán' :
                    order.paymentStatus === 'REFUNDED' ? 'Đã hoàn tiền' :
-                   order.paymentStatus === 'FAILED' ? 'Thất bại' :
                    'Chưa thanh toán'}
                 </span>
               </div>
@@ -487,7 +621,7 @@ const StaffOrderDetailPage = () => {
       {showRejectDialog && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4">
           <div className="bg-white rounded-2xl shadow-xl max-w-md w-full p-6 space-y-4">
-            <h3 className="text-lg font-bold text-gray-900">Từ chối yêu cầu trả hàng</h3>
+            <h3 className="text-lg font-bold text-gray-900">Từ chối yêu cầu</h3>
             <textarea
               value={rejectNote}
               onChange={(e) => setRejectNote(e.target.value)}
@@ -510,21 +644,22 @@ const StaffOrderDetailPage = () => {
       {showCompleteDialog && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4">
           <div className="bg-white rounded-2xl shadow-xl max-w-md w-full p-6 space-y-4">
-            <h3 className="text-lg font-bold text-gray-900">Hoàn tất trả hàng</h3>
-            <p className="text-sm text-gray-600">Nhập số tiền hoàn (chỉ áp dụng cho đơn VNPAY). Để trống nếu là COD.</p>
-            <input
-              type="number"
-              value={refundAmount}
-              onChange={(e) => setRefundAmount(e.target.value)}
-              placeholder="Số tiền hoàn (VNĐ)"
-              className="w-full border border-gray-300 rounded-xl p-3 text-sm focus:ring-black focus:border-black"
+            <h3 className="text-lg font-bold text-gray-900">Xác nhận hoàn tiền</h3>
+            <textarea
+              value={completeNote}
+              onChange={(e) => setCompleteNote(e.target.value)}
+              placeholder="Ghi chú (không bắt buộc)..."
+              rows={3}
+              className="w-full border border-gray-300 rounded-xl p-3 text-sm focus:ring-black focus:border-black resize-none"
             />
             <div className="flex gap-3 justify-end">
-              <Button variant="secondary" onClick={() => { setShowCompleteDialog(false); setRefundAmount(''); }}>Hủy</Button>
+              <Button variant="secondary" onClick={() => { setShowCompleteDialog(false); setCompleteNote(''); }}>Hủy</Button>
               <Button loading={completeMutation.isPending} onClick={() => {
-                if (!window.confirm('Xác nhận hoàn tất trả hàng?')) return;
-                completeMutation.mutate(refundAmount ? parseFloat(refundAmount) : null);
-              }}>Hoàn tất + Hoàn tiền</Button>
+                if (!window.confirm('Xác nhận đã xử lý yêu cầu này?')) return;
+                completeMutation.mutate({
+                  note: completeNote.trim() || null,
+                });
+              }}>Xác nhận hoàn tiền</Button>
             </div>
           </div>
         </div>
@@ -534,4 +669,3 @@ const StaffOrderDetailPage = () => {
 };
 
 export default StaffOrderDetailPage;
-

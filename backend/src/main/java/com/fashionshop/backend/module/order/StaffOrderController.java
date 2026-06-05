@@ -1,5 +1,16 @@
 package com.fashionshop.backend.module.order;
 
+import org.springframework.http.ResponseEntity;
+import org.springframework.security.access.prepost.PreAuthorize;
+import org.springframework.web.bind.annotation.GetMapping;
+import org.springframework.web.bind.annotation.PatchMapping;
+import org.springframework.web.bind.annotation.PathVariable;
+import org.springframework.web.bind.annotation.PostMapping;
+import org.springframework.web.bind.annotation.RequestBody;
+import org.springframework.web.bind.annotation.RequestMapping;
+import org.springframework.web.bind.annotation.RequestParam;
+import org.springframework.web.bind.annotation.RestController;
+
 import com.fashionshop.backend.common.ApiResponse;
 import com.fashionshop.backend.common.PageResponse;
 import com.fashionshop.backend.common.enums.OrderStatus;
@@ -8,14 +19,13 @@ import com.fashionshop.backend.module.order.dto.request.ConfirmPackingRequest;
 import com.fashionshop.backend.module.order.dto.request.UpdateOrderStatusRequest;
 import com.fashionshop.backend.module.order.dto.response.OrderDetailResponse;
 import com.fashionshop.backend.module.order.dto.response.OrderSummaryResponse;
+import com.fashionshop.backend.module.order.dto.response.StaffShippingPreviewResponse;
+
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.security.SecurityRequirement;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
-import org.springframework.http.ResponseEntity;
-import org.springframework.security.access.prepost.PreAuthorize;
-import org.springframework.web.bind.annotation.*;
 
 @RestController
 @RequestMapping("/api/staff/orders")
@@ -61,6 +71,16 @@ public class StaffOrderController {
             "Cập nhật trạng thái thành công", orderService.updateOrderStatus(id, request)));
     }
 
+    @PostMapping("/{id}/shipping/preview")
+    @Operation(summary = "Tinh phi GHN Sandbox theo kien hang thuc te",
+               security = @SecurityRequirement(name = "cookieAuth"))
+    public ResponseEntity<ApiResponse<StaffShippingPreviewResponse>> previewShipping(
+        @PathVariable Long id,
+        @Valid @RequestBody ConfirmPackingRequest request
+    ) {
+        return ResponseEntity.ok(ApiResponse.success(orderService.previewActualShippingFee(id, request)));
+    }
+
     @PatchMapping("/{id}/packing")
     @Operation(summary = "Xác nhận đóng gói kiện hàng (bắt buộc trước khi giao)",
                security = @SecurityRequirement(name = "cookieAuth"))
@@ -81,5 +101,14 @@ public class StaffOrderController {
     ) {
         orderService.staffCancelOrder(id, request);
         return ResponseEntity.ok(ApiResponse.success("Hủy đơn hàng thành công"));
+    }
+
+    @PostMapping("/{id}/complete")
+    @PreAuthorize("hasRole('ADMIN')")
+    @Operation(summary = "Xác nhận hoàn thành đơn hàng (Admin)",
+               security = @SecurityRequirement(name = "cookieAuth"))
+    public ResponseEntity<ApiResponse<Void>> complete(@PathVariable Long id) {
+        orderService.confirmCompleted(id);
+        return ResponseEntity.ok(ApiResponse.success("Xác nhận hoàn thành đơn hàng thành công"));
     }
 }

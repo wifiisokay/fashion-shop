@@ -40,7 +40,7 @@ public class VnPayService {
      * @return Full VNPay URL kèm HMAC signature
      */
     public String buildPaymentUrl(Long orderId, BigDecimal amount, String ipAddress, String txnRef) {
-        LocalDateTime now = LocalDateTime.now();
+        LocalDateTime now = java.time.ZonedDateTime.now(java.time.ZoneId.of("Asia/Ho_Chi_Minh")).toLocalDateTime();
         LocalDateTime expireDate = now.plusMinutes(15);
 
         Map<String, String> params = new TreeMap<>(); // TreeMap tự sort alphabetically
@@ -100,7 +100,8 @@ public class VnPayService {
      * VD: orderId=123 → "12320260429143022"
      */
     public String generateTxnRef(Long orderId) {
-        return orderId + LocalDateTime.now().format(VN_DATE_FMT);
+        LocalDateTime now = java.time.ZonedDateTime.now(java.time.ZoneId.of("Asia/Ho_Chi_Minh")).toLocalDateTime();
+        return orderId + now.format(VN_DATE_FMT);
     }
 
     // ================================================================

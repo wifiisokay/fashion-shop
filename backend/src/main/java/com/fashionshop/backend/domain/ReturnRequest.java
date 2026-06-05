@@ -15,7 +15,6 @@ import java.util.List;
 
 /**
  * Yêu cầu trả hàng — gắn với order_id.
- * Cho phép retry (order_id KHÔNG unique): nếu bị REJECTED, customer tạo mới.
  * evidenceImages: JSON array URL ảnh minh chứng từ Cloudinary.
  */
 @Entity
@@ -54,13 +53,26 @@ public class ReturnRequest {
     @Enumerated(EnumType.STRING)
     @Column(nullable = false, length = 20)
     @Builder.Default
-    private ReturnStatus status = ReturnStatus.PENDING;
+    private ReturnStatus status = ReturnStatus.REQUESTED;
+
+    @Column(name = "previous_order_status", length = 30)
+    private String previousOrderStatus;
+
+    @OneToMany(mappedBy = "returnRequest", cascade = CascadeType.ALL, orphanRemoval = true)
+    @Builder.Default
+    private List<ReturnItem> items = new ArrayList<>();
 
     @Column(name = "refund_amount", precision = 12, scale = 2)
     private BigDecimal refundAmount;
 
     @Column(name = "admin_note", columnDefinition = "TEXT")
     private String adminNote;
+
+    @Column(name = "received_at")
+    private LocalDateTime receivedAt;
+
+    @Column(name = "refunded_at")
+    private LocalDateTime refundedAt;
 
     @ManyToOne(fetch = FetchType.LAZY)
     @JoinColumn(name = "processed_by")
@@ -76,10 +88,10 @@ public class ReturnRequest {
 
     /**
      * Kiểm tra đơn hàng còn trong cửa sổ trả hàng 7 ngày không.
-     * Tính từ order.deliveredAt.
+     * Tính từ order.completedAt.
      */
     public boolean isWithinReturnWindow() {
         if (order == null || order.getDeliveredAt() == null) return false;
-        return order.getDeliveredAt().plusDays(7).isAfter(LocalDateTime.now());
+        return !order.getDeliveredAt().plusDays(7).isBefore(LocalDateTime.now());
     }
 }

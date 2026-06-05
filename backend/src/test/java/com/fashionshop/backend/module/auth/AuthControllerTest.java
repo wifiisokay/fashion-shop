@@ -15,6 +15,7 @@ import com.fashionshop.backend.module.auth.dto.response.UserResponse;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import jakarta.servlet.http.Cookie;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.BeforeEach;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.autoconfigure.web.servlet.AutoConfigureMockMvc;
 import org.springframework.boot.test.autoconfigure.web.servlet.WebMvcTest;
@@ -55,6 +56,8 @@ class AuthControllerTest {
     private JwtService jwtService;
     @MockitoBean
     private TokenBlacklistService tokenBlacklistService;
+    @MockitoBean
+    private AuthCookieService authCookieService;
 
     // Infrastructure beans để WebMvcTest context boot thành công
     @MockitoBean
@@ -63,6 +66,22 @@ class AuthControllerTest {
     private RateLimitFilter rateLimitFilter;
     @MockitoBean
     private UserDetailsService userDetailsService;
+
+    @BeforeEach
+    void setUpCookieService() {
+        when(authCookieService.getCookieName()).thenReturn("access_token");
+        org.mockito.Mockito.doAnswer(invocation -> {
+            jakarta.servlet.http.HttpServletResponse response = invocation.getArgument(0);
+            String token = invocation.getArgument(1);
+            response.addHeader("Set-Cookie", "access_token=" + token + "; Path=/; HttpOnly; SameSite=Lax");
+            return null;
+        }).when(authCookieService).setAuthCookie(any(), any());
+        org.mockito.Mockito.doAnswer(invocation -> {
+            jakarta.servlet.http.HttpServletResponse response = invocation.getArgument(0);
+            response.addHeader("Set-Cookie", "access_token=; Path=/; Max-Age=0; HttpOnly; SameSite=Lax");
+            return null;
+        }).when(authCookieService).clearAuthCookie(any());
+    }
 
     // ============================
     // POST /api/auth/register
@@ -87,7 +106,7 @@ class AuthControllerTest {
                 .andExpect(jsonPath("$.data.userId").value(1))
                 .andExpect(header().string("Set-Cookie", containsString("access_token=token123")))
                 .andExpect(header().string("Set-Cookie", containsString("HttpOnly")))
-                .andExpect(header().string("Set-Cookie", containsString("SameSite=Strict")));
+                .andExpect(header().string("Set-Cookie", containsString("SameSite=Lax")));
     }
 
     @Test
@@ -225,27 +244,23 @@ class AuthControllerTest {
 
     @Test
     void logout_withCookieToken_blacklistsToken_andClearsCookie() throws Exception {
-        when(jwtService.getExpiry("logout-token")).thenReturn(new Date(System.currentTimeMillis() + 60_000));
-
         mockMvc.perform(post("/api/auth/logout")
                 .cookie(new Cookie("access_token", "logout-token")))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.success").value(true))
                 .andExpect(header().string("Set-Cookie", containsString("Max-Age=0")));
 
-        verify(tokenBlacklistService).blacklist(eq("logout-token"), any(Date.class));
+        verify(tokenBlacklistService).blacklistToken("logout-token", "LOGOUT");
     }
 
     @Test
     void logout_withBearerToken_blacklistsToken_andClearsCookie() throws Exception {
-        when(jwtService.getExpiry("bearer-token")).thenReturn(new Date(System.currentTimeMillis() + 60_000));
-
         mockMvc.perform(post("/api/auth/logout")
                 .header("Authorization", "Bearer bearer-token"))
                 .andExpect(status().isOk())
                 .andExpect(header().string("Set-Cookie", containsString("Max-Age=0")));
 
-        verify(tokenBlacklistService).blacklist(eq("bearer-token"), any(Date.class));
+        verify(tokenBlacklistService).blacklistToken("bearer-token", "LOGOUT");
     }
 
     @Test
@@ -254,12 +269,13 @@ class AuthControllerTest {
                 .andExpect(status().isOk())
                 .andExpect(header().string("Set-Cookie", containsString("Max-Age=0")));
 
-        verify(tokenBlacklistService, never()).blacklist(any(), any());
+        verify(tokenBlacklistService, never()).blacklistToken(any(), any());
     }
 
     @Test
     void logout_withMalformedToken_doesNotThrow_stillClearsCookie() throws Exception {
-        when(jwtService.getExpiry("bad.token")).thenThrow(new io.jsonwebtoken.MalformedJwtException("bad"));
+        org.mockito.Mockito.doThrow(new io.jsonwebtoken.MalformedJwtException("bad"))
+                .when(tokenBlacklistService).blacklistToken("bad.token", "LOGOUT");
 
         mockMvc.perform(post("/api/auth/logout")
                 .cookie(new Cookie("access_token", "bad.token")))

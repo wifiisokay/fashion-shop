@@ -1,6 +1,19 @@
 package com.fashionshop.backend.config;
 
+import java.io.IOException;
+import java.util.Arrays;
+
+import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
+import org.springframework.security.core.context.SecurityContextHolder;
+import org.springframework.security.web.authentication.WebAuthenticationDetailsSource;
+import org.springframework.stereotype.Component;
+import org.springframework.web.filter.OncePerRequestFilter;
+
+import com.fashionshop.backend.domain.User;
+import com.fashionshop.backend.domain.repository.UserRepository;
+import com.fashionshop.backend.module.auth.AuthCookieService;
 import com.fashionshop.backend.module.auth.TokenBlacklistService;
+
 import jakarta.servlet.FilterChain;
 import jakarta.servlet.ServletException;
 import jakarta.servlet.http.Cookie;
@@ -8,26 +21,7 @@ import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
-import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
-import org.springframework.security.core.context.SecurityContextHolder;
-import org.springframework.security.core.userdetails.UserDetails;
-import org.springframework.security.core.userdetails.UserDetailsService;
-import org.springframework.security.web.authentication.WebAuthenticationDetailsSource;
-import org.springframework.stereotype.Component;
-import org.springframework.web.filter.OncePerRequestFilter;
 
-import java.io.IOException;
-import java.util.Arrays;
-
-/**
- * JWT Auth Filter — đọc token từ HttpOnly Cookie hoặc Authorization header (fallback).
- * Thứ tự xử lý:
- * 1. Đọc token từ HttpOnly cookie "access_token"
- * 2. Fallback: đọc từ Authorization: Bearer <token>
- * 3. Check blacklist (logout)
- * 4. Validate token
- * 5. Set SecurityContext
- */
 @Slf4j
 @Component
 @RequiredArgsConstructor
@@ -35,66 +29,58 @@ public class JwtAuthFilter extends OncePerRequestFilter {
 
     private final JwtService jwtService;
     private final JwtProperties jwtProperties;
-    private final UserDetailsService userDetailsService;
+    private final UserRepository userRepository;
     private final TokenBlacklistService tokenBlacklistService;
+    private final AuthCookieService authCookieService;
 
     @Override
-    protected void doFilterInternal(HttpServletRequest request,
-                                    HttpServletResponse response,
+    protected void doFilterInternal(HttpServletRequest request, HttpServletResponse response,
                                     FilterChain filterChain) throws ServletException, IOException {
         String token = extractToken(request);
-
         if (token != null && SecurityContextHolder.getContext().getAuthentication() == null) {
-            // Kiểm tra blacklist trước
-            if (tokenBlacklistService.isBlacklisted(token)) {
-                log.debug("Token is blacklisted");
-                filterChain.doFilter(request, response);
-                return;
-            }
-
-            // Validate cấu trúc token
-            if (jwtService.isTokenStructureValid(token)) {
-                String email = jwtService.extractEmail(token);
-                try {
-                    UserDetails userDetails = userDetailsService.loadUserByUsername(email);
-                    if (jwtService.isValid(token, userDetails)) {
-                        var authToken = new UsernamePasswordAuthenticationToken(
-                            userDetails, null, userDetails.getAuthorities()
-                        );
-                        authToken.setDetails(new WebAuthenticationDetailsSource().buildDetails(request));
-                        SecurityContextHolder.getContext().setAuthentication(authToken);
-                    }
-                } catch (Exception e) {
-                    log.debug("Failed to load user for token: {}", e.getMessage());
-                }
-            }
+            authenticate(token, request, response);
         }
-
         filterChain.doFilter(request, response);
     }
 
-    /**
-     * Ưu tiên HttpOnly cookie, fallback sang Authorization header.
-     */
+    private void authenticate(String token, HttpServletRequest request, HttpServletResponse response) {
+        try {
+            if (!jwtService.isTokenStructureValid(token)) {
+                return;
+            }
+            String jti = jwtService.extractJti(token);
+            if (tokenBlacklistService.isBlacklisted(jti)) {
+                return;
+            }
+            Long userId = jwtService.extractUserId(token);
+            User user = userId != null ? userRepository.findById(userId).orElse(null) : null;
+            if (user == null || !jwtService.isValid(token, user)) {
+                return;
+            }
+            var authentication = new UsernamePasswordAuthenticationToken(user, null, user.getAuthorities());
+            authentication.setDetails(new WebAuthenticationDetailsSource().buildDetails(request));
+            SecurityContextHolder.getContext().setAuthentication(authentication);
+            if (jwtService.shouldRenew(token)) {
+                authCookieService.setAuthCookie(response, jwtService.generateToken(user));
+            }
+        } catch (Exception e) {
+            log.debug("JWT authentication skipped: {}", e.getMessage());
+        }
+    }
+
     private String extractToken(HttpServletRequest request) {
-        // 1. Cookie (bảo mật hơn — không accessible từ JS)
-        String cookieName = jwtProperties.getCookie().getName();
         if (request.getCookies() != null) {
             return Arrays.stream(request.getCookies())
-                .filter(c -> cookieName.equals(c.getName()))
+                .filter(cookie -> jwtProperties.getCookie().getName().equals(cookie.getName()))
                 .map(Cookie::getValue)
                 .findFirst()
-                .orElse(extractFromHeader(request));
+                .orElseGet(() -> extractFromHeader(request));
         }
-        // 2. Authorization header fallback
         return extractFromHeader(request);
     }
 
     private String extractFromHeader(HttpServletRequest request) {
         String header = request.getHeader("Authorization");
-        if (header != null && header.startsWith("Bearer ")) {
-            return header.substring(7);
-        }
-        return null;
+        return header != null && header.startsWith("Bearer ") ? header.substring(7) : null;
     }
 }

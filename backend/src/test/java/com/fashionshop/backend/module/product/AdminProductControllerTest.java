@@ -48,6 +48,9 @@ class AdminProductControllerTest {
     @Autowired private ObjectMapper objectMapper;
 
     @MockitoBean private ProductService productService;
+    @MockitoBean private StockAlertService stockAlertService;
+    @MockitoBean private ProductTagSuggestionService productTagSuggestionService;
+    @MockitoBean private ColorFamilyBackfillService colorFamilyBackfillService;
     @MockitoBean private JwtAuthFilter jwtAuthFilter;
     @MockitoBean private RateLimitFilter rateLimitFilter;
     @MockitoBean private JwtService jwtService;
@@ -223,7 +226,7 @@ class AdminProductControllerTest {
     private ProductRequest buildValidRequest() {
         ProductRequest r = new ProductRequest();
         r.setName("Áo Polo Test");
-        r.setDescription("Mô tả test");
+        r.setDescription("Mo ta san pham test du dai");
         r.setBasePrice(new BigDecimal("300000"));
         r.setIsSale(false);
         r.setCategoryId(1);

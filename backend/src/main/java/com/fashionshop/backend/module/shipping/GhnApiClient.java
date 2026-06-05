@@ -38,13 +38,6 @@ public class GhnApiClient {
                 .readTimeout(Duration.ofSeconds(5))
                 .build();
 
-        log.info(
-                "GHN runtime config: baseUrl={}, shopId={}, token={} (masked)",
-                props.getBaseUrl(),
-                maskShopId(props.getShopId()),
-                maskToken(props.getToken())
-        );
-
         if (props.getToken() == null || props.getToken().isBlank()) {
             log.warn("GHN runtime config warning: token is empty/null");
         }
@@ -103,8 +96,7 @@ public class GhnApiClient {
             );
             return response.getBody();
         } catch (Exception e) {
-            log.warn("GHN calculate fee call failed: {}", e.getMessage());
-            return null;
+            throw new IllegalStateException("GHN calculate-fee failed: " + e.getMessage(), e);
         }
     }
 
@@ -181,23 +173,4 @@ public class GhnApiClient {
         return headers;
     }
 
-    private String maskToken(String token) {
-        if (token == null || token.isBlank()) {
-            return "<empty>";
-        }
-        if (token.length() <= 8) {
-            return "****";
-        }
-        return token.substring(0, 4) + "..." + token.substring(token.length() - 4) + " (len=" + token.length() + ")";
-    }
-
-    private String maskShopId(String shopId) {
-        if (shopId == null || shopId.isBlank()) {
-            return "<empty>";
-        }
-        if (shopId.length() <= 2) {
-            return "**";
-        }
-        return "**" + shopId.substring(shopId.length() - 2);
-    }
 }

@@ -14,9 +14,12 @@ const welcomeMessage = {
 const normalizeMessage = (msg) => ({
   role: msg.role === 'user' ? 'user' : 'assistant',
   text: msg.content ?? msg.text ?? '',
-  products: msg.products || null,
-  outfitCombos: msg.outfitCombos || null,
-  suggestedQuestions: msg.suggestedQuestions || null,
+  products: msg.products || [],
+  outfitCombos: msg.outfitCombos || [],
+  styleTips: msg.styleTips || [],
+  context: msg.context || null,
+  isFromFallback: msg.isFromFallback || false,
+  suggestedQuestions: msg.suggestedQuestions || [],
   intent: msg.intent || null,
   isError: msg.isError || false,
 });

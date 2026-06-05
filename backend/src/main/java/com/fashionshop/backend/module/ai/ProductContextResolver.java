@@ -128,6 +128,10 @@ public class ProductContextResolver {
             .colorId(node.path("colorId").isMissingNode() || node.path("colorId").isNull() ? null : node.path("colorId").asLong())
             .name(node.path("name").asText(null))
             .colorName(node.path("colorName").asText(null))
+            .categoryName(node.path("categoryName").asText(null))
+            .categorySlug(node.path("categorySlug").asText(null))
+            .categoryRole(node.path("categoryRole").asText(null))
+            .parentCategoryName(node.path("parentCategoryName").asText(null))
             .build();
     }
 
@@ -137,6 +141,10 @@ public class ProductContextResolver {
             .colorId(card.getColorId())
             .name(card.getName())
             .colorName(card.getColorName())
+            .categoryName(card.getCategoryName())
+            .categorySlug(card.getCategorySlug())
+            .categoryRole(card.getCategoryRole())
+            .parentCategoryName(card.getParentCategoryName())
             .build();
     }
 

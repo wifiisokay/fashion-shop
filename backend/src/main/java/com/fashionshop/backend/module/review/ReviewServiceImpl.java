@@ -60,7 +60,7 @@ public class ReviewServiceImpl implements ReviewService {
 
         // Bước 3: Verify đơn đã giao
         OrderStatus status = orderItem.getOrder().getStatus();
-        if (status != OrderStatus.DELIVERED && status != OrderStatus.COMPLETED) {
+        if (status != OrderStatus.COMPLETED) {
             throw new BusinessException(ErrorCode.REVIEW_NOT_ELIGIBLE, HttpStatus.BAD_REQUEST);
         }
 

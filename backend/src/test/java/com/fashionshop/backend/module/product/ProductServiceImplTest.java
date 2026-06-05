@@ -36,6 +36,7 @@ class ProductServiceImplTest {
 
     @Mock private ProductRepository productRepository;
     @Mock private CategoryRepository categoryRepository;
+    @Mock private ProductPriceService productPriceService;
     @InjectMocks private ProductServiceImpl productService;
 
     private User mockUser;
@@ -65,6 +66,13 @@ class ProductServiceImplTest {
             .variants(new ArrayList<>())
             .images(new ArrayList<>())
             .build();
+
+        lenient().when(productPriceService.getEffectivePrice(any(Product.class)))
+            .thenAnswer(inv -> inv.<Product>getArgument(0).getBasePrice());
+        lenient().when(productPriceService.isOnSale(any(Product.class))).thenReturn(false);
+        lenient().when(productPriceService.getDiscountPercent(any(Product.class))).thenReturn(0);
+        lenient().when(productPriceService.getTotalStock(any(Product.class))).thenReturn(0L);
+        lenient().when(productPriceService.getStockStatus(any(Product.class))).thenReturn("OUT_OF_STOCK");
     }
 
     // ================================================================
@@ -235,7 +243,7 @@ class ProductServiceImplTest {
     private ProductRequest buildValidRequest() {
         ProductRequest r = new ProductRequest();
         r.setName("Áo Polo Test");
-        r.setDescription("Mô tả test");
+        r.setDescription("Mo ta san pham test du dai");
         r.setBasePrice(new BigDecimal("300000"));
         r.setIsSale(false);
         r.setCategoryId(1);

@@ -6,33 +6,29 @@ import jakarta.validation.constraints.NotNull;
 import lombok.Getter;
 import lombok.Setter;
 
-/**
- * Staff xác nhận đóng gói kiện hàng.
- * volumetricWeight và chargeableWeight tự tính ở service.
- */
 @Getter
 @Setter
 public class ConfirmPackingRequest {
 
-    @NotNull(message = "Chiều dài không được để trống")
-    @Min(value = 1, message = "Chiều dài tối thiểu 1 cm")
-    @Max(value = 200, message = "Chiều dài tối đa 200 cm")
-    private Integer length;     // cm
+    @NotNull(message = "Package length is required")
+    @Min(value = 1, message = "Package length must be greater than 0")
+    @Max(value = 200, message = "Package length must be at most 200 cm")
+    private Integer packageLength;
 
-    @NotNull(message = "Chiều rộng không được để trống")
-    @Min(value = 1, message = "Chiều rộng tối thiểu 1 cm")
-    @Max(value = 200, message = "Chiều rộng tối đa 200 cm")
-    private Integer width;      // cm
+    @NotNull(message = "Package width is required")
+    @Min(value = 1, message = "Package width must be greater than 0")
+    @Max(value = 200, message = "Package width must be at most 200 cm")
+    private Integer packageWidth;
 
-    @NotNull(message = "Chiều cao không được để trống")
-    @Min(value = 1, message = "Chiều cao tối thiểu 1 cm")
-    @Max(value = 200, message = "Chiều cao tối đa 200 cm")
-    private Integer height;     // cm
+    @NotNull(message = "Package height is required")
+    @Min(value = 1, message = "Package height must be greater than 0")
+    @Max(value = 200, message = "Package height must be at most 200 cm")
+    private Integer packageHeight;
 
-    @NotNull(message = "Khối lượng không được để trống")
-    @Min(value = 1, message = "Khối lượng tối thiểu 1 gram")
-    @Max(value = 30000, message = "Khối lượng tối đa 30 kg")
-    private Integer actualWeight;   // gram
+    @NotNull(message = "Actual weight is required")
+    @Min(value = 1, message = "Actual weight must be greater than 0")
+    @Max(value = 30000, message = "Actual weight must be at most 30 kg")
+    private Integer actualWeight;
 
-    private String packingNote;     // ghi chú đóng gói (optional)
+    private String packingNote;
 }

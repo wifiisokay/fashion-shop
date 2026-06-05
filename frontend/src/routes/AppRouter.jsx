@@ -20,6 +20,7 @@ import CheckoutPage from '../pages/customer/CheckoutPage';
 import PaymentResultPage from '../pages/customer/PaymentResultPage';
 import OrderDetailPage from '../pages/customer/OrderDetailPage';
 import ProfilePage from '../pages/customer/ProfilePage';
+import MyReturnsPage from '../pages/customer/MyReturnsPage';
 
 import DashboardPage from '../pages/admin/DashboardPage';
 import ProductManagePage from '../pages/admin/ProductManagePage';
@@ -57,6 +58,9 @@ const AppRouter = () => {
         } />
         <Route path={ROUTES.MY_ORDER_DETAIL} element={
           <PrivateRoute><RoleRoute allowedRoles={['CUSTOMER']}><OrderDetailPage /></RoleRoute></PrivateRoute>
+        } />
+        <Route path={ROUTES.MY_RETURNS} element={
+          <PrivateRoute><RoleRoute allowedRoles={['CUSTOMER']}><MyReturnsPage /></RoleRoute></PrivateRoute>
         } />
         <Route path={ROUTES.PROFILE} element={
           <PrivateRoute><RoleRoute allowedRoles={['CUSTOMER', 'EMPLOYEE', 'ADMIN']}><ProfilePage /></RoleRoute></PrivateRoute>

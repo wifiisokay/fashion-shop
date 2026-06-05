@@ -65,11 +65,16 @@ public class SystemPromptProvider {
             
             ## [NHIỆM VỤ: TÌM SẢN PHẨM]
             Khách hàng đang tìm sản phẩm. Hãy gợi ý từ danh sách sản phẩm được cung cấp bên dưới.
-            - PHẢI trả về JSON thuần (không markdown, không backtick, không thêm prose ngoài JSON).
-            - Schema bắt buộc: {"text":"câu trả lời ngắn gọn","products":[{"id":123,"colorId":456}],"suggestedQuestions":["..."]}.
-            - "products" phải dùng đúng id/colorId trong danh sách DB; không tự bịa sản phẩm, màu, giá hoặc ảnh.
-            - Backend sẽ render thẻ sản phẩm từ DB, nên phần "text" chỉ cần tư vấn ngắn gọn và không liệt kê lại quá dài.
+            
+            LUẬT BẮT BUỘC - ĐỌC KỸ:
+            - Bạn PHẢI trả JSON với ĐÚNG format sau, KHÔNG được bỏ field nào:
+              {"text":"câu trả lời ngắn gọn tiếng Việt","products":[{"id":<productId>,"colorId":<colorId>}],"suggestedQuestions":["..."]}
+            - "products" phải include TẤT CẢ sản phẩm trong context được cung cấp bên dưới.
+            - "products" dùng đúng id/colorId từ danh sách DB. KHÔNG tự bịa sản phẩm, màu, giá, ảnh.
+            - Backend sẽ render thẻ sản phẩm từ DB, nên "text" chỉ cần tư vấn ngắn gọn (<100 từ).
             - Nếu không có SP phù hợp: "products": [] và giải thích trong "text".
+            - KHÔNG trả text thuần. KHÔNG wrap trong markdown code block (```json ... ```).
+            - KHÔNG thêm prose trước hoặc sau JSON. Chỉ trả JSON object thuần.
             """;
 
     private static final String OUTFIT_SUGGEST_INSTRUCTION = """
@@ -95,7 +100,7 @@ public class SystemPromptProvider {
     private static final String RETURN_SUPPORT_INSTRUCTION = """
             
             ## [NHIỆM VỤ: HỖ TRỢ ĐỔI TRẢ]
-            Khách hàng cần hỗ trợ đổi/trả hàng. Thông tin liên quan được cung cấp bên dưới.
+            Khách hàng cần hỗ trợ đổi/trả hàng hoặc khiếu nại. Thông tin liên quan được cung cấp bên dưới.
             - Trả lời plain text. Nêu rõ: đủ điều kiện hay không, còn bao nhiêu ngày, bước tiếp theo.
             - Chính sách: 7 ngày kể từ khi nhận, sản phẩm còn nguyên.
             """;
@@ -112,6 +117,14 @@ public class SystemPromptProvider {
             Khách hàng đang trò chuyện. Trả lời thân thiện, ngắn gọn. Gợi ý quay về chủ đề mua sắm.
             Trả lời plain text.
             """;
+
+    private static final String OUT_OF_SCOPE_INSTRUCTION = """
+            
+            ## [NHIỆM VỤ: NGOÀI PHẠM VI]
+            Câu hỏi này nằm ngoài phạm vi tư vấn của Fashi.
+            Trả lời plain text, khéo léo từ chối và dẫn về chủ đề thời trang/mua sắm.
+            """;
+
 
     // =====================================
     // Public API
@@ -131,6 +144,7 @@ public class SystemPromptProvider {
             case RETURN_SUPPORT  -> RETURN_SUPPORT_INSTRUCTION;
             case GENERAL_SUPPORT -> GENERAL_SUPPORT_INSTRUCTION;
             case CHITCHAT        -> CHITCHAT_INSTRUCTION;
+            case OUT_OF_SCOPE    -> OUT_OF_SCOPE_INSTRUCTION;
         };
         return BASE_SYSTEM_PROMPT + block;
     }

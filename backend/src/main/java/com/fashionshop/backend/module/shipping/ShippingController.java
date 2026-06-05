@@ -23,16 +23,13 @@ public class ShippingController {
 
     private final ShippingService shippingService;
 
-    @PostMapping("/fee")
-    @Operation(summary = "Tính phí vận chuyển",
-               description = "Gọi GHN API tính phí ship dựa trên địa chỉ đã chọn. " +
-                             "Kết quả được cache 5 phút theo district:ward. " +
-                             "Nếu GHN lỗi, trả fallback fee 30.000đ.",
-               security = @SecurityRequirement(name = "cookieAuth"))
+    @PostMapping({"/fee", "/fee/preview"})
+    @Operation(summary = "Tính phí vận chuyển", description = "Gọi GHN API tính phí ship dựa trên địa chỉ đã chọn. " +
+            "Kết quả được cache 5 phút theo district:ward. " +
+            "Nếu GHN lỗi, trả fallback fee 30.000đ.", security = @SecurityRequirement(name = "cookieAuth"))
     public ResponseEntity<ApiResponse<ShippingFeeResponse>> calculateFee(
             @AuthenticationPrincipal User user,
-            @Valid @RequestBody ShippingFeeRequest request
-    ) {
+            @Valid @RequestBody ShippingFeeRequest request) {
         ShippingFeeResponse response = shippingService.calculateShippingFee(user.getId(), request);
         return ResponseEntity.ok(ApiResponse.success(response));
     }

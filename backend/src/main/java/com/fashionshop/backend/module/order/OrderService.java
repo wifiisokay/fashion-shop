@@ -10,6 +10,7 @@ import com.fashionshop.backend.module.order.dto.response.CreateOrderResponse;
 import com.fashionshop.backend.module.order.dto.response.OrderDetailResponse;
 import com.fashionshop.backend.module.order.dto.response.OrderStatsResponse;
 import com.fashionshop.backend.module.order.dto.response.OrderSummaryResponse;
+import com.fashionshop.backend.module.order.dto.response.StaffShippingPreviewResponse;
 
 public interface OrderService {
 
@@ -18,7 +19,6 @@ public interface OrderService {
     PageResponse<OrderSummaryResponse> getMyOrders(Long userId, OrderStatus status, String keyword, int page, int size);
     OrderDetailResponse getMyOrderById(Long userId, Long orderId);
     void cancelOrder(Long userId, Long orderId, CancelOrderRequest request);
-    void confirmReceived(Long userId, Long orderId);
 
     // ====== Staff / Admin ======
     PageResponse<OrderSummaryResponse> getAllOrders(OrderStatus status, String keyword, Long categoryId, int page, int size);
@@ -26,5 +26,7 @@ public interface OrderService {
     OrderDetailResponse getOrderById(Long orderId);
     OrderDetailResponse updateOrderStatus(Long orderId, UpdateOrderStatusRequest request);
     void staffCancelOrder(Long orderId, CancelOrderRequest request);
+    StaffShippingPreviewResponse previewActualShippingFee(Long orderId, ConfirmPackingRequest request);
     OrderDetailResponse confirmPacking(Long orderId, ConfirmPackingRequest request);
+    void confirmCompleted(Long orderId);
 }

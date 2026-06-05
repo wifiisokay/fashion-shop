@@ -2,12 +2,14 @@ package com.fashionshop.backend.module.product.dto.response;
 
 import com.fashionshop.backend.domain.Product;
 import com.fashionshop.backend.domain.ProductImage;
+import com.fashionshop.backend.module.product.ProductPriceService;
 import com.fashionshop.backend.module.storage.CloudinaryUrlBuilder;
 import lombok.Builder;
 import lombok.Getter;
 import lombok.Setter;
 
 import java.math.BigDecimal;
+import java.time.LocalDateTime;
 import java.util.Comparator;
 
 @Getter
@@ -18,8 +20,17 @@ public class ProductSummaryResponse {
     private String name;
     private BigDecimal basePrice;
     private BigDecimal salePrice;
+    private BigDecimal effectivePrice;
     private Boolean isSale;
+    private Boolean isCurrentlyOnSale;
+    private LocalDateTime saleStartAt;
+    private LocalDateTime saleEndAt;
+    private Integer discountPercent;
+    private Integer lowStockThreshold;
+    private Long totalStock;
+    private String stockStatus;
     private String gender;
+    private Integer estimatedWeight;
     private String colorFamily;
     private String fitType;
     private String season;
@@ -30,6 +41,10 @@ public class ProductSummaryResponse {
     private Integer reviewCount;
 
     public static ProductSummaryResponse from(Product product) {
+        return from(product, new ProductPriceService());
+    }
+
+    public static ProductSummaryResponse from(Product product, ProductPriceService priceService) {
         String primaryImg = product.getImages() != null
             ? product.getImages().stream()
                 .filter(img -> img.getColor() != null && Boolean.TRUE.equals(img.getIsPrimary()))
@@ -52,8 +67,17 @@ public class ProductSummaryResponse {
             .name(product.getName())
             .basePrice(product.getBasePrice())
             .salePrice(product.getSalePrice())
+            .effectivePrice(priceService.getEffectivePrice(product))
             .isSale(product.getIsSale())
+            .isCurrentlyOnSale(priceService.isOnSale(product))
+            .saleStartAt(product.getSaleStartAt())
+            .saleEndAt(product.getSaleEndAt())
+            .discountPercent(priceService.getDiscountPercent(product))
+            .lowStockThreshold(product.getLowStockThreshold())
+            .totalStock(priceService.getTotalStock(product))
+            .stockStatus(priceService.getStockStatus(product))
             .gender(product.getGender() != null ? product.getGender().name() : null)
+            .estimatedWeight(product.getEstimatedWeight())
             .colorFamily(primaryColorFamily(product))
             .fitType(product.getFitType())
             .season(product.getSeason())
