@@ -88,6 +88,7 @@ const StaffOrderDetailPage = () => {
       : feeDiffValue < 0
         ? 'text-green-600'
         : 'text-gray-700';
+  const isPaidVnPayOrder = order.paymentMethod === 'VNPAY' && order.paymentStatus === 'PAID';
 
   const handleUpdateStatus = async (newStatus) => {
     try {
@@ -452,6 +453,12 @@ const StaffOrderDetailPage = () => {
             <div className="bg-white rounded-xl shadow-sm border border-red-200 p-6 space-y-4">
               <h3 className="font-bold text-red-800">Hủy đơn hàng #{order.id}</h3>
               <p className="text-sm text-gray-600">Staff/Admin bắt buộc phải nhập lý do hủy đơn.</p>
+              {isPaidVnPayOrder && (
+                <div className="flex items-start gap-2 rounded-lg border border-amber-200 bg-amber-50 p-3 text-sm text-amber-800">
+                  <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0" />
+                  <span>Đơn đã thanh toán qua VNPay. Hủy đơn sẽ thực hiện hoàn tiền/mô phỏng hoàn tiền.</span>
+                </div>
+              )}
               <textarea
                 value={cancelReason}
                 onChange={(e) => setCancelReason(e.target.value)}

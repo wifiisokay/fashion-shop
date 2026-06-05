@@ -387,22 +387,24 @@ public class OrderServiceImpl implements OrderService {
             throw new BusinessException(ErrorCode.ORDER_CANCEL_REASON_REQUIRED, HttpStatus.BAD_REQUEST);
         }
 
+        Payment payment = paymentRepository.findByOrderId(orderId).orElse(null);
+        boolean paidVnPay = order.getPaymentMethod() == PaymentMethod.VNPAY
+                && order.getPaymentStatus() == OrderPaymentStatus.PAID;
+
+        if (paidVnPay) {
+            refundPaidVnPayOrder(orderId, payment, request.getReason());
+        }
+
         restoreStock(order);
         order.setStatus(OrderStatus.CANCELLED);
         order.setCancelReason(request.getReason());
+        order.setPaymentStatus(paidVnPay ? OrderPaymentStatus.REFUNDED : OrderPaymentStatus.UNPAID);
         orderRepository.save(order);
 
-        paymentRepository.findByOrderId(orderId).ifPresent(payment -> {
-            if (payment.getMethod() == PaymentMethod.VNPAY
-                    && payment.getStatus() == PaymentStatus.SUCCESS) {
-                paymentService.processRefund(payment.getId(),
-                        "Don hang bi huy: " + request.getReason());
-                log.info("Auto-refund triggered for order #{}", orderId);
-            } else if (payment.getStatus() == PaymentStatus.PENDING) {
-                payment.setStatus(PaymentStatus.FAILED);
-                paymentRepository.save(payment);
-            }
-        });
+        if (!paidVnPay && payment != null && payment.getStatus() == PaymentStatus.PENDING) {
+            payment.setStatus(PaymentStatus.FAILED);
+            paymentRepository.save(payment);
+        }
 
         log.info("Order #{} cancelled by staff. Reason: {}", orderId, request.getReason());
     }
@@ -484,6 +486,23 @@ public class OrderServiceImpl implements OrderService {
                 && order.getPaymentStatus() != OrderPaymentStatus.PAID) {
             throw new BusinessException(ErrorCode.ORDER_PAYMENT_NOT_PAID, HttpStatus.BAD_REQUEST,
                     "Don VNPay chua thanh toan thanh cong, khong the xu ly don.");
+        }
+    }
+
+    private void refundPaidVnPayOrder(Long orderId, Payment payment, String cancelReason) {
+        if (payment == null || payment.getMethod() != PaymentMethod.VNPAY
+                || payment.getStatus() != PaymentStatus.SUCCESS) {
+            throw new BusinessException(ErrorCode.PAYMENT_REFUND_FAILED, HttpStatus.BAD_REQUEST,
+                    "Không thể hoàn tiền VNPay, vui lòng thử lại");
+        }
+
+        try {
+            paymentService.processRefund(payment.getId(), "Don hang bi huy: " + cancelReason);
+            log.info("Auto-refund completed for paid VNPay order #{}", orderId);
+        } catch (RuntimeException ex) {
+            log.warn("Auto-refund failed for paid VNPay order #{}", orderId, ex);
+            throw new BusinessException(ErrorCode.PAYMENT_REFUND_FAILED, HttpStatus.BAD_REQUEST,
+                    "Không thể hoàn tiền VNPay, vui lòng thử lại");
         }
     }
 

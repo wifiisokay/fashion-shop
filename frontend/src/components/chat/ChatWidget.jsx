@@ -253,7 +253,7 @@ const ChatWidget = () => {
             {!isAuthenticated && (
               <div className="flex items-center gap-2 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-800">
                 <AlertCircle className="h-4 w-4 shrink-0" />
-                <span>Chế độ khách: bạn vẫn có thể hỏi sản phẩm/phối đồ, nhưng cần đăng nhập để xem đơn hàng.</span>
+                <span>Vui lòng đăng nhập để sử dụng trợ lý thời trang AI.</span>
               </div>
             )}
             {messages.map((msg, index) => (
@@ -555,13 +555,13 @@ const ChatWidget = () => {
                 type="text"
                 value={input}
                 onChange={(e) => setInput(e.target.value)}
-                placeholder="Hỏi cách phối đồ, tìm sản phẩm..."
+                placeholder={isAuthenticated ? 'Hỏi cách phối đồ, tìm sản phẩm...' : 'Đăng nhập để sử dụng trợ lý AI'}
                 className="flex-1 bg-transparent px-4 py-2 text-sm focus:outline-none"
-                disabled={isLoading}
+                disabled={!isAuthenticated || isLoading}
               />
               <button
                 type="submit"
-                disabled={!input.trim() || isLoading}
+                disabled={!isAuthenticated || !input.trim() || isLoading}
                 className="w-8 h-8 rounded-full bg-black text-white flex items-center justify-center disabled:opacity-50 disabled:cursor-not-allowed transition-opacity hover:bg-gray-800"
               >
                 <Send className="w-4 h-4 ml-0.5" />

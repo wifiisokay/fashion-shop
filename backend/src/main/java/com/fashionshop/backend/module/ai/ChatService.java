@@ -1,6 +1,5 @@
 package com.fashionshop.backend.module.ai;
 
-import com.fashionshop.backend.module.ai.dto.request.GuestChatRequest;
 import com.fashionshop.backend.module.ai.dto.response.ChatMessageResponse;
 import com.fashionshop.backend.module.ai.dto.response.ChatSessionResponse;
 import com.fashionshop.backend.module.ai.dto.response.ChatStatsResponse;
@@ -15,9 +14,6 @@ public interface ChatService {
     ChatMessageResponse processMessage(Long userId, String content);
 
     ChatMessageResponse processMessage(Long userId, String content, Long productId, Long colorId);
-
-    /** Guest: gửi tin nhắn giới hạn (không lưu DB) */
-    ChatMessageResponse processGuestMessage(GuestChatRequest request);
 
     /** Lấy/tạo session hôm nay + toàn bộ messages */
     ChatSessionResponse getTodaySession(Long userId);

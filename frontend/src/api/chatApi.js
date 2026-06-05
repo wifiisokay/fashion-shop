@@ -6,11 +6,6 @@ export const chatApi = {
     return data?.data ?? null;
   },
 
-  sendGuestMessage: async (content, history = [], context = {}) => {
-    const { data } = await axiosInstance.post('/api/chat/guest/message', { content, history, ...context });
-    return data?.data ?? null;
-  },
-
   getTodaySession: async () => {
     const { data } = await axiosInstance.get('/api/chat/session/today');
     return data?.data ?? null;

@@ -3,7 +3,6 @@ package com.fashionshop.backend.module.ai;
 import com.fashionshop.backend.common.ApiResponse;
 import com.fashionshop.backend.domain.User;
 import com.fashionshop.backend.module.ai.dto.request.ChatMessageRequest;
-import com.fashionshop.backend.module.ai.dto.request.GuestChatRequest;
 import com.fashionshop.backend.module.ai.dto.response.ChatMessageResponse;
 import com.fashionshop.backend.module.ai.dto.response.ChatSessionResponse;
 import jakarta.validation.Valid;
@@ -43,16 +42,6 @@ public class ChatController {
                 ? request.getProductContext().getColorId()
                 : request.getColorId();
         ChatMessageResponse response = chatService.processMessage(user.getId(), request.getContent(), productId, colorId);
-        return ResponseEntity.ok(ApiResponse.success(response));
-    }
-
-    /**
-     * Guest chat — không cần đăng nhập, giới hạn intent.
-     */
-    @PostMapping("/guest/message")
-    public ResponseEntity<ApiResponse<ChatMessageResponse>> sendGuestMessage(
-            @Valid @RequestBody GuestChatRequest request) {
-        ChatMessageResponse response = chatService.processGuestMessage(request);
         return ResponseEntity.ok(ApiResponse.success(response));
     }
 

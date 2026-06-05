@@ -74,19 +74,19 @@ public interface OrderRepository extends JpaRepository<Order, Long> {
                 SELECT COALESCE(SUM(o.total_amount), 0)
                 FROM orders o
                 WHERE o.status = 'COMPLETED'
-                    AND (o.payment_status IS NULL OR o.payment_status <> 'REFUNDED')
+                    AND o.payment_status = 'PAID'
         """, nativeQuery = true)
     java.math.BigDecimal getTotalRevenue();
 
     @Query(value = """
-                SELECT DATE(o.created_at) AS date,
+                SELECT DATE(COALESCE(o.completed_at, o.updated_at, o.created_at)) AS date,
                              COALESCE(SUM(o.total_amount), 0) AS revenue
                 FROM orders o
-                WHERE o.created_at >= :startDate
+                WHERE COALESCE(o.completed_at, o.updated_at, o.created_at) >= :startDate
                     AND o.status = 'COMPLETED'
-                    AND (o.payment_status IS NULL OR o.payment_status <> 'REFUNDED')
-                GROUP BY DATE(o.created_at)
-                ORDER BY DATE(o.created_at) ASC
+                    AND o.payment_status = 'PAID'
+                GROUP BY DATE(COALESCE(o.completed_at, o.updated_at, o.created_at))
+                ORDER BY DATE(COALESCE(o.completed_at, o.updated_at, o.created_at)) ASC
         """, nativeQuery = true)
     List<Object[]> getRevenueTrend(@Param("startDate") LocalDateTime startDate);
 

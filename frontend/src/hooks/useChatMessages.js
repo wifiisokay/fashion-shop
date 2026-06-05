@@ -48,7 +48,6 @@ export const useChatMessages = (enabled = false) => {
   const { user } = useAuth();
   const location = useLocation();
   const isAuthenticated = !!user;
-  const guestHistoryRef = useRef([]);
   const lastFailedTextRef = useRef(null);
   const [localMessages, setLocalMessages] = useState([welcomeMessage]);
 
@@ -74,7 +73,7 @@ export const useChatMessages = (enabled = false) => {
       if (isAuthenticated) {
         return chatApi.sendMessage(text, currentPageContext);
       }
-      return chatApi.sendGuestMessage(text, guestHistoryRef.current, currentPageContext);
+      throw new Error('LOGIN_REQUIRED');
     },
     onMutate: ({ text }) => {
       lastFailedTextRef.current = null;
@@ -85,13 +84,6 @@ export const useChatMessages = (enabled = false) => {
       if (!response) return;
       const text = variables?.text || '';
       const assistantMessage = normalizeMessage(response);
-      if (!isAuthenticated) {
-        guestHistoryRef.current = [
-          ...guestHistoryRef.current,
-          { role: 'user', text },
-          { role: 'model', text: response.content || '' },
-        ].slice(-10);
-      }
       if (isAuthenticated) {
         setLocalMessages((prev) => prev.filter((msg) => !msg.localOnly));
         historyQuery.refetch();
@@ -115,9 +107,9 @@ export const useChatMessages = (enabled = false) => {
   });
 
   const sendMessage = useCallback((text, context = null) => {
-    if (!text?.trim() || sendMutation.isPending) return;
+    if (!isAuthenticated || !text?.trim() || sendMutation.isPending) return;
     sendMutation.mutate({ text: text.trim(), context });
-  }, [sendMutation]);
+  }, [isAuthenticated, sendMutation]);
 
   const retryLast = useCallback(() => {
     if (lastFailedTextRef.current) {

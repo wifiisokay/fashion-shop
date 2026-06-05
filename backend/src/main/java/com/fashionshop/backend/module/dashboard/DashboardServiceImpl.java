@@ -63,15 +63,9 @@ public class DashboardServiceImpl implements DashboardService {
 
     private static final String FINALIZED_ORDER_WHERE = """
                 WHERE o.status = 'COMPLETED'
-                    AND (o.payment_status IS NULL OR o.payment_status <> 'REFUNDED')
-                    AND o.created_at >= :fromDate
-                    AND o.created_at < :toDateExclusive
-                    AND NOT EXISTS (
-                            SELECT 1
-                            FROM returns r
-                            WHERE r.order_id = o.id
-                                AND r.status IN ('REQUESTED', 'APPROVED', 'RECEIVED')
-                    )
+                    AND o.payment_status = 'PAID'
+                    AND COALESCE(o.completed_at, o.updated_at, o.created_at) >= :fromDate
+                    AND COALESCE(o.completed_at, o.updated_at, o.created_at) < :toDateExclusive
         """;
 
     @Override
@@ -162,27 +156,19 @@ public class DashboardServiceImpl implements DashboardService {
             SELECT COALESCE(SUM(o.total_amount), 0)
             FROM orders o
             """ + FINALIZED_ORDER_WHERE, params);
-        BigDecimal processedRefundAmount = queryBigDecimal("""
-                        SELECT COALESCE(SUM(r.refund_amount), 0)
-                        FROM returns r
-                                                WHERE r.status = 'COMPLETED'
-              AND r.updated_at >= :fromDate
-              AND r.updated_at < :toDateExclusive
-            """, params);
-        BigDecimal pendingRevenue = queryBigDecimal("""
+        BigDecimal refundedAmount = queryBigDecimal("""
             SELECT COALESCE(SUM(o.total_amount), 0)
             FROM orders o
-            WHERE o.status IN ('SHIPPING', 'RETURN_REQUESTED', 'RETURNING')
-              AND o.payment_status IN ('PAID', 'REFUNDED')
-              AND o.created_at >= :fromDate
-              AND o.created_at < :toDateExclusive
+            WHERE o.payment_status = 'REFUNDED'
+              AND COALESCE(o.updated_at, o.created_at) >= :fromDate
+              AND COALESCE(o.updated_at, o.created_at) < :toDateExclusive
             """, params);
         long finalizedOrderCount = queryLong("""
             SELECT COUNT(*)
             FROM orders o
             """ + FINALIZED_ORDER_WHERE, params);
 
-        BigDecimal netRevenue = finalizedGrossRevenue.subtract(processedRefundAmount);
+        BigDecimal netRevenue = finalizedGrossRevenue;
         long pendingOrderCount = queryLong("""
             SELECT COUNT(*)
             FROM orders
@@ -201,6 +187,20 @@ public class DashboardServiceImpl implements DashboardService {
             SELECT COUNT(*)
             FROM orders
             WHERE status = 'COMPLETED'
+              AND created_at >= :fromDate
+              AND created_at < :toDateExclusive
+            """, params);
+        long cancelledOrders = queryLong("""
+            SELECT COUNT(*)
+            FROM orders
+            WHERE status = 'CANCELLED'
+              AND created_at >= :fromDate
+              AND created_at < :toDateExclusive
+            """, params);
+        long returnedOrders = queryLong("""
+            SELECT COUNT(*)
+            FROM orders
+            WHERE status = 'RETURNED'
               AND created_at >= :fromDate
               AND created_at < :toDateExclusive
             """, params);
@@ -225,12 +225,13 @@ public class DashboardServiceImpl implements DashboardService {
         OverviewSummary overview = OverviewSummary.builder()
             .netRevenue(netRevenue)
             .finalizedGrossRevenue(finalizedGrossRevenue)
-            .processedRefundAmount(processedRefundAmount)
-            .pendingRevenue(pendingRevenue)
+            .refundedAmount(refundedAmount)
             .finalizedOrderCount(finalizedOrderCount)
             .pendingOrderCount(pendingOrderCount)
             .shippingOrderCount(shippingOrderCount)
             .completedOrderCount(completedOrderCount)
+            .cancelledOrders(cancelledOrders)
+            .returnedOrders(returnedOrders)
             .pendingReturnCount(pendingReturnCount)
             .lowStockProductCount(lowStockProductCount)
             .activeProductCount(activeProductCount)
@@ -238,12 +239,11 @@ public class DashboardServiceImpl implements DashboardService {
 
         RevenueSummary revenue = RevenueSummary.builder()
             .finalizedGrossRevenue(finalizedGrossRevenue)
-            .processedRefundAmount(processedRefundAmount)
+            .refundedAmount(refundedAmount)
             .netRevenue(netRevenue)
             .codRevenue(BigDecimal.ZERO)
             .vnpayRevenue(BigDecimal.ZERO)
             .finalizedOrderCount(finalizedOrderCount)
-            .pendingRevenue(pendingRevenue)
             .build();
 
         ReturnSummary returns = ReturnSummary.builder()
@@ -266,7 +266,7 @@ public class DashboardServiceImpl implements DashboardService {
                 WHERE status = 'APPROVED' AND updated_at < DATE_SUB(NOW(), INTERVAL 3 DAY)
                 """, params))
             .receivedNotCompleted(queryLong("SELECT COUNT(*) FROM returns WHERE status = 'RECEIVED'", params))
-            .processedRefundAmount(processedRefundAmount)
+            .processedRefundAmount(refundedAmount)
             .returnItemQuantity(queryLong("""
                 SELECT COALESCE(SUM(ri.quantity), 0)
                 FROM return_items ri
@@ -340,14 +340,15 @@ public class DashboardServiceImpl implements DashboardService {
     }
 
     private List<DailyRevenuePoint> dailyRevenue(MapSqlParameterSource params) {
+        // completed_at is the revenue recognition date; older rows fall back to updated_at/created_at.
         return jdbc.query("""
-            SELECT DATE(o.created_at) AS revenue_date,
+            SELECT DATE(COALESCE(o.completed_at, o.updated_at, o.created_at)) AS revenue_date,
                    COALESCE(SUM(o.total_amount), 0) AS revenue,
                    COUNT(*) AS order_count
             FROM orders o
             """ + FINALIZED_ORDER_WHERE + """
-            GROUP BY DATE(o.created_at)
-            ORDER BY DATE(o.created_at)
+            GROUP BY DATE(COALESCE(o.completed_at, o.updated_at, o.created_at))
+            ORDER BY DATE(COALESCE(o.completed_at, o.updated_at, o.created_at))
             """, params, (rs, rowNum) -> DailyRevenuePoint.builder()
             .date(rs.getString("revenue_date"))
             .revenue(defaultBigDecimal(rs.getBigDecimal("revenue")))
