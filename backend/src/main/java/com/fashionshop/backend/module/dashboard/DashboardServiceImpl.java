@@ -157,11 +157,11 @@ public class DashboardServiceImpl implements DashboardService {
             FROM orders o
             """ + FINALIZED_ORDER_WHERE, params);
         BigDecimal refundedAmount = queryBigDecimal("""
-            SELECT COALESCE(SUM(o.total_amount), 0)
-            FROM orders o
-            WHERE o.payment_status = 'REFUNDED'
-              AND COALESCE(o.updated_at, o.created_at) >= :fromDate
-              AND COALESCE(o.updated_at, o.created_at) < :toDateExclusive
+            SELECT COALESCE(SUM(r.refund_amount), 0)
+            FROM returns r
+            WHERE r.status = 'COMPLETED'
+              AND COALESCE(r.refunded_at, r.updated_at, r.created_at) >= :fromDate
+              AND COALESCE(r.refunded_at, r.updated_at, r.created_at) < :toDateExclusive
             """, params);
         long finalizedOrderCount = queryLong("""
             SELECT COUNT(*)
@@ -187,8 +187,8 @@ public class DashboardServiceImpl implements DashboardService {
             SELECT COUNT(*)
             FROM orders
             WHERE status = 'COMPLETED'
-              AND created_at >= :fromDate
-              AND created_at < :toDateExclusive
+              AND COALESCE(completed_at, updated_at, created_at) >= :fromDate
+              AND COALESCE(completed_at, updated_at, created_at) < :toDateExclusive
             """, params);
         long cancelledOrders = queryLong("""
             SELECT COUNT(*)
@@ -201,8 +201,8 @@ public class DashboardServiceImpl implements DashboardService {
             SELECT COUNT(*)
             FROM orders
             WHERE status = 'RETURNED'
-              AND created_at >= :fromDate
-              AND created_at < :toDateExclusive
+              AND COALESCE(updated_at, created_at) >= :fromDate
+              AND COALESCE(updated_at, created_at) < :toDateExclusive
             """, params);
         long pendingReturnCount = queryLong("SELECT COUNT(*) FROM returns WHERE status = 'REQUESTED'", params);
         StockAlertResponse stockAlerts = stockAlertService.getStockAlerts(5);
@@ -271,17 +271,17 @@ public class DashboardServiceImpl implements DashboardService {
                 SELECT COALESCE(SUM(ri.quantity), 0)
                 FROM return_items ri
                 JOIN returns r ON r.id = ri.return_id
-                                                                WHERE r.status IN ('APPROVED', 'RECEIVED', 'COMPLETED')
-                  AND r.created_at >= :fromDate
-                  AND r.created_at < :toDateExclusive
+                WHERE r.status = 'COMPLETED'
+                  AND COALESCE(r.refunded_at, r.updated_at, r.created_at) >= :fromDate
+                  AND COALESCE(r.refunded_at, r.updated_at, r.created_at) < :toDateExclusive
                 """, params))
             .returnItemValue(queryBigDecimal("""
                 SELECT COALESCE(SUM(ri.subtotal), 0)
                 FROM return_items ri
                 JOIN returns r ON r.id = ri.return_id
-                                                                WHERE r.status IN ('APPROVED', 'RECEIVED', 'COMPLETED')
-                  AND r.created_at >= :fromDate
-                  AND r.created_at < :toDateExclusive
+                WHERE r.status = 'COMPLETED'
+                  AND COALESCE(r.refunded_at, r.updated_at, r.created_at) >= :fromDate
+                  AND COALESCE(r.refunded_at, r.updated_at, r.created_at) < :toDateExclusive
                 """, params))
             .queue(returnQueue())
             .build();

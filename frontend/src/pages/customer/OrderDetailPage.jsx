@@ -11,7 +11,7 @@ import ReviewModal from '../../components/review/ReviewModal';
 import StarRating from '../../components/review/StarRating';
 import { formatPrice, formatDate } from '../../utils/format';
 import { ROUTES } from '../../constants/routes';
-import { ArrowLeft, Star, Pencil, Trash2, RotateCcw } from 'lucide-react';
+import { ArrowLeft, Star, Pencil, Trash2, RotateCcw, AlertTriangle } from 'lucide-react';
 import { toast } from 'sonner';
 import ReturnRequestModal from '../../components/return/ReturnRequestModal';
 
@@ -39,7 +39,7 @@ const OrderDetailPage = () => {
 
   const address = order.addressSnapshot || {};
   const canCancel = order.status === 'PENDING';
-  const canShowReviews = order.status === 'COMPLETED';
+  const isPaidVnPayOrder = order.paymentMethod === 'VNPAY' && order.paymentStatus === 'PAID';
 
   // Return window: 7 days from deliveredAt
   const canRequestReturn = (() => {
@@ -189,7 +189,7 @@ const OrderDetailPage = () => {
                     <span className="font-bold text-gray-900">{formatPrice(item.subtotal)}</span>
                   </div>
                   {/* Review button / badge */}
-                  {canShowReviews && (
+                  {(item.canReview || item.reviewId) && (
                     <div className="mt-3">
                       {item.canReview && (
                         <button onClick={() => setReviewTarget({ item })}
@@ -262,6 +262,12 @@ const OrderDetailPage = () => {
           ) : (
             <div className="bg-white p-6 rounded-2xl border border-red-200 shadow-sm space-y-4 w-full sm:w-96">
               <h3 className="font-bold text-gray-900">Xác nhận hủy đơn hàng?</h3>
+              {isPaidVnPayOrder && (
+                <div className="flex items-start gap-2 rounded-lg border border-amber-200 bg-amber-50 p-3 text-sm text-amber-800">
+                  <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0" />
+                  <span>Đơn đã thanh toán qua VNPay. Hủy đơn sẽ thực hiện hoàn tiền/mô phỏng hoàn tiền.</span>
+                </div>
+              )}
               <textarea
                 value={cancelReason}
                 onChange={(e) => setCancelReason(e.target.value)}

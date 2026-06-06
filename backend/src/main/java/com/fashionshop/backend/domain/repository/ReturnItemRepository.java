@@ -17,6 +17,19 @@ public interface ReturnItemRepository extends JpaRepository<ReturnItem, Long> {
     List<ReturnItem> findByReturnRequestId(Long returnId);
 
     @Query("""
+        SELECT DISTINCT ri.orderItem.id
+        FROM ReturnItem ri
+        JOIN ri.returnRequest r
+        WHERE r.order.id = :orderId
+          AND r.status IN :statuses
+          AND ri.orderItem.id IS NOT NULL
+    """)
+    List<Long> findOrderItemIdsByOrderIdAndStatuses(
+        @Param("orderId") Long orderId,
+        @Param("statuses") Collection<ReturnStatus> statuses
+    );
+
+    @Query("""
         SELECT COALESCE(SUM(ri.quantity), 0)
         FROM ReturnItem ri
         JOIN ri.returnRequest r

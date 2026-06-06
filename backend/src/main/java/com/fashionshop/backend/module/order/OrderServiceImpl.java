@@ -20,6 +20,7 @@ import com.fashionshop.backend.common.enums.OrderStatus;
 import com.fashionshop.backend.common.enums.PaymentMethod;
 import com.fashionshop.backend.common.enums.PaymentStatus;
 import com.fashionshop.backend.common.enums.ProductStatus;
+import com.fashionshop.backend.common.enums.ReturnStatus;
 import com.fashionshop.backend.domain.Address;
 import com.fashionshop.backend.domain.Order;
 import com.fashionshop.backend.domain.OrderItem;
@@ -34,6 +35,7 @@ import com.fashionshop.backend.domain.repository.OrderRepository;
 import com.fashionshop.backend.domain.repository.PaymentRepository;
 import com.fashionshop.backend.domain.repository.ProductImageRepository;
 import com.fashionshop.backend.domain.repository.ProductVariantRepository;
+import com.fashionshop.backend.domain.repository.ReturnItemRepository;
 import com.fashionshop.backend.domain.repository.ReturnRequestRepository;
 import com.fashionshop.backend.domain.repository.ReviewRepository;
 import com.fashionshop.backend.domain.repository.UserRepository;
@@ -76,6 +78,7 @@ public class OrderServiceImpl implements OrderService {
     private final AddressRepository addressRepository;
     private final UserRepository userRepository;
     private final ReviewRepository reviewRepository;
+    private final ReturnItemRepository returnItemRepository;
     private final ReturnRequestRepository returnRequestRepository;
     private final CartService cartService;
     private final OrderStatusService statusService;
@@ -235,11 +238,12 @@ public class OrderServiceImpl implements OrderService {
                 .forEach(r -> itemIdToReview.put(r.getOrderItem().getId(), r));
 
         ReturnInfo returnInfo = loadLatestReturnInfo(orderId);
+        var nonReviewableReturnItemIds = nonReviewableReturnItemIds(orderId);
 
         return OrderDetailResponse.from(order, statusService.getLabel(order.getStatus()),
                 itemIdToReview, returnInfo.returnId(), returnInfo.status(), returnInfo.statusLabel(),
                 returnInfo.reason(), returnInfo.adminNote(), returnInfo.evidenceImages(), returnInfo.refundAmount(),
-                null, null, null);
+                null, null, null, null, nonReviewableReturnItemIds);
     }
 
     @Override
@@ -253,10 +257,24 @@ public class OrderServiceImpl implements OrderService {
                     "Chi co the huy don khi dang cho xac nhan");
         }
 
+        Payment payment = paymentRepository.findByOrderId(orderId).orElse(null);
+        boolean paidVnPay = order.getPaymentMethod() == PaymentMethod.VNPAY
+                && order.getPaymentStatus() == OrderPaymentStatus.PAID;
+
+        if (paidVnPay) {
+            refundPaidVnPayOrder(orderId, payment, request != null ? request.getReason() : "Khach hang huy don");
+        }
+
         restoreStock(order);
         order.setStatus(OrderStatus.CANCELLED);
         order.setCancelReason(request != null ? request.getReason() : null);
+        order.setPaymentStatus(paidVnPay ? OrderPaymentStatus.REFUNDED : OrderPaymentStatus.UNPAID);
         orderRepository.save(order);
+
+        if (!paidVnPay && payment != null && payment.getStatus() == PaymentStatus.PENDING) {
+            payment.setStatus(PaymentStatus.FAILED);
+            paymentRepository.save(payment);
+        }
 
         log.info("Order #{} cancelled by customer {}", orderId, userId);
     }
@@ -324,11 +342,12 @@ public class OrderServiceImpl implements OrderService {
                 .orElseThrow(() -> new BusinessException(ErrorCode.ORDER_NOT_FOUND, HttpStatus.NOT_FOUND));
 
         ReturnInfo returnInfo = loadLatestReturnInfo(orderId);
+        var nonReviewableReturnItemIds = nonReviewableReturnItemIds(orderId);
 
         return OrderDetailResponse.from(order, statusService.getLabel(order.getStatus()),
                 Map.of(), returnInfo.returnId(), returnInfo.status(), returnInfo.statusLabel(),
                 returnInfo.reason(), returnInfo.adminNote(), returnInfo.evidenceImages(), returnInfo.refundAmount(),
-                null, null, null);
+                null, null, null, null, nonReviewableReturnItemIds);
     }
 
     @Override
@@ -562,6 +581,11 @@ public class OrderServiceImpl implements OrderService {
                 ret.getAdminNote(),
                 ret.getEvidenceImages(),
                 ret.getRefundAmount());
+    }
+
+    private java.util.Set<Long> nonReviewableReturnItemIds(Long orderId) {
+        return new java.util.HashSet<>(returnItemRepository.findOrderItemIdsByOrderIdAndStatuses(
+            orderId, List.of(ReturnStatus.RECEIVED, ReturnStatus.COMPLETED)));
     }
 
     private PageResponse<OrderSummaryResponse> buildPageResponse(Page<Order> orders) {

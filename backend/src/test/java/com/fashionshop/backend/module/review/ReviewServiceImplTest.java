@@ -1,10 +1,12 @@
 package com.fashionshop.backend.module.review;
 
 import com.fashionshop.backend.common.PageResponse;
+import com.fashionshop.backend.common.enums.OrderPaymentStatus;
 import com.fashionshop.backend.common.enums.OrderStatus;
 import com.fashionshop.backend.domain.*;
 import com.fashionshop.backend.domain.repository.OrderItemRepository;
 import com.fashionshop.backend.domain.repository.ProductRepository;
+import com.fashionshop.backend.domain.repository.ReturnItemRepository;
 import com.fashionshop.backend.domain.repository.ReviewRepository;
 import com.fashionshop.backend.exception.BusinessException;
 import com.fashionshop.backend.module.review.dto.request.CreateReviewRequest;
@@ -36,6 +38,7 @@ class ReviewServiceImplTest {
     @Mock ReviewRepository reviewRepository;
     @Mock OrderItemRepository orderItemRepository;
     @Mock ProductRepository productRepository;
+    @Mock ReturnItemRepository returnItemRepository;
 
     @InjectMocks ReviewServiceImpl sut;
 
@@ -52,6 +55,7 @@ class ReviewServiceImplTest {
     private Order mockOrder(OrderStatus status, Long userId) {
         return Order.builder()
             .id(1L).user(mockUser(userId)).status(status)
+            .paymentStatus(status == OrderStatus.COMPLETED ? OrderPaymentStatus.PAID : OrderPaymentStatus.UNPAID)
             .items(new java.util.ArrayList<>())
             .build();
     }
@@ -97,6 +101,7 @@ class ReviewServiceImplTest {
             Product product = mockProduct();
 
             when(orderItemRepository.findById(10L)).thenReturn(Optional.of(item));
+            when(returnItemRepository.sumQuantityByOrderItemAndStatuses(eq(10L), anyCollection())).thenReturn(0L);
             when(reviewRepository.existsByOrderItemId(10L)).thenReturn(false);
             when(productRepository.findById(100L)).thenReturn(Optional.of(product));
             when(reviewRepository.save(any(Review.class))).thenAnswer(inv -> {
@@ -121,6 +126,7 @@ class ReviewServiceImplTest {
             OrderItem item = mockOrderItem(order);
 
             when(orderItemRepository.findById(10L)).thenReturn(Optional.of(item));
+            when(returnItemRepository.sumQuantityByOrderItemAndStatuses(eq(10L), anyCollection())).thenReturn(0L);
             when(reviewRepository.existsByOrderItemId(10L)).thenReturn(false);
             when(productRepository.findById(100L)).thenReturn(Optional.of(mockProduct()));
             when(reviewRepository.save(any(Review.class))).thenAnswer(inv -> {
@@ -176,6 +182,7 @@ class ReviewServiceImplTest {
             Order order = mockOrder(OrderStatus.COMPLETED, 1L);
             OrderItem item = mockOrderItem(order);
             when(orderItemRepository.findById(10L)).thenReturn(Optional.of(item));
+            when(returnItemRepository.sumQuantityByOrderItemAndStatuses(eq(10L), anyCollection())).thenReturn(0L);
             when(reviewRepository.existsByOrderItemId(10L)).thenReturn(true);
 
             BusinessException ex = assertThrows(BusinessException.class,

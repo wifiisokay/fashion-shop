@@ -1,7 +1,9 @@
 package com.fashionshop.backend.module.review;
 
 import com.fashionshop.backend.common.PageResponse;
+import com.fashionshop.backend.common.enums.OrderPaymentStatus;
 import com.fashionshop.backend.common.enums.OrderStatus;
+import com.fashionshop.backend.common.enums.ReturnStatus;
 import com.fashionshop.backend.domain.OrderItem;
 import com.fashionshop.backend.domain.Product;
 import com.fashionshop.backend.domain.Review;
@@ -10,6 +12,7 @@ import com.fashionshop.backend.domain.repository.CategoryRepository;
 import com.fashionshop.backend.domain.repository.OrderItemRepository;
 import com.fashionshop.backend.domain.repository.ProductImageRepository;
 import com.fashionshop.backend.domain.repository.ProductRepository;
+import com.fashionshop.backend.domain.repository.ReturnItemRepository;
 import com.fashionshop.backend.domain.repository.ReviewRepository;
 import com.fashionshop.backend.exception.BusinessException;
 import com.fashionshop.backend.exception.ErrorCode;
@@ -40,6 +43,7 @@ public class ReviewServiceImpl implements ReviewService {
     private final ProductRepository productRepository;
     private final ProductImageRepository productImageRepository;
     private final CategoryRepository categoryRepository;
+    private final ReturnItemRepository returnItemRepository;
 
     // ================================================================
     // 1. Customer: tạo review
@@ -58,9 +62,16 @@ public class ReviewServiceImpl implements ReviewService {
             throw new BusinessException(ErrorCode.FORBIDDEN, HttpStatus.FORBIDDEN);
         }
 
-        // Bước 3: Verify đơn đã giao
+        // Bước 3: Verify đơn đã hoàn tất, đã thanh toán và item chưa được hoàn trả.
         OrderStatus status = orderItem.getOrder().getStatus();
-        if (status != OrderStatus.COMPLETED) {
+        if (status != OrderStatus.COMPLETED
+                || orderItem.getOrder().getPaymentStatus() != OrderPaymentStatus.PAID) {
+            throw new BusinessException(ErrorCode.REVIEW_NOT_ELIGIBLE, HttpStatus.BAD_REQUEST);
+        }
+
+        Long returnedQuantity = returnItemRepository.sumQuantityByOrderItemAndStatuses(
+            orderItem.getId(), List.of(ReturnStatus.COMPLETED));
+        if (returnedQuantity != null && returnedQuantity > 0) {
             throw new BusinessException(ErrorCode.REVIEW_NOT_ELIGIBLE, HttpStatus.BAD_REQUEST);
         }
 

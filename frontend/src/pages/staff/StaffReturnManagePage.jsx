@@ -260,7 +260,7 @@ const StaffReturnManagePage = () => {
           {/* Status Chart */}
           <div className="bg-white p-6 rounded-xl border border-gray-200 shadow-sm flex flex-col">
             <h2 className="text-sm font-bold text-gray-900 mb-4">Phân bổ Trạng thái Yêu cầu</h2>
-            <div className="h-60 w-full">
+            <div className="h-60 w-full relative">
               {dashboardQuery.data.statusChart && dashboardQuery.data.statusChart.length > 0 ? (
                 <ResponsiveContainer width="100%" height="100%">
                   <PieChart>

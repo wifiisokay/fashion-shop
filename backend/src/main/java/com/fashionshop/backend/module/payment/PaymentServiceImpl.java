@@ -86,7 +86,7 @@ public class PaymentServiceImpl implements PaymentService {
         }
 
         // Bước 2: Tìm Payment
-        Payment payment = paymentRepository.findByVnpayTxnRef(txnRef).orElse(null);
+        Payment payment = paymentRepository.findByVnpayTxnRefForUpdate(txnRef).orElse(null);
         if (payment == null) {
             log.warn("IPN payment not found — txnRef={}", txnRef);
             return ipnResponse("01", "Order Not Found");
@@ -99,8 +99,9 @@ public class PaymentServiceImpl implements PaymentService {
             return ipnResponse("04", "Invalid Amount");
         }
 
-        // Bước 4: Idempotent check — đã xử lý rồi thì bỏ qua
-        if (payment.getStatus() == PaymentStatus.SUCCESS) {
+        // Bước 4: Idempotent check — chỉ xử lý giao dịch còn PENDING.
+        // IPN muộn cho giao dịch đã FAILED/REFUNDED không được phép đổi lại Order thành PAID.
+        if (payment.getStatus() != PaymentStatus.PENDING) {
             log.info("IPN already confirmed — txnRef={}", txnRef);
             return ipnResponse("02", "Already Confirmed");
         }

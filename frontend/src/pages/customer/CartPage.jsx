@@ -1,10 +1,10 @@
+import { Link } from 'react-router-dom';
+import { Minus, Plus, ShoppingCart, Trash2 } from 'lucide-react';
 import { useCart } from '../../hooks/useCart';
 import Spinner from '../../components/ui/Spinner';
 import Button from '../../components/ui/Button';
 import { formatPrice } from '../../utils/format';
-import { Link } from 'react-router-dom';
 import { ROUTES } from '../../constants/routes';
-import { Trash2, Plus, Minus, ShoppingCart } from 'lucide-react';
 
 const CartPage = () => {
   const { data, isLoading, isError, updateCartItem, removeCartItem } = useCart();
@@ -14,6 +14,7 @@ const CartPage = () => {
 
   const cartItems = data?.items || [];
   const total = data?.totalPrice || 0;
+  const hasUnavailableItems = !!data?.hasUnavailableItems;
 
   if (cartItems.length === 0) {
     return (
@@ -36,13 +37,23 @@ const CartPage = () => {
     );
   }
 
+  const blockCheckout = (event) => {
+    if (hasUnavailableItems) {
+      event.preventDefault();
+      alert('Giỏ hàng có sản phẩm không khả dụng hoặc không đủ số lượng. Vui lòng cập nhật trước khi thanh toán.');
+    }
+  };
+
   return (
     <div className="space-y-8">
       <h1 className="text-3xl font-bold text-gray-900">Giỏ hàng của bạn</h1>
       <div className="grid lg:grid-cols-3 gap-8">
         <div className="lg:col-span-2 space-y-4">
           {cartItems.map(item => (
-            <div key={item.variantId} className={`flex gap-4 bg-white p-4 rounded-2xl border border-gray-100 shadow-sm ${!item.available ? 'opacity-50 grayscale' : ''}`}>
+            <div
+              key={item.variantId}
+              className={`flex gap-4 bg-white p-4 rounded-2xl border border-gray-100 shadow-sm ${!item.available ? 'opacity-50 grayscale' : ''}`}
+            >
               <img
                 src={item.primaryImageUrl || `https://picsum.photos/seed/${item.productId}/200/200`}
                 alt={item.productName}
@@ -57,8 +68,17 @@ const CartPage = () => {
                     </Link>
                     <p className="text-sm text-gray-500 mt-1">
                       {item.color} | {item.size}
-                      {!item.available && <span className="ml-2 text-red-500 font-medium">(Hết hàng)</span>}
+                      {!item.available && (
+                        <span className="ml-2 text-red-500 font-medium">
+                          (Không khả dụng hoặc không đủ số lượng)
+                        </span>
+                      )}
                     </p>
+                    {!item.available && (
+                      <p className="mt-1 text-xs text-red-500">
+                        Tồn kho hiện tại: {item.stockQuantity ?? 0}. Vui lòng giảm số lượng hoặc xóa sản phẩm.
+                      </p>
+                    )}
                   </div>
                   <button
                     onClick={() => removeCartItem.mutate(item.variantId)}
@@ -74,7 +94,7 @@ const CartPage = () => {
                   <div className="flex items-center gap-3 bg-gray-50 rounded-lg p-1 border border-gray-200">
                     <button
                       onClick={() => updateCartItem.mutate({ itemId: item.variantId, quantity: item.quantity - 1 })}
-                      disabled={item.quantity <= 1 || !item.available || updateCartItem.isPending}
+                      disabled={item.quantity <= 1 || updateCartItem.isPending}
                       className="p-1 hover:bg-white rounded-md disabled:opacity-50 transition-colors"
                     >
                       <Minus className="w-4 h-4" />
@@ -93,8 +113,14 @@ const CartPage = () => {
             </div>
           ))}
         </div>
+
         <div className="bg-white p-6 rounded-2xl h-fit border border-gray-200 shadow-sm sticky top-24">
           <h2 className="text-lg font-bold mb-4 text-gray-900">Tổng đơn hàng</h2>
+          {hasUnavailableItems && (
+            <div className="mb-4 rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
+              Giỏ hàng có sản phẩm đã ngừng bán hoặc số lượng vượt quá tồn kho. Vui lòng cập nhật trước khi thanh toán.
+            </div>
+          )}
           <div className="space-y-3 text-sm text-gray-600 mb-6">
             <div className="flex justify-between">
               <span>Tạm tính</span>
@@ -109,13 +135,8 @@ const CartPage = () => {
               <span>{formatPrice(total)}</span>
             </div>
           </div>
-          <Link to={ROUTES.CHECKOUT} className="block" onClick={(e) => {
-            if (data?.hasUnavailableItems) {
-              e.preventDefault();
-              alert("Giỏ hàng của bạn có sản phẩm hết hàng. Vui lòng xóa sản phẩm đó trước khi thanh toán.");
-            }
-          }}>
-            <Button className="w-full" size="lg" disabled={data?.hasUnavailableItems || cartItems.length === 0}>
+          <Link to={ROUTES.CHECKOUT} className="block" onClick={blockCheckout}>
+            <Button className="w-full" size="lg" disabled={hasUnavailableItems || cartItems.length === 0}>
               Thanh toán ngay
             </Button>
           </Link>

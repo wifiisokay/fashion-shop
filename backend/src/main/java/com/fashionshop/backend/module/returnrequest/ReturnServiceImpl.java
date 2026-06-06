@@ -3,6 +3,7 @@ package com.fashionshop.backend.module.returnrequest;
 import com.fashionshop.backend.common.PageResponse;
 import com.fashionshop.backend.common.enums.OrderPaymentStatus;
 import com.fashionshop.backend.common.enums.OrderStatus;
+import com.fashionshop.backend.common.enums.PaymentStatus;
 import com.fashionshop.backend.common.enums.ReturnStatus;
 import com.fashionshop.backend.domain.Order;
 import com.fashionshop.backend.domain.OrderItem;
@@ -10,6 +11,7 @@ import com.fashionshop.backend.domain.ReturnItem;
 import com.fashionshop.backend.domain.ReturnRequest;
 import com.fashionshop.backend.domain.User;
 import com.fashionshop.backend.domain.repository.OrderRepository;
+import com.fashionshop.backend.domain.repository.PaymentRepository;
 import com.fashionshop.backend.domain.repository.ProductVariantRepository;
 import com.fashionshop.backend.domain.repository.ReturnItemRepository;
 import com.fashionshop.backend.domain.repository.ReturnRequestRepository;
@@ -49,6 +51,7 @@ public class ReturnServiceImpl implements ReturnService {
     private final ReturnRequestRepository returnRepository;
     private final ReturnItemRepository returnItemRepository;
     private final OrderRepository orderRepository;
+    private final PaymentRepository paymentRepository;
     private final ProductVariantRepository variantRepository;
     private final UserRepository userRepository;
     private final ReturnStatusService returnStatusService;
@@ -198,7 +201,12 @@ public class ReturnServiceImpl implements ReturnService {
     @Override
     @Transactional
     public void markReceived(Long adminId, Long returnId) {
-        ReturnRequest r = findReturnOrThrow(returnId);
+        ReturnRequest r = returnRepository.findByIdForUpdate(returnId)
+            .orElseThrow(() -> new BusinessException(ErrorCode.RETURN_NOT_FOUND, HttpStatus.NOT_FOUND));
+        if (r.getStatus() == ReturnStatus.RECEIVED || r.getStatus() == ReturnStatus.COMPLETED) {
+            log.info("Return already received returnId={}, status={}", returnId, r.getStatus());
+            return;
+        }
         returnStatusService.validateTransition(r.getStatus(), ReturnStatus.RECEIVED);
 
         increaseStockFromReturnItems(r);
@@ -223,7 +231,15 @@ public class ReturnServiceImpl implements ReturnService {
         }
 
         Order order = r.getOrder();
+        order.setStatus(OrderStatus.RETURNED);
         order.setPaymentStatus(OrderPaymentStatus.REFUNDED);
+        paymentRepository.findByOrderId(order.getId()).ifPresent(payment -> {
+            payment.setStatus(PaymentStatus.REFUNDED);
+            payment.setRefundedAt(r.getRefundedAt());
+            payment.setRefundReason("Hoan tat yeu cau tra hang #" + returnId
+                + " - so tien hoan: " + nullSafeRefundAmount(r.getRefundAmount()));
+            paymentRepository.save(payment);
+        });
 
         log.info("Return completed returnId={}, adminId={}", returnId, adminId);
     }
@@ -358,6 +374,10 @@ public class ReturnServiceImpl implements ReturnService {
 
     private long defaultLong(Long value) {
         return value != null ? value : 0;
+    }
+
+    private BigDecimal nullSafeRefundAmount(BigDecimal value) {
+        return value != null ? value : BigDecimal.ZERO;
     }
 
     @Override

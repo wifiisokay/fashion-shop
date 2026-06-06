@@ -43,8 +43,12 @@ const Button = React.forwardRef(({ className, variant, size, asChild = false, lo
       ref={ref}
       disabled={disabled || loading}
       {...props}>
-      {loading && <Loader2 className="mr-2 h-4 w-4 animate-spin flex-shrink-0" />}
-      {children}
+      {asChild ? children : (
+        <>
+          {loading && <Loader2 className="mr-2 h-4 w-4 animate-spin flex-shrink-0" />}
+          {children}
+        </>
+      )}
     </Comp>
   );
 })

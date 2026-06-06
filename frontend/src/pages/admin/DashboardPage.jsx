@@ -100,7 +100,7 @@ const CustomRevenueTooltip = ({ active, payload, label }) => {
             Doanh thu thực nhận: {formatPrice(payload[0].value)}
           </p>
           <p className="text-xs text-gray-500 font-medium">
-            Số đơn COMPLETED + PAID: {dataPoint.orderCount || 0} đơn
+            Số đơn hoàn thành: {dataPoint.orderCount || 0} đơn
           </p>
         </div>
       </div>
@@ -113,14 +113,16 @@ const CustomRevenueTooltip = ({ active, payload, label }) => {
 const ChartCard = ({ title, children, empty, emptyMessage = "Chưa có dữ liệu thống kê" }) => (
   <div className="bg-white rounded-2xl border border-gray-200 shadow-sm p-6 flex flex-col h-full">
     <h2 className="text-base font-bold text-gray-900 mb-4 tracking-tight">{title}</h2>
-    <div className="flex-1 min-h-[300px] h-80 relative flex items-center justify-center">
+    <div className="flex-1 min-h-[300px] h-80 relative">
       {empty ? (
-        <div className="text-sm font-medium text-gray-400 flex flex-col items-center gap-2">
+        <div className="absolute inset-0 flex flex-col items-center justify-center text-sm font-medium text-gray-400 gap-2">
           <AlertCircle className="w-8 h-8 text-gray-300" />
           <span>{emptyMessage}</span>
         </div>
       ) : (
-        children
+        <div className="absolute inset-0">
+          {children}
+        </div>
       )}
     </div>
   </div>
@@ -402,7 +404,7 @@ const DashboardPage = () => {
 
           <div className="border-t border-indigo-700/40 pt-3 mt-4 flex flex-col gap-1.5 text-xs text-indigo-200 font-medium">
             <div className="flex justify-between items-center">
-              <span>Đơn COMPLETED + PAID:</span>
+              <span>Đơn hoàn thành:</span>
               <span className="font-bold text-emerald-300">{formatPrice(overview?.finalizedGrossRevenue || 0)}</span>
             </div>
             <div className="flex justify-between items-center">

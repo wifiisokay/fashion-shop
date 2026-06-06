@@ -129,7 +129,7 @@ class PaymentServiceImplTest {
             Map<String, String> params = mockIpnParams("00", "35000000"); // 350000 * 100
 
             when(vnPayService.verifySignature(eq(params), eq("valid_hash"))).thenReturn(true);
-            when(paymentRepository.findByVnpayTxnRef("12320260429143022")).thenReturn(Optional.of(payment));
+            when(paymentRepository.findByVnpayTxnRefForUpdate("12320260429143022")).thenReturn(Optional.of(payment));
             when(paymentRepository.save(any())).thenAnswer(inv -> inv.getArgument(0));
             when(orderRepository.save(any())).thenAnswer(inv -> inv.getArgument(0));
 
@@ -154,7 +154,7 @@ class PaymentServiceImplTest {
             Map<String, String> params = mockIpnParams("24", "35000000"); // code 24 = user cancel
 
             when(vnPayService.verifySignature(eq(params), eq("valid_hash"))).thenReturn(true);
-            when(paymentRepository.findByVnpayTxnRef("12320260429143022")).thenReturn(Optional.of(payment));
+            when(paymentRepository.findByVnpayTxnRefForUpdate("12320260429143022")).thenReturn(Optional.of(payment));
             when(paymentRepository.save(any())).thenAnswer(inv -> inv.getArgument(0));
             when(orderRepository.save(any())).thenAnswer(inv -> inv.getArgument(0));
 
@@ -184,7 +184,7 @@ class PaymentServiceImplTest {
         void paymentNotFound_returns01() {
             Map<String, String> params = mockIpnParams("00", "35000000");
             when(vnPayService.verifySignature(eq(params), eq("valid_hash"))).thenReturn(true);
-            when(paymentRepository.findByVnpayTxnRef("12320260429143022")).thenReturn(Optional.empty());
+            when(paymentRepository.findByVnpayTxnRefForUpdate("12320260429143022")).thenReturn(Optional.empty());
 
             Map<String, String> result = sut.handleIpn(params);
 
@@ -199,7 +199,7 @@ class PaymentServiceImplTest {
             Map<String, String> params = mockIpnParams("00", "99999999"); // sai số tiền
 
             when(vnPayService.verifySignature(eq(params), eq("valid_hash"))).thenReturn(true);
-            when(paymentRepository.findByVnpayTxnRef("12320260429143022")).thenReturn(Optional.of(payment));
+            when(paymentRepository.findByVnpayTxnRefForUpdate("12320260429143022")).thenReturn(Optional.of(payment));
 
             Map<String, String> result = sut.handleIpn(params);
 
@@ -214,7 +214,7 @@ class PaymentServiceImplTest {
             Map<String, String> params = mockIpnParams("00", "35000000");
 
             when(vnPayService.verifySignature(eq(params), eq("valid_hash"))).thenReturn(true);
-            when(paymentRepository.findByVnpayTxnRef("12320260429143022")).thenReturn(Optional.of(payment));
+            when(paymentRepository.findByVnpayTxnRefForUpdate("12320260429143022")).thenReturn(Optional.of(payment));
 
             Map<String, String> result = sut.handleIpn(params);
 

@@ -6,7 +6,9 @@ import java.time.LocalDateTime;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 
+import com.fashionshop.backend.common.enums.OrderPaymentStatus;
 import com.fashionshop.backend.common.enums.OrderStatus;
 import com.fashionshop.backend.domain.Order;
 import com.fashionshop.backend.domain.Review;
@@ -78,7 +80,7 @@ public class OrderDetailResponse {
                                            List<String> packingWarnings) {
         return from(order, statusLabel, itemIdToReview, returnId, returnStatus, returnStatusLabel, returnReason,
             returnAdminNote, returnEvidenceImages, returnRefundAmount, estimatedShippingFee, shippingFeeDifference,
-            packingWarnings, null);
+            packingWarnings, null, Set.of());
     }
 
     public static OrderDetailResponse from(Order order, String statusLabel,
@@ -88,13 +90,28 @@ public class OrderDetailResponse {
                                            List<String> returnEvidenceImages, BigDecimal returnRefundAmount,
                                            BigDecimal estimatedShippingFee, BigDecimal shippingFeeDifference,
                                            List<String> packingWarnings, Boolean shippingFeeFallback) {
-        boolean canReviewOrder = order.getStatus() == OrderStatus.COMPLETED;
+        return from(order, statusLabel, itemIdToReview, returnId, returnStatus, returnStatusLabel, returnReason,
+            returnAdminNote, returnEvidenceImages, returnRefundAmount, estimatedShippingFee, shippingFeeDifference,
+            packingWarnings, shippingFeeFallback, Set.of());
+    }
+
+    public static OrderDetailResponse from(Order order, String statusLabel,
+                                           Map<Long, Review> itemIdToReview,
+                                           Long returnId, String returnStatus, String returnStatusLabel,
+                                           String returnReason, String returnAdminNote,
+                                           List<String> returnEvidenceImages, BigDecimal returnRefundAmount,
+                                           BigDecimal estimatedShippingFee, BigDecimal shippingFeeDifference,
+                                           List<String> packingWarnings, Boolean shippingFeeFallback,
+                                           Set<Long> nonReviewableReturnItemIds) {
+        boolean canReviewOrder = order.getStatus() == OrderStatus.COMPLETED
+            && order.getPaymentStatus() == OrderPaymentStatus.PAID;
+        Set<Long> blockedItemIds = nonReviewableReturnItemIds != null ? nonReviewableReturnItemIds : Set.of();
 
         List<OrderItemResponse> itemResponses = order.getItems().stream()
             .map(item -> {
                 Review review = itemIdToReview.get(item.getId());
                 boolean reviewed = review != null;
-                Boolean canReview = canReviewOrder && !reviewed ? true : null;
+                Boolean canReview = canReviewOrder && !reviewed && !blockedItemIds.contains(item.getId()) ? true : null;
                 Long reviewId = reviewed ? review.getId() : null;
                 Integer reviewRating = reviewed ? review.getRating() : null;
                 String reviewComment = reviewed ? review.getComment() : null;
