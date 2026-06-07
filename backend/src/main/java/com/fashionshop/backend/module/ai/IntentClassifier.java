@@ -20,8 +20,13 @@ import java.util.LinkedHashMap;
 public class IntentClassifier {
 
     private static final Set<String> STRONG_OUTFIT_PHRASES = Set.of(
-        "goi y phoi", "phoi do", "mix do", "mac voi", "ket hop", "mix match",
+        "goi y phoi", "phoi", "phoi do", "phoi voi", "mix do", "mac voi", "ket hop", "mix match",
         "outfit", "nen mac gi", "mac gi"
+    );
+
+    private static final Set<String> SMALLTALK_PHRASES = Set.of(
+        "xin chao", "chao ban", "hello", "hi", "cam on", "thanks", "thank you",
+        "ban la ai", "ban giup duoc gi", "giup duoc gi", "ok", "duoc roi"
     );
 
     // Thương hiệu cạnh tranh / chủ đề ngoài phạm vi
@@ -35,7 +40,14 @@ public class IntentClassifier {
     private static final Set<String> OUT_OF_SCOPE_TOPICS = Set.of(
         "thoi tiet", "tin tuc", "bong da", "the thao", "chinh tri", "covid",
         "nau an", "cong thuc", "bai tap", "hoc tap", "tieng anh", "toan",
-        "lam the nao de", "lich su", "dia ly", "khoa hoc"
+        "lam the nao de", "lich su", "dia ly", "khoa hoc",
+        "phuong trinh", "giai phuong trinh", "bac 2", "can bac", "bai toan",
+        "giai toan", "dao ham", "tich phan",
+        "lap trinh", "viet code", "code", "thuat toan", "binary search",
+        "tim kiem nhi phan", "java", "python", "javascript", "sql",
+        "thu do", "nuoc phap", "dich cau", "dich sang", "translate",
+        "du doan", "doi bong", "vo dich", "world cup", "wc 2026",
+        "vat ly", "hoa hoc", "y te", "bac si", "thuoc", "benh", "phap luat", "luat", "hop dong"
     );
 
     private static final Map<ChatIntent, Set<String>> INTENT_KEYWORDS = Map.of(
@@ -91,17 +103,24 @@ public class IntentClassifier {
     public ClassificationResult classifyDetailed(String message, List<ChatMessage> recentMessages) {
         String normalizedMsg = normalizeVi(message);
 
-        if (isStandaloneNonCommerceQuestion(message, normalizedMsg)) {
-            log.info("[AI_INTENT] message='{}' normalized='{}' intent={} reason=standalone_non_commerce",
-                shorten(message), normalizedMsg.trim(), ChatIntent.CHITCHAT);
-            return new ClassificationResult(ChatIntent.CHITCHAT, "standalone_non_commerce", normalizedMsg.trim());
+        // Guard ngoài phạm vi phải chạy trước product search để tránh các câu toán/code/dịch thuật
+        // bị hiểu nhầm thành tìm sản phẩm vì chứa từ khóa chung như "tìm".
+        if (isOutOfScope(normalizedMsg)) {
+            log.info("[AI_INTENT] message='{}' normalized='{}' intent={} reason=out_of_scope_guard",
+                shorten(message), normalizedMsg.trim(), ChatIntent.OUT_OF_SCOPE);
+            return new ClassificationResult(ChatIntent.OUT_OF_SCOPE, "out_of_scope_guard", normalizedMsg.trim());
         }
 
-        // Kiểm tra câu hỏi ngoài phạm vi shop (thương hiệu khác, chủ đề không liên quan)
-        if (isOutOfScope(normalizedMsg)) {
-            log.info("[AI_INTENT] message='{}' normalized='{}' intent={} reason=out_of_scope",
+        if (isSmalltalk(normalizedMsg)) {
+            log.info("[AI_INTENT] message='{}' normalized='{}' intent={} reason=smalltalk",
+                shorten(message), normalizedMsg.trim(), ChatIntent.CHITCHAT);
+            return new ClassificationResult(ChatIntent.CHITCHAT, "smalltalk", normalizedMsg.trim());
+        }
+
+        if (isStandaloneNonCommerceQuestion(message, normalizedMsg)) {
+            log.info("[AI_INTENT] message='{}' normalized='{}' intent={} reason=standalone_non_commerce",
                 shorten(message), normalizedMsg.trim(), ChatIntent.OUT_OF_SCOPE);
-            return new ClassificationResult(ChatIntent.OUT_OF_SCOPE, "out_of_scope", normalizedMsg.trim());
+            return new ClassificationResult(ChatIntent.OUT_OF_SCOPE, "standalone_non_commerce", normalizedMsg.trim());
         }
 
         if (containsStrongOutfitSignal(normalizedMsg)) {
@@ -136,6 +155,10 @@ public class IntentClassifier {
             bestIntent = inferFromContext(normalizedMsg, recentMessages);
             reason = bestIntent == ChatIntent.CHITCHAT ? "context_ignored" : "context_followup";
         }
+        if (bestScore == 0 && bestIntent == ChatIntent.CHITCHAT) {
+            bestIntent = ChatIntent.OUT_OF_SCOPE;
+            reason = "no_in_scope_signal";
+        }
 
         log.debug("Classified message '{}' → {} (score={})", message, bestIntent, bestScore);
         log.info("[AI_INTENT] message='{}' normalized='{}' intent={} reason={} bestScore={} scores={} recentCount={}",
@@ -165,8 +188,17 @@ public class IntentClassifier {
                 } catch (IllegalArgumentException ignored) {}
             }
         }
-        log.info("[AI_INTENT_CONTEXT] normalized='{}' decision=chitchat", message.trim());
+        log.info("[AI_INTENT_CONTEXT] normalized='{}' decision=out_of_scope", message.trim());
         return ChatIntent.CHITCHAT;
+    }
+
+    private boolean isSmalltalk(String normalizedMsg) {
+        for (String phrase : SMALLTALK_PHRASES) {
+            if (normalizedMsg.contains(" " + phrase + " ")) {
+                return true;
+            }
+        }
+        return false;
     }
 
     private boolean isStandaloneNonCommerceQuestion(String rawMessage, String normalizedMsg) {
@@ -190,6 +222,7 @@ public class IntentClassifier {
     }
 
     private boolean isOutOfScope(String normalizedMsg) {
+        boolean hasInScopeSignal = hasFashionOrShopSignal(normalizedMsg);
         // Mention thương hiệu cạnh tranh
         for (String brand : OUT_OF_SCOPE_BRANDS) {
             if (normalizedMsg.contains(brand)) {
@@ -198,11 +231,22 @@ public class IntentClassifier {
         }
         // Chủ đề hoàn toàn ngoài phạm vi
         for (String topic : OUT_OF_SCOPE_TOPICS) {
-            if (normalizedMsg.contains(topic)) {
+            if (normalizedMsg.contains(topic) && !hasInScopeSignal) {
                 return true;
             }
         }
         return false;
+    }
+
+    private boolean hasFashionOrShopSignal(String normalizedMsg) {
+        if (containsStrongOutfitSignal(normalizedMsg)) {
+            return true;
+        }
+        return containsAny(normalizedMsg,
+            " shop ", " fashion shop ", " san pham ", " hang ", " don hang ", " thanh toan ",
+            " doi tra ", " hoan tien ", " ship ", " giao hang ", " vnpay ", " cod ",
+            " ao ", " quan ", " vay ", " dam ", " khoac ", " polo ", " so mi ", " thun ",
+            " size ", " mau ", " chat lieu ", " phoi ", " outfit ", " mac voi ");
     }
 
     private boolean hasCommerceFollowUpSignal(String normalizedMsg) {

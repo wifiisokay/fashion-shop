@@ -120,6 +120,15 @@ public class ChatServiceImpl implements ChatService {
         // 4. Classify intent. Gemini NLU is used only for ambiguous requests.
         IntentClassifier.ClassificationResult externalClassification = intentClassifier.classifyDetailed(content, recentMessages);
         ChatIntent intent = externalClassification.intent();
+        if (intent == ChatIntent.OUT_OF_SCOPE) {
+            ChatMessageResponse response = outOfScopeResponse();
+            saveAssistantMessage(session, response, ChatIntent.OUT_OF_SCOPE);
+            log.info("[AI_CHAT_DONE] userId={} sessionId={} externalIntent={} internalIntent={} functionCalled={} requestedKeyword={} searchStatus={} exactReturned={} roleSuggestionReturned={} finalProducts={} outfitCombos={} fallbackReason={} latencyMs={}",
+                    userId, session.getId(), ChatIntent.OUT_OF_SCOPE, InternalChatIntent.OUT_OF_SCOPE,
+                    "politeRefusal", null, null, null, null, 0, 0,
+                    externalClassification.reason(), System.currentTimeMillis() - startedAt);
+            return response;
+        }
         NluSearchParams contextNlu = null;
         boolean geminiNluUsed = false;
         ProductContextDto explicitContext = ProductContextDto.builder()
@@ -469,6 +478,21 @@ public class ChatServiceImpl implements ChatService {
                 .suggestedQuestions(getDefaultSuggestions(intent))
                 .isFromFallback(internalIntent == InternalChatIntent.OUT_OF_SCOPE)
                 .context(toContextDto(context))
+                .createdAt(LocalDateTime.now())
+                .build();
+    }
+
+    private ChatMessageResponse outOfScopeResponse() {
+        return ChatMessageResponse.builder()
+                .role("assistant")
+                .content(defaultTextForIntent(ChatIntent.OUT_OF_SCOPE))
+                .intent(ChatIntent.OUT_OF_SCOPE.name())
+                .internalIntent(InternalChatIntent.OUT_OF_SCOPE.name())
+                .products(List.of())
+                .outfitCombos(List.of())
+                .styleTips(List.of())
+                .suggestedQuestions(getDefaultSuggestions(ChatIntent.OUT_OF_SCOPE))
+                .isFromFallback(true)
                 .createdAt(LocalDateTime.now())
                 .build();
     }
@@ -1145,7 +1169,7 @@ public class ChatServiceImpl implements ChatService {
             case OUTFIT_SUGGEST  -> "Xin lỗi, mình chưa gợi ý được outfit lúc này. Bạn thử lại sau ít giây nhé!";
             case ORDER_INQUIRY   -> "Xin lỗi, mình không tra được. Bạn vào trang Đơn hàng kiểm tra nhé.";
             case RETURN_SUPPORT  -> "Xin lỗi, mình đang bận. Bạn vào trang Đơn hàng → Yêu cầu đổi trả để thực hiện nhé.";
-            case OUT_OF_SCOPE    -> "Fashi chỉ tư vấn về sản phẩm và phong cách trong Fashion Shop thôi bạn ơi. Bạn muốn mình giúp tìm outfit hay sản phẩm nào không?";
+            case OUT_OF_SCOPE    -> "Mình hiện chỉ hỗ trợ các câu hỏi liên quan đến sản phẩm thời trang, phối đồ, đơn hàng và chính sách của Fashion Shop. Bạn có thể hỏi mình như: 'Tìm áo sơ mi nam đi làm' hoặc 'Áo polo nam phối với quần gì?'.";
             default              -> "Xin lỗi, mình đang bận. Bạn thử lại sau ít giây nhé!";
         };
     }
@@ -1270,7 +1294,7 @@ public class ChatServiceImpl implements ChatService {
             case RETURN_SUPPORT -> "Mình đã kiểm tra thông tin đổi trả và chính sách hỗ trợ phù hợp.";
             case GENERAL_SUPPORT -> "Mình có thể hỗ trợ bạn về chính sách, size, thanh toán và vận chuyển.";
             case CHITCHAT -> "Mình có thể hỗ trợ bạn tìm sản phẩm, phối đồ hoặc kiểm tra đơn hàng.";
-            case OUT_OF_SCOPE -> "Fashi chỉ tư vấn về sản phẩm và phong cách trong Fashion Shop. Bạn muốn mình giúp gì không?";
+            case OUT_OF_SCOPE -> "Mình hiện chỉ hỗ trợ các câu hỏi liên quan đến sản phẩm thời trang, phối đồ, đơn hàng và chính sách của Fashion Shop. Bạn có thể hỏi mình như: 'Tìm áo sơ mi nam đi làm' hoặc 'Áo polo nam phối với quần gì?'.";
         };
     }
 

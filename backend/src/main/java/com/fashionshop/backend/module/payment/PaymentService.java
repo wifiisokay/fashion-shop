@@ -20,8 +20,8 @@ public interface PaymentService {
     Map<String, String> handleIpn(Map<String, String> params);
 
     /**
-     * Xử lý Return URL — chỉ verify + redirect FE, KHÔNG update DB.
-     * Trả redirect URL cho frontend.
+     * Xử lý Return URL từ VNPay: verify secureHash, fallback cập nhật DB nếu IPN chưa đến,
+     * sau đó trả redirect URL cho frontend.
      */
     String handleReturn(Map<String, String> params);
 

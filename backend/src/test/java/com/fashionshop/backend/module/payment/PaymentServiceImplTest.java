@@ -260,6 +260,7 @@ class PaymentServiceImplTest {
             Map<String, String> params = mockIpnParams("00", "35000000");
 
             when(vnPayService.verifySignature(eq(params), eq("valid_hash"))).thenReturn(true);
+            when(paymentRepository.findByVnpayTxnRef("12320260429143022")).thenReturn(Optional.of(payment));
 
             String redirect = sut.handleReturn(params);
 
@@ -269,7 +270,9 @@ class PaymentServiceImplTest {
             assertNull(payment.getPaidAt());
             assertEquals(OrderStatus.AWAITING_PAYMENT, order.getStatus());
             assertEquals(OrderPaymentStatus.UNPAID, order.getPaymentStatus());
-            verifyNoInteractions(paymentRepository, orderRepository);
+            verify(paymentRepository).findByVnpayTxnRef("12320260429143022");
+            verify(paymentRepository, never()).save(any());
+            verifyNoInteractions(orderRepository);
         }
 
         @Test
@@ -281,6 +284,7 @@ class PaymentServiceImplTest {
             Map<String, String> params = mockIpnParams("24", "35000000");
 
             when(vnPayService.verifySignature(eq(params), eq("valid_hash"))).thenReturn(true);
+            when(paymentRepository.findByVnpayTxnRef("12320260429143022")).thenReturn(Optional.of(payment));
 
             String redirect = sut.handleReturn(params);
 
@@ -288,7 +292,9 @@ class PaymentServiceImplTest {
             assertEquals(PaymentStatus.PENDING, payment.getStatus());
             assertEquals(OrderStatus.AWAITING_PAYMENT, order.getStatus());
             assertEquals(OrderPaymentStatus.UNPAID, order.getPaymentStatus());
-            verifyNoInteractions(paymentRepository, orderRepository);
+            verify(paymentRepository).findByVnpayTxnRef("12320260429143022");
+            verify(paymentRepository, never()).save(any());
+            verifyNoInteractions(orderRepository);
         }
 
         @Test
@@ -298,12 +304,15 @@ class PaymentServiceImplTest {
             Map<String, String> params = mockIpnParams("00", "35000000");
 
             when(vnPayService.verifySignature(eq(params), eq("valid_hash"))).thenReturn(true);
+            when(paymentRepository.findByVnpayTxnRef("12320260429143022")).thenReturn(Optional.of(payment));
 
             String redirect = sut.handleReturn(params);
 
             assertTrue(redirect.contains("status=success"));
             assertEquals(PaymentStatus.SUCCESS, payment.getStatus());
+            verify(paymentRepository).findByVnpayTxnRef("12320260429143022");
             verify(paymentRepository, never()).save(any());
+            verifyNoInteractions(orderRepository);
         }
 
         @Test

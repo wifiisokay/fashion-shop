@@ -24,6 +24,7 @@ const CheckoutPage = () => {
   const { data: addresses = [], isLoading: addressLoading } = useAddresses();
   const createOrder = useCreateOrder();
   const [error, setError] = useState(null);
+  const [redirectingToVnPay, setRedirectingToVnPay] = useState(false);
 
   const { register, handleSubmit, watch, setValue, formState: { errors, isSubmitting } } = useForm({
     resolver: zodResolver(checkoutSchema),
@@ -46,6 +47,10 @@ const CheckoutPage = () => {
 
   const cartItems = cartData?.items || [];
   const subtotal = cartData?.totalPrice || 0;
+  const orderItemsPayload = cartItems.map((item) => ({
+    variantId: item.variantId,
+    quantity: item.quantity,
+  }));
 
   // Tính tổng cân nặng ước tính từ giỏ hàng (gram)
   const totalWeight = cartItems.reduce((sum, item) => 
@@ -56,7 +61,13 @@ const CheckoutPage = () => {
     data: shippingData, 
     isLoading: shippingLoading, 
     isError: shippingError 
-  } = useShippingFee(selectedAddressId ? Number(selectedAddressId) : null, subtotal, totalWeight);
+  } = useShippingFee(
+    selectedAddressId ? Number(selectedAddressId) : null,
+    subtotal,
+    totalWeight,
+    orderItemsPayload,
+    !redirectingToVnPay
+  );
 
   const shippingFee = shippingData?.fee || 0;
   const total = subtotal + shippingFee;
@@ -70,15 +81,13 @@ const CheckoutPage = () => {
         shippingFee: shippingFee,
         note: formData.note || null,
         estimatedDays: shippingData?.estimatedDays || null,
-        items: cartItems.map((item) => ({
-          variantId: item.variantId,
-          quantity: item.quantity,
-        })),
+        items: orderItemsPayload,
       });
 
       const result = res?.data?.data;
 
       if (formData.paymentMethod === 'VNPAY' && result?.paymentUrl) {
+        setRedirectingToVnPay(true);
         window.location.href = result.paymentUrl;
       } else {
         // COD → chuyển về trang chi tiết đơn hàng (không dùng PaymentResult vì COD chưa thanh toán)

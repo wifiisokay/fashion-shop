@@ -8,6 +8,7 @@ import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.security.SecurityRequirement;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import jakarta.validation.Valid;
+import lombok.extern.slf4j.Slf4j;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.access.prepost.PreAuthorize;
@@ -17,6 +18,7 @@ import org.springframework.web.bind.annotation.*;
 @RestController
 @RequestMapping("/api/shipping")
 @RequiredArgsConstructor
+@Slf4j
 @PreAuthorize("hasRole('CUSTOMER')")
 @Tag(name = "Shipping", description = "Tính phí vận chuyển GHN")
 public class ShippingController {
@@ -30,6 +32,9 @@ public class ShippingController {
     public ResponseEntity<ApiResponse<ShippingFeeResponse>> calculateFee(
             @AuthenticationPrincipal User user,
             @Valid @RequestBody ShippingFeeRequest request) {
+        boolean fallbackToCart = request.getItems() == null || request.getItems().isEmpty();
+        log.info("[CHECKOUT_CART_ACCESS] endpoint=/api/shipping/fee userId={} reason={}",
+            user.getId(), fallbackToCart ? "shipping_preview_missing_items_will_read_cart" : "shipping_preview_items_payload");
         ShippingFeeResponse response = shippingService.calculateShippingFee(user.getId(), request);
         return ResponseEntity.ok(ApiResponse.success(response));
     }

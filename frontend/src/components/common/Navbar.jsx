@@ -1,4 +1,4 @@
-import { Link, useNavigate } from 'react-router-dom';
+import { Link, useLocation, useNavigate } from 'react-router-dom';
 import { useAuth } from '../../contexts/AuthContext';
 import { useCart } from '../../hooks/useCart';
 import { ROUTES } from '../../constants/routes';
@@ -7,7 +7,9 @@ import { LogOut, ShoppingCart, User } from 'lucide-react';
 const Navbar = () => {
   const { user, isAuthenticated, logout } = useAuth();
   const navigate = useNavigate();
-  const { data: cartData } = useCart();
+  const location = useLocation();
+  const isPaymentResultPage = location.pathname === ROUTES.PAYMENT_RESULT;
+  const { data: cartData } = useCart({ enabled: !isPaymentResultPage });
 
   const handleLogout = () => {
     logout();

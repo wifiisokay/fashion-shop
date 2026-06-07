@@ -4,7 +4,7 @@ import { cartApi } from '../api/cartApi';
 import { toast } from 'sonner';
 import { useAuth } from '../contexts/AuthContext';
 
-export const useCart = () => {
+export const useCart = ({ enabled = true } = {}) => {
   const queryClient = useQueryClient();
   const { user } = useAuth();
 
@@ -14,7 +14,7 @@ export const useCart = () => {
       const { data } = await cartApi.get();
       return data?.data ?? null;
     },
-    enabled: user?.role === 'CUSTOMER',
+    enabled: enabled && user?.role === 'CUSTOMER',
     staleTime: 0,
   });
 
