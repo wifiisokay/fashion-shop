@@ -34,6 +34,7 @@ class OutfitCacheManagerTest {
         manager = new OutfitCacheManager(redisTemplate, new ObjectMapper().findAndRegisterModules());
         ReflectionTestUtils.setField(manager, "cacheTtlHours", 6L);
         ReflectionTestUtils.setField(manager, "lockTtlSeconds", 60L);
+        ReflectionTestUtils.setField(manager, "cacheKeyPrefix", "fashion-shop:ai:outfit");
     }
 
     @Test

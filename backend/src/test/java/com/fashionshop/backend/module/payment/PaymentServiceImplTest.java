@@ -79,7 +79,7 @@ class PaymentServiceImplTest {
         @DisplayName("Tạo URL thành công cho đơn VNPay")
         void success() {
             Payment payment = mockPayment(PaymentMethod.VNPAY, PaymentStatus.PENDING);
-            when(paymentRepository.findByOrderId(1L)).thenReturn(Optional.of(payment));
+            when(paymentRepository.findByOrderIdForUpdate(1L)).thenReturn(Optional.of(payment));
             when(vnPayService.generateTxnRef(1L)).thenReturn("12320260429143022");
             when(vnPayService.buildPaymentUrl(eq(1L), any(), eq("127.0.0.1"), eq("12320260429143022")))
                 .thenReturn("https://sandbox.vnpayment.vn/paymentv2/vpcpay.html?params");
@@ -96,7 +96,7 @@ class PaymentServiceImplTest {
         @Test
         @DisplayName("Payment không tồn tại — throw PAYMENT_NOT_FOUND")
         void notFound_throws() {
-            when(paymentRepository.findByOrderId(99L)).thenReturn(Optional.empty());
+            when(paymentRepository.findByOrderIdForUpdate(99L)).thenReturn(Optional.empty());
 
             BusinessException ex = assertThrows(BusinessException.class,
                 () -> sut.createVnPayPaymentUrl(99L, "127.0.0.1"));
@@ -107,7 +107,7 @@ class PaymentServiceImplTest {
         @DisplayName("Đơn COD — throw PAYMENT_CREATION_FAILED")
         void codMethod_throws() {
             Payment payment = mockPayment(PaymentMethod.COD, PaymentStatus.PENDING);
-            when(paymentRepository.findByOrderId(1L)).thenReturn(Optional.of(payment));
+            when(paymentRepository.findByOrderIdForUpdate(1L)).thenReturn(Optional.of(payment));
 
             BusinessException ex = assertThrows(BusinessException.class,
                 () -> sut.createVnPayPaymentUrl(1L, "127.0.0.1"));
@@ -223,70 +223,86 @@ class PaymentServiceImplTest {
             // Không gọi save — không update lần 2
             verify(paymentRepository, never()).save(any());
         }
+
+        @Test
+        @DisplayName("Order đã CANCELLED — IPN success muộn không hồi sinh order")
+        void cancelledOrder_successIpnDoesNotReviveOrder() {
+            Payment payment = mockPayment(PaymentMethod.VNPAY, PaymentStatus.PENDING);
+            payment.getOrder().setStatus(OrderStatus.CANCELLED);
+            Map<String, String> params = mockIpnParams("00", "35000000");
+
+            when(vnPayService.verifySignature(eq(params), eq("valid_hash"))).thenReturn(true);
+            when(paymentRepository.findByVnpayTxnRefForUpdate("12320260429143022")).thenReturn(Optional.of(payment));
+            when(paymentRepository.save(any())).thenAnswer(inv -> inv.getArgument(0));
+
+            Map<String, String> result = sut.handleIpn(params);
+
+            assertEquals("02", result.get("RspCode"));
+            assertEquals("Already Confirmed", result.get("Message"));
+            assertEquals(PaymentStatus.FAILED, payment.getStatus());
+            assertEquals(OrderStatus.CANCELLED, payment.getOrder().getStatus());
+            assertNotEquals(OrderPaymentStatus.PAID, payment.getOrder().getPaymentStatus());
+            verify(orderRepository, never()).save(any());
+        }
     }
 
-    // ==================== handleReturn (with fallback) ====================
+    // ==================== handleReturn ====================
 
     @Nested
-    @DisplayName("handleReturn — Return URL + DB Fallback")
+    @DisplayName("handleReturn — Return URL redirect only")
     class HandleReturn {
 
         @Test
-        @DisplayName("Success + IPN chưa đến → fallback cập nhật DB thành SUCCESS")
-        void success_fallbackUpdatesDb() {
+        @DisplayName("Success → redirect frontend, không update DB")
+        void success_redirectOnly() {
             Payment payment = mockPayment(PaymentMethod.VNPAY, PaymentStatus.PENDING);
             Order order = payment.getOrder();
             Map<String, String> params = mockIpnParams("00", "35000000");
 
             when(vnPayService.verifySignature(eq(params), eq("valid_hash"))).thenReturn(true);
-            when(paymentRepository.findByVnpayTxnRef("12320260429143022")).thenReturn(Optional.of(payment));
-            when(paymentRepository.save(any())).thenAnswer(inv -> inv.getArgument(0));
-            when(orderRepository.save(any())).thenAnswer(inv -> inv.getArgument(0));
 
             String redirect = sut.handleReturn(params);
 
             assertTrue(redirect.contains("status=success"));
             assertTrue(redirect.contains("orderId=1"));
-            assertEquals(PaymentStatus.SUCCESS, payment.getStatus());
-            assertNotNull(payment.getPaidAt());
-            assertEquals(OrderStatus.PENDING, order.getStatus());
-            assertEquals(OrderPaymentStatus.PAID, order.getPaymentStatus());
-            verify(paymentRepository).save(payment);
+            assertEquals(PaymentStatus.PENDING, payment.getStatus());
+            assertNull(payment.getPaidAt());
+            assertEquals(OrderStatus.AWAITING_PAYMENT, order.getStatus());
+            assertEquals(OrderPaymentStatus.UNPAID, order.getPaymentStatus());
+            verifyNoInteractions(paymentRepository, orderRepository);
         }
 
         @Test
-        @DisplayName("Failed + IPN chưa đến → fallback hủy đơn + hoàn stock")
-        void failed_fallbackCancelsOrder() {
+        @DisplayName("Failed → redirect frontend, không update DB")
+        void failed_redirectOnly() {
             Payment payment = mockPayment(PaymentMethod.VNPAY, PaymentStatus.PENDING);
             Order order = payment.getOrder();
             order.setItems(new java.util.ArrayList<>());
             Map<String, String> params = mockIpnParams("24", "35000000");
 
             when(vnPayService.verifySignature(eq(params), eq("valid_hash"))).thenReturn(true);
-            when(paymentRepository.findByVnpayTxnRef("12320260429143022")).thenReturn(Optional.of(payment));
-            when(paymentRepository.save(any())).thenAnswer(inv -> inv.getArgument(0));
-            when(orderRepository.save(any())).thenAnswer(inv -> inv.getArgument(0));
 
             String redirect = sut.handleReturn(params);
 
             assertTrue(redirect.contains("status=failed"));
-            assertEquals(PaymentStatus.FAILED, payment.getStatus());
-            assertEquals(OrderStatus.CANCELLED, order.getStatus());
+            assertEquals(PaymentStatus.PENDING, payment.getStatus());
+            assertEquals(OrderStatus.AWAITING_PAYMENT, order.getStatus());
             assertEquals(OrderPaymentStatus.UNPAID, order.getPaymentStatus());
+            verifyNoInteractions(paymentRepository, orderRepository);
         }
 
         @Test
-        @DisplayName("IPN đã xử lý trước → fallback bỏ qua (idempotent)")
-        void alreadyProcessed_fallbackSkips() {
+        @DisplayName("IPN đã xử lý trước → return URL vẫn chỉ redirect")
+        void alreadyProcessed_redirectOnly() {
             Payment payment = mockPayment(PaymentMethod.VNPAY, PaymentStatus.SUCCESS);
             Map<String, String> params = mockIpnParams("00", "35000000");
 
             when(vnPayService.verifySignature(eq(params), eq("valid_hash"))).thenReturn(true);
-            when(paymentRepository.findByVnpayTxnRef("12320260429143022")).thenReturn(Optional.of(payment));
 
             String redirect = sut.handleReturn(params);
 
             assertTrue(redirect.contains("status=success"));
+            assertEquals(PaymentStatus.SUCCESS, payment.getStatus());
             verify(paymentRepository, never()).save(any());
         }
 

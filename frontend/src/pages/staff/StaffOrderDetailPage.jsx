@@ -98,22 +98,24 @@ const StaffOrderDetailPage = () => {
       }
       await updateStatus({ status: newStatus });
       refetch?.();
+      toast.success('Cập nhật trạng thái thành công');
     } catch (error) {
-      alert(error?.response?.data?.message || 'Lỗi khi cập nhật trạng thái');
+      toast.error(error?.response?.data?.message || 'Lỗi khi cập nhật trạng thái');
     }
   };
 
   const handleCancel = async () => {
     if (!cancelReason.trim()) {
-      alert('Vui lòng nhập lý do hủy đơn');
+      toast.error('Vui lòng nhập lý do hủy đơn');
       return;
     }
     try {
       await updateStatus({ status: 'CANCELLED', cancelReason: cancelReason.trim() });
       setShowCancelDialog(false);
       refetch?.();
+      toast.success('Hủy đơn hàng thành công');
     } catch (error) {
-      alert(error?.response?.data?.message || 'Lỗi khi hủy đơn');
+      toast.error(error?.response?.data?.message || 'Lỗi khi hủy đơn');
     }
   };
 
@@ -125,9 +127,9 @@ const StaffOrderDetailPage = () => {
     const weightNum = Number(actualWeight);
 
     if (isNaN(lengthNum) || lengthNum <= 0 ||
-        isNaN(widthNum) || widthNum <= 0 ||
-        isNaN(heightNum) || heightNum <= 0 ||
-        isNaN(weightNum) || weightNum <= 0) {
+      isNaN(widthNum) || widthNum <= 0 ||
+      isNaN(heightNum) || heightNum <= 0 ||
+      isNaN(weightNum) || weightNum <= 0) {
       alert('Kích thước và cân nặng phải lớn hơn 0');
       return;
     }
@@ -157,9 +159,9 @@ const StaffOrderDetailPage = () => {
     const weightNum = Number(actualWeight);
 
     if (isNaN(lengthNum) || lengthNum <= 0 ||
-        isNaN(widthNum) || widthNum <= 0 ||
-        isNaN(heightNum) || heightNum <= 0 ||
-        isNaN(weightNum) || weightNum <= 0) {
+      isNaN(widthNum) || widthNum <= 0 ||
+      isNaN(heightNum) || heightNum <= 0 ||
+      isNaN(weightNum) || weightNum <= 0) {
       alert('Kích thước và cân nặng phải lớn hơn 0');
       return;
     }
@@ -184,7 +186,7 @@ const StaffOrderDetailPage = () => {
     switch (status) {
       case 'PENDING': case 'AWAITING_PAYMENT': return <Clock className="w-5 h-5" />;
       case 'CONFIRMED': return <Package className="w-5 h-5" />;
-      case 'SHIPPING':  return <Truck className="w-5 h-5" />;
+      case 'SHIPPING': return <Truck className="w-5 h-5" />;
       case 'DELIVERED': case 'COMPLETED': return <CheckCircle className="w-5 h-5" />;
       case 'CANCELLED': return <XCircle className="w-5 h-5" />;
       case 'RETURN_REQUESTED': case 'RETURNING': case 'RETURNED': return <RotateCcw className="w-5 h-5" />;
@@ -212,7 +214,11 @@ const StaffOrderDetailPage = () => {
         <div className="ml-auto">
           <span className={clsx('px-3 py-1 rounded-full text-sm font-medium flex items-center gap-2', statusColor(order.status))}>
             {getStatusIcon(order.status)}
-            {formatOrderStatus(order.status).label}
+            {order.status === 'AWAITING_PAYMENT' && order.paymentMethod === 'VNPAY'
+              ? 'Chờ thanh toán VNPay'
+              : order.status === 'PENDING' && order.paymentMethod === 'VNPAY' && order.paymentStatus === 'PAID'
+                ? 'Đã thanh toán - chờ shop xác nhận'
+                : formatOrderStatus(order.status).label}
           </span>
         </div>
       </div>
@@ -274,28 +280,28 @@ const StaffOrderDetailPage = () => {
               <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 mb-4">
                 <div>
                   <label className="block text-xs text-gray-500 mb-1">Dài (cm)</label>
-                  <input type="number" min="1" max="200" value={packing.packageLength} onChange={e => setPacking(p => ({...p, packageLength: e.target.value}))}
+                  <input type="number" min="1" max="200" value={packing.packageLength} onChange={e => setPacking(p => ({ ...p, packageLength: e.target.value }))}
                     className="w-full border border-gray-300 rounded-lg p-2 text-sm focus:ring-blue-500 focus:border-blue-500" placeholder="cm" />
                 </div>
                 <div>
                   <label className="block text-xs text-gray-500 mb-1">Rộng (cm)</label>
-                  <input type="number" min="1" max="200" value={packing.packageWidth} onChange={e => setPacking(p => ({...p, packageWidth: e.target.value}))}
+                  <input type="number" min="1" max="200" value={packing.packageWidth} onChange={e => setPacking(p => ({ ...p, packageWidth: e.target.value }))}
                     className="w-full border border-gray-300 rounded-lg p-2 text-sm focus:ring-blue-500 focus:border-blue-500" placeholder="cm" />
                 </div>
                 <div>
                   <label className="block text-xs text-gray-500 mb-1">Cao (cm)</label>
-                  <input type="number" min="1" max="200" value={packing.packageHeight} onChange={e => setPacking(p => ({...p, packageHeight: e.target.value}))}
+                  <input type="number" min="1" max="200" value={packing.packageHeight} onChange={e => setPacking(p => ({ ...p, packageHeight: e.target.value }))}
                     className="w-full border border-gray-300 rounded-lg p-2 text-sm focus:ring-blue-500 focus:border-blue-500" placeholder="cm" />
                 </div>
                 <div>
                   <label className="block text-xs text-gray-500 mb-1">Cân nặng (g)</label>
-                  <input type="number" min="1" max="50000" value={packing.actualWeight} onChange={e => setPacking(p => ({...p, actualWeight: e.target.value}))}
+                  <input type="number" min="1" max="50000" value={packing.actualWeight} onChange={e => setPacking(p => ({ ...p, actualWeight: e.target.value }))}
                     className="w-full border border-gray-300 rounded-lg p-2 text-sm focus:ring-blue-500 focus:border-blue-500" placeholder="gram" />
                 </div>
               </div>
               <div className="mb-4">
                 <label className="block text-xs text-gray-500 mb-1">Ghi chú đóng gói (không bắt buộc)</label>
-                <input type="text" value={packing.packingNote} onChange={e => setPacking(p => ({...p, packingNote: e.target.value}))}
+                <input type="text" value={packing.packingNote} onChange={e => setPacking(p => ({ ...p, packingNote: e.target.value }))}
                   className="w-full border border-gray-300 rounded-lg p-2 text-sm focus:ring-blue-500 focus:border-blue-500" placeholder="VD: Bọc thêm bubble wrap..." />
               </div>
 
@@ -317,13 +323,12 @@ const StaffOrderDetailPage = () => {
                   </div>
                   <div className="flex justify-between">
                     <span>Chênh lệch:</span>
-                    <span className={`font-bold ${
-                      Number(previewData.difference) > 0 ? 'text-red-600' :
-                      Number(previewData.difference) < 0 ? 'text-green-600' : 'text-gray-700'
-                    }`}>
+                    <span className={`font-bold ${Number(previewData.difference) > 0 ? 'text-red-600' :
+                        Number(previewData.difference) < 0 ? 'text-green-600' : 'text-gray-700'
+                      }`}>
                       {Number(previewData.difference) > 0 ? `+${formatPrice(previewData.difference)}` :
-                       Number(previewData.difference) < 0 ? `-${formatPrice(Math.abs(previewData.difference))}` :
-                       formatPrice(0)}
+                        Number(previewData.difference) < 0 ? `-${formatPrice(Math.abs(previewData.difference))}` :
+                          formatPrice(0)}
                     </span>
                   </div>
                 </div>
@@ -415,7 +420,7 @@ const StaffOrderDetailPage = () => {
                       Xác nhận đơn hàng
                     </Button>
                     <Button variant="outline" onClick={() => handleUpdateStatus('CANCELLED')} className="text-red-600 border-red-200 hover:bg-red-50">
-                      Hủy đơn
+                      Từ chối đơn
                     </Button>
                   </>
                 )}
@@ -456,7 +461,7 @@ const StaffOrderDetailPage = () => {
               {isPaidVnPayOrder && (
                 <div className="flex items-start gap-2 rounded-lg border border-amber-200 bg-amber-50 p-3 text-sm text-amber-800">
                   <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0" />
-                  <span>Đơn đã thanh toán qua VNPay. Hủy đơn sẽ thực hiện hoàn tiền/mô phỏng hoàn tiền.</span>
+                  <span>Đơn hàng đã thanh toán qua VNPay. Khi hủy, hệ thống sẽ ghi nhận hoàn tiền mô phỏng.</span>
                 </div>
               )}
               <textarea
@@ -577,14 +582,13 @@ const StaffOrderDetailPage = () => {
               </div>
               <div className="flex justify-between items-center">
                 <span className="text-gray-500">Trạng thái TT</span>
-                <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium ${
-                  order.paymentStatus === 'PAID' ? 'bg-green-100 text-green-700' :
-                  order.paymentStatus === 'REFUNDED' ? 'bg-gray-100 text-gray-600' :
-                  'bg-yellow-100 text-yellow-700'
-                }`}>
+                <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium ${order.paymentStatus === 'PAID' ? 'bg-green-100 text-green-700' :
+                    order.paymentStatus === 'REFUNDED' ? 'bg-gray-100 text-gray-600' :
+                      'bg-yellow-100 text-yellow-700'
+                  }`}>
                   {order.paymentStatus === 'PAID' ? 'Đã thanh toán' :
-                   order.paymentStatus === 'REFUNDED' ? 'Đã hoàn tiền' :
-                   'Chưa thanh toán'}
+                    order.paymentStatus === 'REFUNDED' ? 'Đã hoàn tiền' :
+                      'Chưa thanh toán'}
                 </span>
               </div>
               <div className="flex justify-between">

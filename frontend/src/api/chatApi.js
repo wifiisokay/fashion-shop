@@ -2,8 +2,15 @@ import axiosInstance from './axiosInstance';
 
 export const chatApi = {
   sendMessage: async (content, context = {}) => {
-    const { data } = await axiosInstance.post('/api/chat/message', { content, ...context });
-    return data?.data ?? null;
+    const { signal, ...payload } = context;
+    return axiosInstance.post(
+      '/api/chat/message',
+      { content, message: content, ...payload },
+      {
+        timeout: 40000,
+        ...(signal ? { signal } : {}),
+      }
+    );
   },
 
   getTodaySession: async () => {
@@ -29,6 +36,7 @@ export const chatApi = {
   getOutfitSuggestions: async (productId, colorId, refresh = false) => {
     const { data } = await axiosInstance.get(`/api/products/${productId}/outfit-suggestions`, {
       params: { ...(colorId ? { colorId } : {}), ...(refresh ? { refresh: true } : {}) },
+      timeout: 40000,
     });
     return data?.data ?? null;
   },

@@ -38,8 +38,9 @@ const OrderDetailPage = () => {
   if (isError || !order) return <div className="text-center py-20 text-red-500">Lỗi tải chi tiết đơn hàng</div>;
 
   const address = order.addressSnapshot || {};
-  const canCancel = order.status === 'PENDING';
-  const isPaidVnPayOrder = order.paymentMethod === 'VNPAY' && order.paymentStatus === 'PAID';
+  const isWaitingStatus = order.status === 'AWAITING_PAYMENT' || order.status === 'PENDING';
+  const isPaidVnPay = order.paymentMethod === 'VNPAY' && order.paymentStatus === 'PAID';
+  const canCancel = isWaitingStatus && !isPaidVnPay;
 
   // Return window: 7 days from deliveredAt
   const canRequestReturn = (() => {
@@ -64,9 +65,9 @@ const OrderDetailPage = () => {
     try {
       await cancelOrder.mutateAsync({ orderId: id, reason: cancelReason || undefined });
       setShowCancelDialog(false);
-      window.location.reload();
+      toast.success('Hủy đơn hàng thành công');
     } catch (err) {
-      alert(err?.response?.data?.message || 'Hủy đơn thất bại');
+      toast.error(err?.response?.data?.message || 'Hủy đơn thất bại');
     }
   };
 
@@ -89,7 +90,7 @@ const OrderDetailPage = () => {
           </div>
           <div className="text-left sm:text-right">
             <p className="text-sm text-gray-500 mb-1">Ngày đặt: {formatDate(order.createdAt)}</p>
-            <OrderStatusBadge status={order.status} />
+             <OrderStatusBadge status={order.status} order={order} />
           </div>
         </div>
 
@@ -262,12 +263,6 @@ const OrderDetailPage = () => {
           ) : (
             <div className="bg-white p-6 rounded-2xl border border-red-200 shadow-sm space-y-4 w-full sm:w-96">
               <h3 className="font-bold text-gray-900">Xác nhận hủy đơn hàng?</h3>
-              {isPaidVnPayOrder && (
-                <div className="flex items-start gap-2 rounded-lg border border-amber-200 bg-amber-50 p-3 text-sm text-amber-800">
-                  <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0" />
-                  <span>Đơn đã thanh toán qua VNPay. Hủy đơn sẽ thực hiện hoàn tiền/mô phỏng hoàn tiền.</span>
-                </div>
-              )}
               <textarea
                 value={cancelReason}
                 onChange={(e) => setCancelReason(e.target.value)}
@@ -281,6 +276,15 @@ const OrderDetailPage = () => {
               </div>
             </div>
           )}
+        </div>
+      )}
+
+      {isWaitingStatus && isPaidVnPay && (
+        <div className="flex justify-end">
+          <div className="flex items-start gap-2 rounded-lg border border-amber-200 bg-amber-50 p-4 text-sm text-amber-800 w-full sm:w-96 shadow-sm">
+            <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0 text-amber-600" />
+            <span>Đơn hàng đã thanh toán qua VNPay. Vui lòng liên hệ cửa hàng để được hỗ trợ hủy/hoàn tiền.</span>
+          </div>
         </div>
       )}
 

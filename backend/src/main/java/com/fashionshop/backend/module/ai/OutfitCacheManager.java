@@ -21,8 +21,6 @@ import java.util.UUID;
 @RequiredArgsConstructor
 public class OutfitCacheManager {
 
-    private static final String CACHE_KEY_PREFIX = "fashion-shop:ai:outfit:";
-    private static final String LOCK_KEY_PREFIX = "fashion-shop:ai:outfit-lock:";
     private static final String NULL_COLOR = "none";
 
     private final StringRedisTemplate redisTemplate;
@@ -33,6 +31,9 @@ public class OutfitCacheManager {
 
     @Value("${ai.outfit-cache.lock-ttl-seconds:60}")
     private long lockTtlSeconds;
+
+    @Value("${ai.outfit-cache.prefix:fashion-shop:ai:outfit}")
+    private String cacheKeyPrefix;
 
     public Optional<CachedOutfit> tryLoadValidCache(Long productId, Long colorId) {
         try {
@@ -101,11 +102,16 @@ public class OutfitCacheManager {
     }
 
     private String cacheKey(Long productId, Long colorId) {
-        return CACHE_KEY_PREFIX + productId + ":" + normalizeColorId(colorId);
+        return prefix(cacheKeyPrefix) + productId + ":" + normalizeColorId(colorId);
     }
 
     private String lockKey(Long productId, Long colorId) {
-        return LOCK_KEY_PREFIX + productId + ":" + normalizeColorId(colorId);
+        return prefix(cacheKeyPrefix + "-lock") + productId + ":" + normalizeColorId(colorId);
+    }
+
+    private String prefix(String value) {
+        String normalized = value == null || value.isBlank() ? "fashion-shop:ai:outfit" : value.trim();
+        return normalized.endsWith(":") ? normalized : normalized + ":";
     }
 
     private String normalizeColorId(Long colorId) {

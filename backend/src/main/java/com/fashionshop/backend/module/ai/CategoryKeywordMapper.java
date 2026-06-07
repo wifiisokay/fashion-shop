@@ -2,6 +2,7 @@ package com.fashionshop.backend.module.ai;
 
 import com.fashionshop.backend.domain.Category;
 import com.fashionshop.backend.domain.repository.CategoryRepository;
+import com.fashionshop.backend.common.enums.CategoryRole;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Component;
 
@@ -9,6 +10,7 @@ import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.LinkedHashSet;
 import java.util.List;
+import java.util.Optional;
 import java.util.Set;
 import java.util.stream.Collectors;
 
@@ -34,6 +36,45 @@ public class CategoryKeywordMapper {
         return List.of();
     }
 
+    public Optional<CategoryRole> detectRole(String message) {
+        String normalized = VietnameseTextNormalizer.padded(message);
+        if (normalized.isBlank()) {
+            return Optional.empty();
+        }
+        if (containsAny(normalized, " khoac ", " jacket ", " blazer ", " cardigan ", " outer ")) {
+            return Optional.of(CategoryRole.OUTER);
+        }
+        if (containsAny(normalized, " vay ", " dam ", " dress ", " skirt ")) {
+            return Optional.of(CategoryRole.DRESS);
+        }
+        if (containsAny(normalized, " quan ", " jean ", " jeans ", " denim ", " kaki ", " tay ",
+                " trousers ", " short ", " shorts ", " bottom ")) {
+            return Optional.of(CategoryRole.BOTTOM);
+        }
+        if (containsAny(normalized, " ao ", " thun ", " polo ", " so mi ", " ba lo ", " tank top ",
+                " tanktop ", " shirt ", " tee ", " tshirt ", " hoodie ", " top ")) {
+            return Optional.of(CategoryRole.TOP);
+        }
+        List<Integer> categoryIds = detectCategoryIds(message);
+        return findRoleByCategoryIds(categoryIds);
+    }
+
+    public Optional<CategoryRole> findRoleByCategoryIds(List<Integer> categoryIds) {
+        if (categoryIds == null || categoryIds.isEmpty()) {
+            return Optional.empty();
+        }
+        Set<Integer> ids = new LinkedHashSet<>(categoryIds);
+        return rules().stream()
+                .flatMap(rule -> rule.categoryIds().stream())
+                .filter(ids::contains)
+                .findFirst()
+                .flatMap(id -> categories().stream()
+                        .filter(category -> id.equals(category.getId()))
+                        .map(this::effectiveRole)
+                        .filter(role -> role != null && role != CategoryRole.ROOT)
+                        .findFirst());
+    }
+
     public void invalidateCache() {
         cachedRules = null;
     }
@@ -44,7 +85,7 @@ public class CategoryKeywordMapper {
             return snapshot;
         }
 
-        List<Category> categories = categoryRepository.findAll();
+        List<Category> categories = categories();
         List<CategoryRule> dynamicRules = new ArrayList<>();
         for (Category category : categories) {
             List<Integer> categoryIds = expandWithChildren(category, categories);
@@ -58,12 +99,17 @@ public class CategoryKeywordMapper {
         return cachedRules;
     }
 
+    private List<Category> categories() {
+        return categoryRepository.findAll();
+    }
+
     private void addSynonymRules(List<CategoryRule> rules, List<Category> categories) {
         addAliases(rules, categories, List.of("ao thun"), List.of("ao phong", "t shirt", "tshirt", "tee"));
         addAliases(rules, categories, List.of("ao polo"), List.of("polo", "ao co co"));
         addAliases(rules, categories, List.of("ao so mi"), List.of("so mi", "shirt"));
-        addAliases(rules, categories, List.of("quan jean", "quan denim"), List.of("jeans", "denim"));
-        addAliases(rules, categories, List.of("quan short"), List.of("short", "quan ngan", "quan dui"));
+        addAliases(rules, categories, List.of("quan dai"), List.of("quan jean", "quan denim", "jeans", "denim"));
+        addAliases(rules, categories, List.of("quan ngan"), List.of("quan short", "short", "quan dui"));
+        addAliases(rules, categories, List.of("ao khoac"), List.of("jacket", "blazer", "cardigan", "bomber", "puffer", "windbreaker"));
         addAliases(rules, categories, List.of("vay", "dam", "chan vay"), List.of("dress", "skirt"));
         addAliases(rules, categories, List.of("hoodie", "ao ni"), List.of("hoodie", "ao ni"));
     }
@@ -116,6 +162,25 @@ public class CategoryKeywordMapper {
 
     private boolean containsPhrase(String normalizedMessage, String phrase) {
         return (" " + normalizedMessage + " ").contains(" " + phrase + " ");
+    }
+
+    private boolean containsAny(String normalizedMessage, String... tokens) {
+        for (String token : tokens) {
+            if (normalizedMessage.contains(token)) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    private CategoryRole effectiveRole(Category category) {
+        if (category == null) {
+            return null;
+        }
+        if (category.getRole() != null && category.getRole() != CategoryRole.ROOT) {
+            return category.getRole();
+        }
+        return category.getParent() != null ? effectiveRole(category.getParent()) : category.getRole();
     }
 
     private record CategoryRule(String keyword, List<Integer> categoryIds) {

@@ -20,7 +20,8 @@ import java.util.LinkedHashMap;
 public class IntentClassifier {
 
     private static final Set<String> STRONG_OUTFIT_PHRASES = Set.of(
-        "phoi do", "mac voi", "ket hop", "mix match", "outfit", "nen mac gi", "mac gi"
+        "goi y phoi", "phoi do", "mix do", "mac voi", "ket hop", "mix match",
+        "outfit", "nen mac gi", "mac gi"
     );
 
     // Thương hiệu cạnh tranh / chủ đề ngoài phạm vi
@@ -84,25 +85,29 @@ public class IntentClassifier {
      * @return intent phù hợp nhất
      */
     public ChatIntent classify(String message, List<ChatMessage> recentMessages) {
+        return classifyDetailed(message, recentMessages).intent();
+    }
+
+    public ClassificationResult classifyDetailed(String message, List<ChatMessage> recentMessages) {
         String normalizedMsg = normalizeVi(message);
 
         if (isStandaloneNonCommerceQuestion(message, normalizedMsg)) {
             log.info("[AI_INTENT] message='{}' normalized='{}' intent={} reason=standalone_non_commerce",
                 shorten(message), normalizedMsg.trim(), ChatIntent.CHITCHAT);
-            return ChatIntent.CHITCHAT;
+            return new ClassificationResult(ChatIntent.CHITCHAT, "standalone_non_commerce", normalizedMsg.trim());
         }
 
         // Kiểm tra câu hỏi ngoài phạm vi shop (thương hiệu khác, chủ đề không liên quan)
         if (isOutOfScope(normalizedMsg)) {
             log.info("[AI_INTENT] message='{}' normalized='{}' intent={} reason=out_of_scope",
                 shorten(message), normalizedMsg.trim(), ChatIntent.OUT_OF_SCOPE);
-            return ChatIntent.OUT_OF_SCOPE;
+            return new ClassificationResult(ChatIntent.OUT_OF_SCOPE, "out_of_scope", normalizedMsg.trim());
         }
 
         if (containsStrongOutfitSignal(normalizedMsg)) {
             log.info("[AI_INTENT] message='{}' normalized='{}' intent={} reason=strong_outfit_signal",
                 shorten(message), normalizedMsg.trim(), ChatIntent.OUTFIT_SUGGEST);
-            return ChatIntent.OUTFIT_SUGGEST;
+            return new ClassificationResult(ChatIntent.OUTFIT_SUGGEST, "strong_outfit_signal", normalizedMsg.trim());
         }
 
         // Tính score cho mỗi intent
@@ -136,7 +141,7 @@ public class IntentClassifier {
         log.info("[AI_INTENT] message='{}' normalized='{}' intent={} reason={} bestScore={} scores={} recentCount={}",
             shorten(message), normalizedMsg.trim(), bestIntent, reason, bestScore, scores,
             recentMessages == null ? 0 : recentMessages.size());
-        return bestIntent;
+        return new ClassificationResult(bestIntent, reason, normalizedMsg.trim());
     }
 
     /**
@@ -242,5 +247,8 @@ public class IntentClassifier {
             .toLowerCase(Locale.ROOT)
             .trim();
         return " " + normalized + " ";
+    }
+
+    public record ClassificationResult(ChatIntent intent, String reason, String normalizedMessage) {
     }
 }

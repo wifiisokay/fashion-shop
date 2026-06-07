@@ -12,8 +12,17 @@ const colorMap = {
   purple:  'bg-purple-100 text-purple-800',
 };
 
-const OrderStatusBadge = ({ status }) => {
-  const { label, color } = formatOrderStatus(status);
+const OrderStatusBadge = ({ status, order }) => {
+  let { label, color } = formatOrderStatus(status);
+
+  if (order) {
+    if (status === 'AWAITING_PAYMENT' && order.paymentMethod === 'VNPAY') {
+      label = 'Chờ thanh toán VNPay';
+    } else if (status === 'PENDING' && order.paymentMethod === 'VNPAY' && order.paymentStatus === 'PAID') {
+      label = 'Đã thanh toán - chờ shop xác nhận';
+    }
+  }
+
   return (
     <span className={clsx('px-2.5 py-0.5 rounded-full text-xs font-medium', colorMap[color])}>
       {label}

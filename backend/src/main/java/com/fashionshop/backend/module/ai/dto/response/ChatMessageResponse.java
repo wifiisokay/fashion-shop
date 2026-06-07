@@ -17,15 +17,21 @@ public class ChatMessageResponse {
 
     private String role;       // "user" | "assistant"
     private String content;    // text content
-    private List<ChatProductCard> products;  // nullable — chỉ có khi PRODUCT_SEARCH / OUTFIT_SUGGEST
-    private List<OutfitComboResponse> outfitCombos;
-    private List<String> styleTips;
-    private List<String> suggestedQuestions; // nullable — gợi ý câu hỏi tiếp theo
+    @Builder.Default
+    private List<ChatProductCard> products = List.of();
+    @Builder.Default
+    private List<OutfitComboResponse> outfitCombos = List.of();
+    @Builder.Default
+    private List<String> styleTips = List.of();
+    @Builder.Default
+    private List<String> suggestedQuestions = List.of();
     private Integer totalCount;
     private String countType;
     private ProductContextDto productContext;
     private ChatContextDto context;
     private Boolean isFromFallback;
     private String intent;     // nullable — intent đã classify
+    private String internalIntent;
+    private String searchStatus;
     private LocalDateTime createdAt;
 }

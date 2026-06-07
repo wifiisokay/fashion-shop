@@ -249,29 +249,27 @@ public class OrderServiceImpl implements OrderService {
     @Override
     @Transactional
     public void cancelOrder(Long userId, Long orderId, CancelOrderRequest request) {
-        Order order = orderRepository.findByIdAndUserId(orderId, userId)
+        Payment payment = paymentRepository.findByOrderIdForUpdate(orderId).orElse(null);
+        Order order = orderRepository.findByIdAndUserIdForUpdate(orderId, userId)
                 .orElseThrow(() -> new BusinessException(ErrorCode.ORDER_NOT_FOUND, HttpStatus.NOT_FOUND));
 
-        if (!statusService.canCustomerCancel(order.getStatus())) {
-            throw new BusinessException(ErrorCode.ORDER_CANNOT_CANCEL, HttpStatus.BAD_REQUEST,
-                    "Chi co the huy don khi dang cho xac nhan");
+        if (order.getStatus() == OrderStatus.CANCELLED) {
+            log.info("Order #{} already cancelled, customer cancel ignored", orderId);
+            return;
         }
 
-        Payment payment = paymentRepository.findByOrderId(orderId).orElse(null);
-        boolean paidVnPay = order.getPaymentMethod() == PaymentMethod.VNPAY
-                && order.getPaymentStatus() == OrderPaymentStatus.PAID;
-
-        if (paidVnPay) {
-            refundPaidVnPayOrder(orderId, payment, request != null ? request.getReason() : "Khach hang huy don");
+        if (!canCustomerCancelOrder(order, payment)) {
+            throw new BusinessException(ErrorCode.ORDER_CANNOT_CANCEL, HttpStatus.BAD_REQUEST,
+                    customerCancelDeniedMessage(order, payment));
         }
 
         restoreStock(order);
         order.setStatus(OrderStatus.CANCELLED);
         order.setCancelReason(request != null ? request.getReason() : null);
-        order.setPaymentStatus(paidVnPay ? OrderPaymentStatus.REFUNDED : OrderPaymentStatus.UNPAID);
+        order.setPaymentStatus(OrderPaymentStatus.UNPAID);
         orderRepository.save(order);
 
-        if (!paidVnPay && payment != null && payment.getStatus() == PaymentStatus.PENDING) {
+        if (payment != null && payment.getStatus() == PaymentStatus.PENDING) {
             payment.setStatus(PaymentStatus.FAILED);
             paymentRepository.save(payment);
         }
@@ -282,7 +280,7 @@ public class OrderServiceImpl implements OrderService {
     @Override
     @Transactional
     public void confirmCompleted(Long orderId) {
-        Order order = orderRepository.findById(orderId)
+        Order order = orderRepository.findByIdForUpdate(orderId)
                 .orElseThrow(() -> new BusinessException(ErrorCode.ORDER_NOT_FOUND, HttpStatus.NOT_FOUND));
 
         if (order.getStatus() != OrderStatus.SHIPPING) {
@@ -295,7 +293,7 @@ public class OrderServiceImpl implements OrderService {
         order.setDeliveredAt(now);
         order.setCompletedAt(now);
 
-        paymentRepository.findByOrderId(orderId).ifPresent(payment -> {
+        paymentRepository.findByOrderIdForUpdate(orderId).ifPresent(payment -> {
             if (payment.getMethod() == PaymentMethod.COD
                     && payment.getStatus() == PaymentStatus.PENDING) {
                 payment.setStatus(PaymentStatus.SUCCESS);
@@ -353,11 +351,8 @@ public class OrderServiceImpl implements OrderService {
     @Override
     @Transactional
     public OrderDetailResponse updateOrderStatus(Long orderId, UpdateOrderStatusRequest request) {
-        Order order = orderRepository.findById(orderId)
-                .orElseThrow(() -> new BusinessException(ErrorCode.ORDER_NOT_FOUND, HttpStatus.NOT_FOUND));
-
-        OrderStatus oldStatus = order.getStatus();
         OrderStatus newStatus = request.getStatus();
+        Order order;
 
         if (newStatus == OrderStatus.CANCELLED) {
             CancelOrderRequest cancelReq = new CancelOrderRequest();
@@ -366,6 +361,12 @@ public class OrderServiceImpl implements OrderService {
             order = orderRepository.findById(orderId).orElseThrow();
             return OrderDetailResponse.from(order, statusService.getLabel(order.getStatus()));
         }
+
+        Payment payment = paymentRepository.findByOrderIdForUpdate(orderId).orElse(null);
+        order = orderRepository.findByIdForUpdate(orderId)
+                .orElseThrow(() -> new BusinessException(ErrorCode.ORDER_NOT_FOUND, HttpStatus.NOT_FOUND));
+
+        OrderStatus oldStatus = order.getStatus();
 
         if (newStatus == OrderStatus.COMPLETED) {
             throw new BusinessException(ErrorCode.INVALID_STATUS_TRANSITION, HttpStatus.BAD_REQUEST,
@@ -377,7 +378,7 @@ public class OrderServiceImpl implements OrderService {
         }
 
         statusService.validateTransition(order.getStatus(), newStatus);
-        guardVnPayPaidBeforeProcessing(order, newStatus);
+        guardVnPayPaidBeforeProcessing(order, payment, newStatus);
 
         if (newStatus == OrderStatus.SHIPPING && !Boolean.TRUE.equals(order.getPackingConfirmed())) {
             throw new BusinessException(ErrorCode.PACKING_NOT_CONFIRMED, HttpStatus.BAD_REQUEST);
@@ -394,21 +395,25 @@ public class OrderServiceImpl implements OrderService {
     @Override
     @Transactional
     public void staffCancelOrder(Long orderId, CancelOrderRequest request) {
-        Order order = orderRepository.findById(orderId)
+        if (request == null || request.getReason() == null || request.getReason().isBlank()) {
+            throw new BusinessException(ErrorCode.ORDER_CANCEL_REASON_REQUIRED, HttpStatus.BAD_REQUEST);
+        }
+
+        Payment payment = paymentRepository.findByOrderIdForUpdate(orderId).orElse(null);
+        Order order = orderRepository.findByIdForUpdate(orderId)
                 .orElseThrow(() -> new BusinessException(ErrorCode.ORDER_NOT_FOUND, HttpStatus.NOT_FOUND));
+
+        if (order.getStatus() == OrderStatus.CANCELLED) {
+            log.info("Order #{} already cancelled, staff cancel ignored", orderId);
+            return;
+        }
 
         if (!statusService.canStaffCancel(order.getStatus())) {
             throw new BusinessException(ErrorCode.ORDER_CANNOT_CANCEL, HttpStatus.BAD_REQUEST,
                     "Khong the huy don o trang thai " + statusService.getLabel(order.getStatus()));
         }
 
-        if (request == null || request.getReason() == null || request.getReason().isBlank()) {
-            throw new BusinessException(ErrorCode.ORDER_CANCEL_REASON_REQUIRED, HttpStatus.BAD_REQUEST);
-        }
-
-        Payment payment = paymentRepository.findByOrderId(orderId).orElse(null);
-        boolean paidVnPay = order.getPaymentMethod() == PaymentMethod.VNPAY
-                && order.getPaymentStatus() == OrderPaymentStatus.PAID;
+        boolean paidVnPay = isPaidVnPay(order, payment);
 
         if (paidVnPay) {
             refundPaidVnPayOrder(orderId, payment, request.getReason());
@@ -449,7 +454,7 @@ public class OrderServiceImpl implements OrderService {
     @Override
     @Transactional
     public OrderDetailResponse confirmPacking(Long orderId, ConfirmPackingRequest request) {
-        Order order = orderRepository.findById(orderId)
+        Order order = orderRepository.findByIdForUpdate(orderId)
                 .orElseThrow(() -> new BusinessException(ErrorCode.ORDER_NOT_FOUND, HttpStatus.NOT_FOUND));
 
         if (order.getStatus() != OrderStatus.CONFIRMED) {
@@ -496,13 +501,48 @@ public class OrderServiceImpl implements OrderService {
         return merged;
     }
 
-    private void guardVnPayPaidBeforeProcessing(Order order, OrderStatus newStatus) {
+    private boolean canCustomerCancelOrder(Order order, Payment payment) {
+        if (order.getStatus() == OrderStatus.CONFIRMED
+                || order.getStatus() == OrderStatus.SHIPPING
+                || order.getStatus() == OrderStatus.COMPLETED
+                || order.getStatus() == OrderStatus.RETURN_REQUESTED
+                || order.getStatus() == OrderStatus.RETURNING
+                || order.getStatus() == OrderStatus.RETURNED) {
+            return false;
+        }
+        if (order.getPaymentMethod() == PaymentMethod.COD) {
+            return order.getStatus() == OrderStatus.PENDING
+                    && order.getPaymentStatus() != OrderPaymentStatus.PAID
+                    && (payment == null || payment.getStatus() != PaymentStatus.SUCCESS);
+        }
+        if (order.getPaymentMethod() == PaymentMethod.VNPAY) {
+            return statusService.canCustomerCancel(order.getStatus())
+                    && !isPaidVnPay(order, payment);
+        }
+        return false;
+    }
+
+    private String customerCancelDeniedMessage(Order order, Payment payment) {
+        if (isPaidVnPay(order, payment)) {
+            return "Đơn hàng đã thanh toán qua VNPay, vui lòng liên hệ cửa hàng để được hỗ trợ hủy/hoàn tiền.";
+        }
+        return "Chi co the huy don khi dang cho xac nhan hoac cho thanh toan";
+    }
+
+    private boolean isPaidVnPay(Order order, Payment payment) {
+        return order.getPaymentMethod() == PaymentMethod.VNPAY
+                && (order.getPaymentStatus() == OrderPaymentStatus.PAID
+                    || (payment != null && payment.getStatus() == PaymentStatus.SUCCESS));
+    }
+
+    private void guardVnPayPaidBeforeProcessing(Order order, Payment payment, OrderStatus newStatus) {
         boolean processingStatus = newStatus == OrderStatus.CONFIRMED
                 || newStatus == OrderStatus.SHIPPING
                 || newStatus == OrderStatus.COMPLETED;
         if (processingStatus
                 && order.getPaymentMethod() == PaymentMethod.VNPAY
-                && order.getPaymentStatus() != OrderPaymentStatus.PAID) {
+                && order.getPaymentStatus() != OrderPaymentStatus.PAID
+                && (payment == null || payment.getStatus() != PaymentStatus.SUCCESS)) {
             throw new BusinessException(ErrorCode.ORDER_PAYMENT_NOT_PAID, HttpStatus.BAD_REQUEST,
                     "Don VNPay chua thanh toan thanh cong, khong the xu ly don.");
         }

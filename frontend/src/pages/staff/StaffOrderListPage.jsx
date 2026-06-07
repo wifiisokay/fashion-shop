@@ -84,8 +84,15 @@ const StaffOrderListPage = () => {
       title: 'Trạng thái', 
       dataIndex: 'status', 
       key: 'status',
-      render: (val) => {
-        const { label, color } = formatOrderStatus(val);
+      render: (val, row) => {
+        let { label, color } = formatOrderStatus(val);
+        if (row) {
+          if (val === 'AWAITING_PAYMENT' && row.paymentMethod === 'VNPAY') {
+            label = 'Chờ thanh toán VNPay';
+          } else if (val === 'PENDING' && row.paymentMethod === 'VNPAY' && row.paymentStatus === 'PAID') {
+            label = 'Đã thanh toán - chờ shop xác nhận';
+          }
+        }
         return <span className={clsx('px-2.5 py-0.5 rounded-full text-xs font-medium', STATUS_COLOR_MAP[color] || STATUS_COLOR_MAP.default)}>{label}</span>;
       }
     },

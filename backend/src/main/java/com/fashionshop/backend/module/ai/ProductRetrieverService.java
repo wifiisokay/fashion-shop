@@ -13,6 +13,7 @@ import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import org.springframework.stereotype.Service;
 
+import com.fashionshop.backend.common.enums.CategoryRole;
 import com.fashionshop.backend.common.enums.Gender;
 import com.fashionshop.backend.module.ai.dto.response.ChatProductCard;
 import com.fashionshop.backend.module.ai.dto.response.ChatProductVariantOption;
@@ -56,8 +57,74 @@ public class ProductRetrieverService {
         return search(params, limit, originalMessage);
     }
 
+    public ProductSearchResult searchSimilarByRole(String message, NluSearchParams nlu, int limit) {
+        SearchParams params = nlu != null ? fromNlu(nlu, message) : extractParams(message == null ? "" : message.toLowerCase(Locale.ROOT),
+            normalizeVi(message == null ? "" : message.toLowerCase(Locale.ROOT)));
+        Optional<CategoryRole> role = categoryKeywordMapper.detectRole(message);
+        if (role.isEmpty() && !params.categoryIds.isEmpty()) {
+            role = categoryKeywordMapper.findRoleByCategoryIds(params.categoryIds);
+        }
+        if (role.isEmpty()) {
+            return new ProductSearchResult(0, List.of(), "Total matched: 0\nNo inferred role for role suggestion.",
+                "NO_INFERRED_ROLE", null);
+        }
+        String inferredRole = role.get().name();
+        SearchParams roleParams = params.roleFallback(inferredRole);
+        ProductSearchResult roleResult = search(roleParams, limit, message);
+        if (!roleResult.products().isEmpty()) {
+            log.info("[AI_SEARCH_ROLE_FALLBACK] message='{}' role={} level=LEVEL_2_ROLE total={} returned={}",
+                shorten(message), inferredRole, roleResult.total(), roleResult.products().size());
+            return new ProductSearchResult(roleResult.total(), roleResult.products(), roleResult.contextText(),
+                "LEVEL_2_ROLE", inferredRole);
+        }
+
+        log.info("[AI_SEARCH_ROLE_FALLBACK] message='{}' role={} level=NO_ROLE_MATCH total=0 returned=0",
+            shorten(message), inferredRole);
+        return new ProductSearchResult(0, List.of(), "Total matched: 0\nNo same-role products found.",
+            "NO_ROLE_MATCH", inferredRole);
+    }
+
+    public ProductSearchResult searchOutfitBaseCandidates(String message, NluSearchParams nlu, int limit) {
+        SearchParams params = nlu != null ? fromNlu(nlu, message) : extractParams(message == null ? "" : message.toLowerCase(Locale.ROOT),
+            normalizeVi(message == null ? "" : message.toLowerCase(Locale.ROOT)));
+        Optional<CategoryRole> role = categoryKeywordMapper.detectRole(message);
+        if (role.isEmpty() && !params.categoryIds.isEmpty()) {
+            role = categoryKeywordMapper.findRoleByCategoryIds(params.categoryIds);
+        }
+        if (role.isEmpty()) {
+            log.info("[AI_OUTFIT_BASE_SEARCH] message='{}' categoryRole=null darkColor={} colorFamily={} styleHint={} result=NO_ROLE",
+                shorten(message), params.darkColor(), params.colorFamily(), styleHint(message));
+            return new ProductSearchResult(0, List.of(), "Total matched: 0\nNo inferred outfit base role.",
+                "NO_INFERRED_ROLE", null);
+        }
+
+        String categoryRole = role.get().name();
+        SearchParams baseParams = params.outfitBase(categoryRole);
+        ProductSearchResult result = search(baseParams, limit, message);
+        if (result.products().isEmpty() && baseParams.hasColorConstraint()) {
+            SearchParams relaxed = baseParams.withoutColor();
+            result = search(relaxed, limit, message);
+            log.info("[AI_OUTFIT_BASE_SEARCH] message='{}' categoryRole={} darkColor={} colorFamily={} styleHint={} relaxedColor=true total={} returned={}",
+                shorten(message), categoryRole, baseParams.darkColor(), baseParams.colorFamily(), styleHint(message),
+                result.total(), result.products().size());
+            return new ProductSearchResult(result.total(), result.products(), result.contextText(),
+                "OUTFIT_BASE_ROLE_RELAXED_COLOR", categoryRole);
+        }
+
+        log.info("[AI_OUTFIT_BASE_SEARCH] message='{}' categoryRole={} darkColor={} colorFamily={} styleHint={} relaxedColor=false total={} returned={}",
+            shorten(message), categoryRole, baseParams.darkColor(), baseParams.colorFamily(), styleHint(message),
+            result.total(), result.products().size());
+        return new ProductSearchResult(result.total(), result.products(), result.contextText(),
+            "OUTFIT_BASE_ROLE", categoryRole);
+    }
+
     private ProductSearchResult search(SearchParams params, int limit, String logMessage) {
         log.info("[AI_SEARCH_PARAMS] message='{}' limit={} params={}", shorten(logMessage), limit, params);
+        if (!params.hasExactSearchCriteria()) {
+            log.info("[AI_SEARCH_RESULT] message='{}' limit={} total=0 returned=0 reason=no_exact_search_criteria finalParams={}",
+                shorten(logMessage), limit, params);
+            return new ProductSearchResult(0, List.of(), "Total matched: 0\nNo exact search criteria.");
+        }
         List<ChatProductCard> cards = queryProducts(params, limit);
         long total = countProducts(params);
         if (cards.isEmpty()) {
@@ -218,7 +285,8 @@ public class ProductRetrieverService {
                             p.style_tags,
                             p.occasion_tags,
                             p.material,
-                            p.season
+                            p.season,
+                            p.description
             FROM products p
             LEFT JOIN categories c ON c.id = p.category_id
                         LEFT JOIN categories parent_c ON parent_c.id = c.parent_id
@@ -233,7 +301,7 @@ public class ProductRetrieverService {
 
     private String groupByClause() {
         return " GROUP BY p.id, p.name, p.base_price, p.sale_price, p.is_sale, p.gender, " +
-            "pc.id, pc.color_name, pc.color_code, pc.color_family, p.fit_type, p.style_tags, p.occasion_tags, p.material, p.season, " +
+            "pc.id, pc.color_name, pc.color_code, pc.color_family, p.fit_type, p.style_tags, p.occasion_tags, p.material, p.season, p.description, " +
             "pi.image_url, pi_any.image_url, c.slug, c.name, c.role, parent_c.name";
     }
 
@@ -253,6 +321,9 @@ public class ProductRetrieverService {
         }
         if (params.saleOnly) {
             sql.append(" AND p.is_sale = 1");
+        }
+        if (hasText(params.categoryRole)) {
+            sql.append(" AND c.role = :categoryRole");
         }
         // Keep an explicit color strict; color family is only a fallback when no exact color was requested.
         if (useColorKeyword) {
@@ -299,6 +370,9 @@ public class ProductRetrieverService {
             }
         } else if (useColorFamily) {
             query.setParameter("colorFamily", params.colorFamily);
+        }
+        if (hasText(params.categoryRole)) {
+            query.setParameter("categoryRole", params.categoryRole);
         }
         for (int i = 0; i < params.textTerms.size(); i++) {
             query.setParameter("textTerm" + i, normalizeLike(params.textTerms.get(i)));
@@ -364,25 +438,36 @@ public class ProductRetrieverService {
             } catch (IllegalArgumentException ignored) {
             }
         }
-        String categoryText = String.join(" ", safeList(nlu.getCategoryKeywords()));
+        String categoryText = String.join(" ", mergeList(safeList(nlu.getCategoryKeywords()), nlu.getCategoryHint(), nlu.getProductType()));
         String searchableText = originalMessage + " " + categoryText + " "
-            + String.join(" ", safeList(nlu.getStyleKeywords())) + " "
-            + String.join(" ", safeList(nlu.getOccasionKeywords()));
+            + String.join(" ", mergeList(safeList(nlu.getStyleKeywords()), nlu.getStyle())) + " "
+            + String.join(" ", mergeList(safeList(nlu.getOccasionKeywords()), nlu.getOccasion()));
         List<Integer> categoryIds = categoryKeywordMapper.detectCategoryIds(categoryText);
-        String styleTag = tagTranslationService.detectStyleTag(String.join(" ", safeList(nlu.getStyleKeywords()))).orElse(null);
-        String occasionTag = tagTranslationService.detectOccasionTag(String.join(" ", safeList(nlu.getOccasionKeywords()))).orElse(null);
-        BigDecimal maxPrice = nlu.getPriceMax() != null ? BigDecimal.valueOf(nlu.getPriceMax()) : null;
+        String styleTag = tagTranslationService.detectStyleTag(String.join(" ", mergeList(safeList(nlu.getStyleKeywords()), nlu.getStyle()))).orElse(null);
+        String occasionTag = tagTranslationService.detectOccasionTag(String.join(" ", mergeList(safeList(nlu.getOccasionKeywords()), nlu.getOccasion()))).orElse(null);
+        Long budget = nlu.getPriceMax() != null ? nlu.getPriceMax() : nlu.getBudget();
+        BigDecimal maxPrice = budget != null ? BigDecimal.valueOf(budget) : null;
+        String colorKeyword = normalizeBlank(nlu.getColorKeyword());
+        boolean darkColor = isDarkColorHint(colorKeyword, originalMessage);
+        if (darkColor && isGenericDarkColorKeyword(colorKeyword)) {
+            colorKeyword = null;
+        }
+        String colorFamily = normalizeBlank(nlu.getColorFamily());
+        if (colorFamily == null && darkColor) {
+            colorFamily = "neutral";
+        }
         return new SearchParams(
             gender,
             categoryIds,
             maxPrice,
-            normalizeBlank(nlu.getColorKeyword()),
-            false,
+            colorKeyword,
+            darkColor,
             Boolean.TRUE.equals(nlu.getIsSale()),
             ProductSearchDictionary.productTerms(searchableText),
             styleTag,
             occasionTag,
-            normalizeBlank(nlu.getColorFamily())
+            colorFamily,
+            null
         );
     }
 
@@ -390,8 +475,34 @@ public class ProductRetrieverService {
         return values == null ? List.of() : values;
     }
 
+    private List<String> mergeList(List<String> values, String... extraValues) {
+        List<String> merged = new ArrayList<>(values);
+        for (String extra : extraValues) {
+            if (extra != null && !extra.isBlank()) {
+                merged.add(extra);
+            }
+        }
+        return merged;
+    }
+
     private String normalizeBlank(String value) {
         return value == null || value.isBlank() || "null".equalsIgnoreCase(value) ? null : value;
+    }
+
+    private boolean isDarkColorHint(String colorKeyword, String message) {
+        String normalizedColor = VietnameseTextNormalizer.normalize(colorKeyword == null ? "" : colorKeyword);
+        String normalizedMessage = normalizeVi(message);
+        return isGenericDarkColorKeyword(normalizedColor)
+            || normalizedMessage.contains(" mau toi ")
+            || normalizedMessage.contains(" tong toi ")
+            || normalizedMessage.contains(" tone toi ")
+            || normalizedMessage.contains(" xam dam ")
+            || containsAnyNormalized(normalizedMessage, "toi", "den", "navy");
+    }
+
+    private boolean isGenericDarkColorKeyword(String value) {
+        String normalized = VietnameseTextNormalizer.normalize(value == null ? "" : value);
+        return "toi".equals(normalized) || "mau toi".equals(normalized) || "dark".equals(normalized);
     }
 
     private SearchParams extractParams(String lower, String normalized) {
@@ -405,14 +516,15 @@ public class ProductRetrieverService {
         BigDecimal maxPrice = extractMaxPrice(lower);
         String colorKeyword = extractColor(lower, normalized);
         String colorFamily = extractColorFamily(lower, normalized);
-        boolean darkColor = normalized.contains("mau toi") || normalized.contains("tong toi") || normalized.contains("tone toi");
+        boolean darkColor = normalized.contains("mau toi") || normalized.contains("tong toi") || normalized.contains("tone toi")
+            || containsAnyNormalized(normalized, "toi", "den", "navy") || normalized.contains(" xam dam ");
         boolean saleOnly = normalized.contains("sale") || normalized.contains("giam gia") || normalized.contains("khuyen mai");
         List<Integer> categoryIds = categoryKeywordMapper.detectCategoryIds(lower);
         String styleTag = tagTranslationService.detectStyleTag(lower).orElse(null);
         String occasionTag = tagTranslationService.detectOccasionTag(lower).orElse(null);
 
         List<String> textTerms = ProductSearchDictionary.productTerms(lower);
-        return new SearchParams(gender, categoryIds, maxPrice, colorKeyword, darkColor, saleOnly, textTerms, styleTag, occasionTag, colorFamily);
+        return new SearchParams(gender, categoryIds, maxPrice, colorKeyword, darkColor, saleOnly, textTerms, styleTag, occasionTag, colorFamily, null);
     }
 
     private BigDecimal extractMaxPrice(String lower) {
@@ -475,6 +587,14 @@ public class ProductRetrieverService {
         return null;
     }
 
+    private String styleHint(String message) {
+        String normalized = normalizeVi(message);
+        if (normalized.contains(" thoang mat ") || normalized.contains(" breathable ") || normalized.contains(" mua he ")) {
+            return "summer/breathable/casual";
+        }
+        return null;
+    }
+
     private boolean containsAnyNormalized(String normalized, String... values) {
         for (String value : values) {
             if (normalized.contains(" " + value + " ")) {
@@ -532,6 +652,7 @@ public class ProductRetrieverService {
             cards.add(ChatProductCard.builder()
                 .id(productId)
                 .name(productName)
+                .description(values[22] != null ? values[22].toString() : null)
                 .displayPrice(displayPrice)
                 .price(basePrice)
                 .salePrice(Boolean.TRUE.equals(isSale) ? salePrice : null)
@@ -716,6 +837,18 @@ public class ProductRetrieverService {
                 .append("] ").append(card.getName())
                 .append(" | Price: ").append(card.getDisplayPrice())
                 .append(" | Stock: ").append(card.getTotalStock())
+                .append(" | Category: ").append(card.getCategoryName())
+                .append(" | Role: ").append(card.getCategoryRole())
+                .append(" | Gender: ").append(card.getGender())
+                .append(" | Color: ").append(card.getColorName())
+                .append(" | ColorFamily: ").append(card.getColorFamily())
+                .append(" | Fit: ").append(card.getFitType())
+                .append(" | Material: ").append(card.getMaterial())
+                .append(" | Season: ").append(card.getSeason())
+                .append(" | StyleTags: ").append(card.getStyleTags())
+                .append(" | OccasionTags: ").append(card.getOccasionTags())
+                .append(" | AvailableVariants: ").append(card.getAvailableVariants())
+                .append(" | Description: ").append(card.getDescription())
                 .append(" | Image: ").append(card.getImageUrl())
                 .append("\n");
         }
@@ -724,28 +857,66 @@ public class ProductRetrieverService {
 
     private record SearchParams(Gender gender, List<Integer> categoryIds, BigDecimal maxPrice,
                                 String colorKeyword, boolean darkColor, boolean saleOnly,
-                                List<String> textTerms, String styleTag, String occasionTag, String colorFamily) {
+                                List<String> textTerms, String styleTag, String occasionTag, String colorFamily,
+                                String categoryRole) {
         SearchParams withoutTextTerms() {
             return new SearchParams(gender, categoryIds, maxPrice, colorKeyword, darkColor, saleOnly,
-                List.of(), styleTag, occasionTag, colorFamily);
+                List.of(), styleTag, occasionTag, colorFamily, categoryRole);
         }
 
         SearchParams withoutCategory() {
             return new SearchParams(gender, List.of(), maxPrice, colorKeyword, darkColor, saleOnly,
-                textTerms, styleTag, occasionTag, colorFamily);
+                textTerms, styleTag, occasionTag, colorFamily, categoryRole);
         }
 
         SearchParams withoutGender() {
             return new SearchParams(null, categoryIds, maxPrice, colorKeyword, darkColor, saleOnly,
-                textTerms, styleTag, occasionTag, colorFamily);
+                textTerms, styleTag, occasionTag, colorFamily, categoryRole);
         }
 
         SearchParams withoutColor() {
             return new SearchParams(gender, categoryIds, maxPrice, null, false, saleOnly,
-                textTerms, styleTag, occasionTag, null);
+                textTerms, styleTag, occasionTag, null, categoryRole);
         }
+
+        SearchParams withCategoryRole(String categoryRole) {
+            return new SearchParams(gender, categoryIds, maxPrice, colorKeyword, darkColor, saleOnly,
+                textTerms, styleTag, occasionTag, colorFamily, categoryRole);
+        }
+
+        SearchParams roleFallback(String categoryRole) {
+            return new SearchParams(gender, List.of(), null, null, false, false,
+                List.of(), null, null, null, categoryRole);
+        }
+
+        SearchParams outfitBase(String categoryRole) {
+            return new SearchParams(gender, List.of(), null, colorKeyword, darkColor, false,
+                List.of(), null, occasionTag, colorFamily, categoryRole);
+        }
+
+        boolean hasColorConstraint() {
+            return colorKeyword != null || darkColor || colorFamily != null;
+        }
+
+        boolean hasExactSearchCriteria() {
+            return !categoryIds.isEmpty()
+                    || maxPrice != null
+                    || colorKeyword != null
+                    || darkColor
+                    || saleOnly
+                    || !textTerms.isEmpty()
+                    || styleTag != null
+                    || occasionTag != null
+                    || colorFamily != null
+                    || categoryRole != null;
+        }
+
     }
 
-    public record ProductSearchResult(long total, List<ChatProductCard> products, String contextText) {
+    public record ProductSearchResult(long total, List<ChatProductCard> products, String contextText,
+                                      String fallbackLevel, String inferredRole) {
+        public ProductSearchResult(long total, List<ChatProductCard> products, String contextText) {
+            this(total, products, contextText, null, null);
+        }
     }
 }

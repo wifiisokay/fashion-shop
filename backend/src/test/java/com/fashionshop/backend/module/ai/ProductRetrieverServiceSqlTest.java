@@ -44,4 +44,21 @@ class ProductRetrieverServiceSqlTest {
             .contains("LEFT JOIN categories c ON c.id = p.category_id")
             .contains("LOWER(COALESCE(c.name, ''))");
     }
+
+    @Test
+    void treatsDarkColorRequestAsDarkFilter() {
+        CategoryRepository categoryRepository = mock(CategoryRepository.class);
+        when(categoryRepository.findAll()).thenReturn(List.of());
+        ProductRetrieverService service = new ProductRetrieverService(
+            new CategoryKeywordMapper(categoryRepository),
+            new TagTranslationService()
+        );
+
+        String sql = service.buildSearchSqlForAudit("goi y phoi do ao thoang mat mau toi");
+
+        assertThat(sql)
+            .contains("LOWER(pc.color_name) LIKE '%đen%'")
+            .contains("LOWER(pc.color_name) LIKE '%navy%'")
+            .contains("LOWER(pc.color_family) IN ('cool','neutral')");
+    }
 }

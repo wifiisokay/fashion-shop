@@ -2,9 +2,11 @@ package com.fashionshop.backend.domain.repository;
 
 import com.fashionshop.backend.common.enums.OrderStatus;
 import com.fashionshop.backend.domain.Order;
+import jakarta.persistence.LockModeType;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
 import org.springframework.data.jpa.repository.JpaRepository;
+import org.springframework.data.jpa.repository.Lock;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
 
@@ -31,6 +33,14 @@ public interface OrderRepository extends JpaRepository<Order, Long> {
                                    Pageable pageable);
 
     Optional<Order> findByIdAndUserId(Long id, Long userId);
+
+    @Lock(LockModeType.PESSIMISTIC_WRITE)
+    @Query("SELECT o FROM Order o WHERE o.id = :id")
+    Optional<Order> findByIdForUpdate(@Param("id") Long id);
+
+    @Lock(LockModeType.PESSIMISTIC_WRITE)
+    @Query("SELECT o FROM Order o WHERE o.id = :id AND o.user.id = :userId")
+    Optional<Order> findByIdAndUserIdForUpdate(@Param("id") Long id, @Param("userId") Long userId);
 
     // Staff — danh sách tất cả đơn
     Page<Order> findAllByOrderByCreatedAtDesc(Pageable pageable);

@@ -38,6 +38,41 @@ const colorLabel = (item) => {
   return [item.colorName, COLOR_FAMILY_LABELS[item.colorFamily] || item.colorFamily].filter(Boolean).join(' / ');
 };
 
+const buildChatKey = (...parts) =>
+  parts
+    .filter((part) => part !== undefined && part !== null && part !== '')
+    .map(String)
+    .join('-');
+
+const getProductCardKey = (product, index, messageId, section) =>
+  buildChatKey(
+    section || 'product',
+    messageId || 'msg',
+    product?.id || product?.productId || 'unknown-product',
+    product?.colorId || product?.selectedColorId || product?.color?.id || 'no-color',
+    index
+  );
+
+const getComboKey = (combo, index, messageId) => {
+  let itemId = 'no-item';
+  let colorId = 'no-color';
+  if (combo.topSlot) {
+    itemId = combo.topSlot.productId || itemId;
+    colorId = combo.topSlot.colorId || colorId;
+  } else {
+    const firstItem = (combo.products || combo.items || [])[0];
+    itemId = firstItem?.id || firstItem?.productId || itemId;
+    colorId = firstItem?.colorId || colorId;
+  }
+  return buildChatKey(
+    'combo',
+    messageId || 'msg',
+    index,
+    itemId,
+    colorId
+  );
+};
+
 const ChatOutfitItemCardSkeleton = ({ role, optional }) => {
   return (
     <div className="w-24 shrink-0 block relative">
@@ -203,10 +238,21 @@ const ChatWidget = () => {
 
   const handleOutfitForProduct = (product) => {
     if (isLoading || !product?.id) return;
-    sendMessage('Mẫu này phối với gì khi đi làm?', {
+    sendMessage('Sản phẩm này nên mặc với gì?', {
+      productId: product.id || product.productId,
+      colorId: product.colorId,
       productContext: {
-        productId: product.id,
+        productId: product.id || product.productId,
         colorId: product.colorId,
+        name: product.name || product.productName || 'Sản phẩm',
+        gender: product.gender || '',
+        category: product.category || product.categoryName || '',
+        role: product.role || product.categoryRole || '',
+        colorName: product.colorName || '',
+        categoryName: product.categoryName || product.category || '',
+        categorySlug: product.categorySlug || '',
+        categoryRole: product.categoryRole || product.role || '',
+        parentCategoryName: product.parentCategoryName || '',
       },
     });
   };
@@ -257,7 +303,7 @@ const ChatWidget = () => {
               </div>
             )}
             {messages.map((msg, index) => (
-              <div key={index}>
+              <div key={msg.id || `msg-${index}`}>
                 {/* Message Bubble */}
                 <div
                   className={clsx(
@@ -271,122 +317,68 @@ const ChatWidget = () => {
                   )}>
                     {msg.role === 'user' ? <User className="w-4 h-4" /> : <Bot className="w-4 h-4" />}
                   </div>
-                  <div className={clsx(
-                    'p-3 rounded-2xl text-sm break-words',
-                    msg.role === 'user' 
-                      ? 'bg-black text-white rounded-tr-sm' 
-                      : msg.isError
-                        ? 'bg-red-50 border border-red-200 text-red-800 rounded-tl-sm shadow-sm'
-                        : 'bg-white border border-gray-200 text-gray-800 rounded-tl-sm shadow-sm'
-                  )}>
-                    {msg.role === 'user' ? (
-                      <p className="whitespace-pre-wrap">{msg.text}</p>
-                    ) : (
-                      <div className="markdown-body prose prose-sm max-w-none prose-p:leading-relaxed prose-a:text-blue-600">
-                        <ReactMarkdown>{msg.text}</ReactMarkdown>
-                      </div>
-                    )}
-                  </div>
+                  {msg.isLoading ? (
+                    <div className="p-4 rounded-2xl bg-white border border-gray-200 rounded-tl-sm shadow-sm flex items-center gap-1">
+                      <div className="w-2 h-2 bg-gray-400 rounded-full animate-bounce" style={{ animationDelay: '0ms' }} />
+                      <div className="w-2 h-2 bg-gray-400 rounded-full animate-bounce" style={{ animationDelay: '150ms' }} />
+                      <div className="w-2 h-2 bg-gray-400 rounded-full animate-bounce" style={{ animationDelay: '300ms' }} />
+                    </div>
+                  ) : (
+                    <div className={clsx(
+                      'p-3 rounded-2xl text-sm break-words',
+                      msg.role === 'user' 
+                        ? 'bg-black text-white rounded-tr-sm' 
+                        : msg.isError
+                          ? 'bg-red-50 border border-red-200 text-red-800 rounded-tl-sm shadow-sm'
+                          : 'bg-white border border-gray-200 text-gray-800 rounded-tl-sm shadow-sm'
+                    )}>
+                      {msg.role === 'user' ? (
+                        <p className="whitespace-pre-wrap">{msg.text}</p>
+                      ) : (
+                        <div className="markdown-body prose prose-sm max-w-none prose-p:leading-relaxed prose-a:text-blue-600">
+                          <ReactMarkdown>{msg.text}</ReactMarkdown>
+                        </div>
+                      )}
+                    </div>
+                  )}
                 </div>
 
-                {/* Product Cards */}
-                {msg.products && msg.products.length > 0 && (
-                  <div className="mt-2 ml-11 space-y-2">
-                    {uniqueProducts(msg.products).map((product) => {
-                      const productId = product.id || product.productId;
-                      const productName = product.name || product.productName || 'Sản phẩm';
-                      const productImg = product.imageUrl || product.primaryImageUrl || product.image || `https://picsum.photos/seed/${productId}/200/200`;
-                      const productPrice = product.displayPrice || product.salePrice || product.price || 0;
-                      const originalPrice = product.price || product.basePrice || productPrice;
-                      const isSale = product.isSale || !!product.salePrice || productPrice < originalPrice;
-                      const variants = product.availableVariants || product.variants || [];
-
-                      return (
-                        <div key={productId} className="bg-white border border-gray-200 rounded-xl p-2.5 shadow-sm">
-                          <div className="flex items-center gap-3">
-                            {productImg && (
-                              <img src={productImg} alt={productName} className="w-14 h-14 rounded-lg object-cover flex-shrink-0" />
-                            )}
-                            <div className="flex-1 min-w-0">
-                              <p className="text-sm font-medium text-gray-900 line-clamp-2 min-h-10 flex items-center" title={productName}>{productName}</p>
-                              <div className="flex items-center gap-2 mt-0.5">
-                                {isSale ? (
-                                  <>
-                                    <span className="text-sm font-semibold text-red-600">{formatPrice(productPrice)}</span>
-                                    <span className="text-xs text-gray-400 line-through">{formatPrice(originalPrice)}</span>
-                                  </>
-                                ) : (
-                                  <span className="text-sm font-semibold text-gray-900">{formatPrice(productPrice)}</span>
-                                )}
-                              </div>
-                              {product.matchReason && <p className="text-xs text-gray-500 mt-0.5 truncate">{product.matchReason}</p>}
-                              {colorLabel(product) && (
-                                <div className="mt-1 flex items-center gap-1.5 text-xs text-gray-500">
-                                  {product.colorCode && (
-                                    <span className="h-3 w-3 rounded-full border border-gray-200" style={{ backgroundColor: product.colorCode }} />
-                                  )}
-                                  <span className="truncate">{colorLabel(product)}</span>
-                                </div>
-                              )}
-                            </div>
-                          </div>
-                          <div className="mt-2 flex flex-wrap items-center gap-1.5">
-                            {variants.length > 0 && (
-                              <select
-                                value={variantSelections[productKey(product)] || ''}
-                                onChange={(event) => setVariantSelections((prev) => ({
-                                  ...prev,
-                                  [productKey(product)]: event.target.value,
-                                }))}
-                                className="h-8 min-w-16 rounded-lg border border-gray-200 bg-white px-2 text-xs text-gray-700"
-                              >
-                                <option value="">Size</option>
-                                {variants.map((variant) => {
-                                  const variantId = variant.variantId || variant.id;
-                                  const sizeName = variant.sizeName || variant.size || 'Size';
-                                  return (
-                                    <option key={variantId} value={variantId}>{sizeName}</option>
-                                  );
-                                })}
-                              </select>
-                            )}
-                            <button
-                              type="button"
-                              disabled={!isAuthenticated || !variantSelections[productKey(product)] || addToCart.isPending}
-                              onClick={() => handleAddProduct(product)}
-                              className="inline-flex h-8 items-center gap-1 rounded-lg border border-gray-200 px-2 text-xs text-gray-700 hover:bg-gray-50 disabled:cursor-not-allowed disabled:opacity-50"
-                              title={isAuthenticated ? 'Thêm vào giỏ hàng' : 'Đăng nhập để thêm vào giỏ'}
-                            >
-                              <ShoppingCart className="h-3.5 w-3.5" />
-                              Thêm
-                            </button>
-                            <button
-                              type="button"
-                              onClick={() => handleOutfitForProduct(product)}
-                              disabled={isLoading}
-                              className="inline-flex h-8 items-center gap-1 rounded-lg border border-gray-200 px-2 text-xs text-gray-700 hover:bg-gray-50 disabled:opacity-50"
-                            >
-                              <Sparkles className="h-3.5 w-3.5" />
-                              Phối đồ
-                            </button>
-                            <a
-                              href={`/products/${productId}`}
-                              target="_blank"
-                              rel="noopener noreferrer"
-                              className="inline-flex h-8 items-center gap-1 rounded-lg border border-gray-200 px-2 text-xs text-gray-700 hover:bg-gray-50"
-                            >
-                              <ExternalLink className="h-3.5 w-3.5" />
-                              Xem
-                            </a>
-                          </div>
-                        </div>
-                      );
-                    })}
+                {/* Search status notification */}
+                {msg.searchStatus === 'NEAR_ROLE_FALLBACK' && (
+                  <div className="mt-2 ml-11 rounded-lg border border-amber-200 bg-amber-50/75 p-2.5 text-xs text-amber-800 flex items-start gap-1.5 animate-fadeIn">
+                    <AlertCircle className="h-4 w-4 text-amber-600 shrink-0 mt-0.5" />
+                    <div>
+                      <span className="font-semibold block text-amber-900">Gợi ý gần phù hợp</span>
+                      {msg.requestedKeyword ? (
+                        <span className="text-[11px] block mt-0.5 leading-relaxed">
+                          Yêu cầu: <span className="font-semibold">"{msg.requestedKeyword}"</span> - Không có đúng sản phẩm yêu cầu, đang hiển thị lựa chọn gần nhất.
+                        </span>
+                      ) : (
+                        <span className="text-[11px] block mt-0.5 leading-relaxed">Không có đúng sản phẩm yêu cầu, đang hiển thị lựa chọn gần nhất.</span>
+                      )}
+                    </div>
                   </div>
                 )}
 
-                {/* Outfit Combos */}
-                {msg.outfitCombos && msg.outfitCombos.length > 0 && (
+                {msg.searchStatus && msg.searchStatus !== 'NEAR_ROLE_FALLBACK' && (
+                  <div className="mt-2 ml-11 flex">
+                    <span className={clsx(
+                      "inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[10px] font-semibold shadow-2xs border animate-fadeIn",
+                      msg.searchStatus === 'TYPE_MATCH' && "bg-emerald-50 border-emerald-200 text-emerald-800",
+                      msg.searchStatus === 'PRODUCT_CONTEXT_MATCH' && "bg-blue-50 border-blue-200 text-blue-800",
+                      msg.searchStatus === 'NO_MATCH' && "bg-rose-50 border-rose-200 text-rose-800",
+                      msg.searchStatus === 'EXTERNAL_CONTEXT_LIMITED' && "bg-purple-50 border-purple-200 text-purple-800"
+                    )}>
+                      {msg.searchStatus === 'TYPE_MATCH' && 'Sản phẩm phù hợp'}
+                      {msg.searchStatus === 'PRODUCT_CONTEXT_MATCH' && 'Theo sản phẩm đang chọn'}
+                      {msg.searchStatus === 'NO_MATCH' && 'Chưa tìm thấy sản phẩm phù hợp'}
+                      {msg.searchStatus === 'EXTERNAL_CONTEXT_LIMITED' && 'Tư vấn giới hạn'}
+                    </span>
+                  </div>
+                )}
+
+                {/* Recommendations based on priority: outfitCombos > products */}
+                {msg.outfitCombos && msg.outfitCombos.length > 0 ? (
                   <div className="mt-2 ml-11 space-y-2">
                     {msg.outfitCombos.map((combo, comboIdx) => {
                       const hasSlots = combo.topSlot || combo.bottomSlot;
@@ -436,7 +428,7 @@ const ChatWidget = () => {
                       const occasions = combo.occasion ? combo.occasion.split(',').map(s => s.trim()).filter(Boolean) : [];
 
                       return (
-                        <div key={comboIdx} className="rounded-xl border border-gray-200 bg-white p-3.5 shadow-sm hover:border-gray-300 transition-colors">
+                        <div key={getComboKey(combo, comboIdx, msg.id)} className="rounded-xl border border-gray-200 bg-white p-3.5 shadow-sm hover:border-gray-300 transition-colors animate-fadeIn">
                           <div className="mb-2 flex flex-wrap items-center gap-1.5 border-b border-gray-100 pb-2">
                             <span className="rounded-full bg-black px-2 py-0.5 text-[10px] font-bold text-white shadow-2xs">
                               {combo.label || combo.outfitType || combo.style || 'Bộ phối'}
@@ -488,7 +480,7 @@ const ChatWidget = () => {
                           <div className="flex gap-2 overflow-x-auto pb-1">
                             {comboItems.map((item, idx) => (
                               <ChatOutfitItemCard
-                                key={`${comboIdx}-${item.id}-${idx}`}
+                                key={buildChatKey("combo-item", msg.id, combo.id || comboIdx, item.role || "role", item.productId || item.id, item.colorId || "no-color", idx)}
                                 item={item}
                                 combo={combo}
                                 comboIdx={comboIdx}
@@ -500,7 +492,101 @@ const ChatWidget = () => {
                       );
                     })}
                   </div>
-                )}
+                ) : msg.products && msg.products.length > 0 ? (
+                  <div className="mt-2 ml-11 space-y-2">
+                    {uniqueProducts(msg.products).map((product, pIdx) => {
+                      const productId = product.id || product.productId;
+                      const productName = product.name || product.productName || 'Sản phẩm';
+                      const productImg = product.imageUrl || product.primaryImageUrl || product.image || `https://picsum.photos/seed/${productId}/200/200`;
+                      const productPrice = product.displayPrice || product.salePrice || product.price || 0;
+                      const originalPrice = product.price || product.basePrice || productPrice;
+                      const isSale = product.isSale || !!product.salePrice || productPrice < originalPrice;
+                      const variants = product.availableVariants || product.variants || [];
+
+                      return (
+                        <div key={getProductCardKey(product, pIdx, msg.id, "chat-products")} className="bg-white border border-gray-200 rounded-xl p-2.5 shadow-sm animate-fadeIn">
+                          <div className="flex items-center gap-3">
+                            {productImg && (
+                              <img src={productImg} alt={productName} className="w-14 h-14 rounded-lg object-cover flex-shrink-0" />
+                            )}
+                            <div className="flex-1 min-w-0">
+                              <p className="text-sm font-medium text-gray-900 line-clamp-2 min-h-10 flex items-center" title={productName}>{productName}</p>
+                              <div className="flex items-center gap-2 mt-0.5">
+                                {isSale ? (
+                                  <>
+                                    <span className="text-sm font-semibold text-red-600">{formatPrice(productPrice)}</span>
+                                    <span className="text-xs text-gray-400 line-through">{formatPrice(originalPrice)}</span>
+                                  </>
+                                ) : (
+                                  <span className="text-sm font-semibold text-gray-900">{formatPrice(productPrice)}</span>
+                                )}
+                              </div>
+                              {product.matchReason && <p className="text-xs text-gray-500 mt-0.5 truncate">{product.matchReason}</p>}
+                              {colorLabel(product) && (
+                                <div className="mt-1 flex items-center gap-1.5 text-xs text-gray-500">
+                                  {product.colorCode && (
+                                    <span className="h-3 w-3 rounded-full border border-gray-200" style={{ backgroundColor: product.colorCode }} />
+                                  )}
+                                  <span className="truncate">{colorLabel(product)}</span>
+                                </div>
+                              )}
+                            </div>
+                          </div>
+                          <div className="mt-2 flex flex-wrap items-center gap-1.5">
+                            {variants.length > 0 && (
+                              <select
+                                value={variantSelections[productKey(product)] || ''}
+                                onChange={(event) => setVariantSelections((prev) => ({
+                                  ...prev,
+                                  [productKey(product)]: event.target.value,
+                                }))}
+                                className="h-8 min-w-16 rounded-lg border border-gray-200 bg-white px-2 text-xs text-gray-700"
+                              >
+                                <option value="">Size</option>
+                                {variants.map((variant, vIdx) => {
+                                  const variantId = variant.variantId || variant.id;
+                                  const sizeName = variant.sizeName || variant.size || 'Size';
+                                  return (
+                                    <option key={buildChatKey("variant", msg.id, product.id || product.productId, variantId, vIdx)} value={variantId}>{sizeName}</option>
+                                  );
+                                })}
+                              </select>
+                            )}
+                            <button
+                              type="button"
+                              disabled={!isAuthenticated || !variantSelections[productKey(product)] || addToCart.isPending}
+                              onClick={() => handleAddProduct(product)}
+                              className="inline-flex h-8 items-center gap-1 rounded-lg border border-gray-200 px-2 text-xs text-gray-700 hover:bg-gray-50 disabled:cursor-not-allowed disabled:opacity-50"
+                              title={isAuthenticated ? 'Thêm vào giỏ hàng' : 'Đăng nhập để thêm vào giỏ'}
+                            >
+                              <ShoppingCart className="h-3.5 w-3.5" />
+                              Thêm
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => handleOutfitForProduct(product)}
+                              disabled={isLoading}
+                              className="inline-flex h-8 items-center gap-1 rounded-lg border border-gray-200 px-2 text-xs text-gray-700 hover:bg-gray-50 disabled:opacity-50"
+                              title="Gợi ý phối đồ với sản phẩm này"
+                            >
+                              <Sparkles className="h-3.5 w-3.5" />
+                              Gợi ý phối đồ với sản phẩm này
+                            </button>
+                            <a
+                              href={`/products/${productId}`}
+                              target="_blank"
+                              rel="noopener noreferrer"
+                              className="inline-flex h-8 items-center gap-1 rounded-lg border border-gray-200 px-2 text-xs text-gray-700 hover:bg-gray-50"
+                            >
+                              <ExternalLink className="h-3.5 w-3.5" />
+                              Xem
+                            </a>
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                ) : null}
 
                 {(msg.context?.occasionLabel || (msg.styleTips && msg.styleTips.length > 0)) && (
                   <div className="mt-2 ml-11 rounded-xl border border-indigo-100 bg-indigo-50 p-2.5 text-xs text-indigo-900">
@@ -509,7 +595,7 @@ const ChatWidget = () => {
                     )}
                     {msg.styleTips && msg.styleTips.length > 0 && (
                       <ul className="space-y-1">
-                        {msg.styleTips.map((tip, tipIdx) => <li key={tipIdx}>- {tip}</li>)}
+                        {msg.styleTips.map((tip, tipIdx) => <li key={buildChatKey("styletip", msg.id, tipIdx)}>- {tip}</li>)}
                       </ul>
                     )}
                   </div>
@@ -520,7 +606,7 @@ const ChatWidget = () => {
                   <div className="mt-2 ml-11 flex flex-wrap gap-1.5">
                     {msg.suggestedQuestions.map((q, qIdx) => (
                       <button
-                        key={qIdx}
+                        key={buildChatKey("suggested", msg.id, qIdx)}
                         onClick={() => q === 'Thử lại' ? retryLast() : handleSuggestionClick(q)}
                         disabled={isLoading}
                         className="px-3 py-1.5 text-xs bg-white border border-gray-200 rounded-full text-gray-700 hover:bg-gray-100 hover:border-gray-300 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
@@ -533,18 +619,7 @@ const ChatWidget = () => {
               </div>
             ))}
             
-            {isLoading && (
-              <div className="flex gap-3 max-w-[85%] mr-auto">
-                <div className="w-8 h-8 rounded-full bg-black text-white flex items-center justify-center flex-shrink-0">
-                  <Bot className="w-4 h-4" />
-                </div>
-                <div className="p-4 rounded-2xl bg-white border border-gray-200 rounded-tl-sm shadow-sm flex items-center gap-1">
-                  <div className="w-2 h-2 bg-gray-400 rounded-full animate-bounce" style={{ animationDelay: '0ms' }} />
-                  <div className="w-2 h-2 bg-gray-400 rounded-full animate-bounce" style={{ animationDelay: '150ms' }} />
-                  <div className="w-2 h-2 bg-gray-400 rounded-full animate-bounce" style={{ animationDelay: '300ms' }} />
-                </div>
-              </div>
-            )}
+
             <div ref={messagesEndRef} />
           </div>
 

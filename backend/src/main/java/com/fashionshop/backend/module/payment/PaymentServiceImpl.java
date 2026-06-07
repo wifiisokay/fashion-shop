@@ -44,7 +44,7 @@ public class PaymentServiceImpl implements PaymentService {
     @Override
     @Transactional
     public String createVnPayPaymentUrl(Long orderId, String ipAddress) {
-        Payment payment = paymentRepository.findByOrderId(orderId)
+        Payment payment = paymentRepository.findByOrderIdForUpdate(orderId)
             .orElseThrow(() -> new BusinessException(
                 ErrorCode.PAYMENT_NOT_FOUND, HttpStatus.NOT_FOUND));
 
@@ -92,18 +92,29 @@ public class PaymentServiceImpl implements PaymentService {
             return ipnResponse("01", "Order Not Found");
         }
 
-        // Bước 3: Kiểm tra số tiền
-        BigDecimal expectedAmount = payment.getAmount().multiply(BigDecimal.valueOf(100));
-        if (vnpAmount == null || expectedAmount.compareTo(new BigDecimal(vnpAmount)) != 0) {
-            log.warn("IPN invalid amount — expected={}, got={}", expectedAmount, vnpAmount);
-            return ipnResponse("04", "Invalid Amount");
-        }
-
-        // Bước 4: Idempotent check — chỉ xử lý giao dịch còn PENDING.
+        // Bước 3: Idempotent check — chỉ xử lý giao dịch còn PENDING.
         // IPN muộn cho giao dịch đã FAILED/REFUNDED không được phép đổi lại Order thành PAID.
         if (payment.getStatus() != PaymentStatus.PENDING) {
             log.info("IPN already confirmed — txnRef={}", txnRef);
             return ipnResponse("02", "Already Confirmed");
+        }
+
+        Order order = payment.getOrder();
+        if (order.getStatus() == OrderStatus.CANCELLED) {
+            log.info("IPN ignored because order #{} is already CANCELLED — txnRef={}", order.getId(), txnRef);
+            payment.setStatus(PaymentStatus.FAILED);
+            payment.setVnpayResponseCode(responseCode);
+            payment.setVnpayTransactionNo(params.get("vnp_TransactionNo"));
+            payment.setVnpayBankCode(params.get("vnp_BankCode"));
+            paymentRepository.save(payment);
+            return ipnResponse("02", "Already Confirmed");
+        }
+
+        // Bước 4: Kiểm tra số tiền
+        BigDecimal expectedAmount = payment.getAmount().multiply(BigDecimal.valueOf(100));
+        if (vnpAmount == null || expectedAmount.compareTo(new BigDecimal(vnpAmount)) != 0) {
+            log.warn("IPN invalid amount — expected={}, got={}", expectedAmount, vnpAmount);
+            return ipnResponse("04", "Invalid Amount");
         }
 
         // Bước 5: Cập nhật trạng thái
@@ -117,7 +128,6 @@ public class PaymentServiceImpl implements PaymentService {
             payment.setPaidAt(LocalDateTime.now());
 
             // Chuyển order từ AWAITING_PAYMENT → PENDING
-            Order order = payment.getOrder();
             order.setPaymentStatus(OrderPaymentStatus.PAID);
             if (order.getStatus() == OrderStatus.AWAITING_PAYMENT) {
                 order.setStatus(OrderStatus.PENDING);
@@ -130,7 +140,6 @@ public class PaymentServiceImpl implements PaymentService {
             payment.setStatus(PaymentStatus.FAILED);
 
             // Hoàn stock + hủy đơn
-            Order order = payment.getOrder();
             if (order.getStatus() == OrderStatus.AWAITING_PAYMENT) {
                 restoreStockAndCancel(order);
                 log.info("Order #{} cancelled — VNPay payment failed (code={})",
@@ -165,38 +174,6 @@ public class PaymentServiceImpl implements PaymentService {
         String orderId = txnRef.length() > 14
             ? txnRef.substring(0, txnRef.length() - 14)
             : txnRef;
-
-        // Fallback: nếu IPN chưa kịp → cập nhật DB từ Return URL
-        Payment payment = paymentRepository.findByVnpayTxnRef(txnRef).orElse(null);
-        if (payment != null && payment.getStatus() == PaymentStatus.PENDING) {
-            payment.setVnpayResponseCode(responseCode);
-            payment.setVnpayTransactionNo(params.get("vnp_TransactionNo"));
-            payment.setVnpayBankCode(params.get("vnp_BankCode"));
-
-            if ("00".equals(responseCode)) {
-                payment.setStatus(PaymentStatus.SUCCESS);
-                payment.setPaidAt(LocalDateTime.now());
-
-                Order order = payment.getOrder();
-                order.setPaymentStatus(OrderPaymentStatus.PAID);
-                if (order.getStatus() == OrderStatus.AWAITING_PAYMENT) {
-                    order.setStatus(OrderStatus.PENDING);
-                    orderRepository.save(order);
-                    log.info("Return fallback: Order #{} → PENDING", order.getId());
-                }
-                orderRepository.save(order);
-            } else {
-                payment.setStatus(PaymentStatus.FAILED);
-
-                Order order = payment.getOrder();
-                if (order.getStatus() == OrderStatus.AWAITING_PAYMENT) {
-                    restoreStockAndCancel(order);
-                    log.info("Return fallback: Order #{} cancelled (code={})", order.getId(), responseCode);
-                }
-            }
-            paymentRepository.save(payment);
-            log.info("Return fallback: Payment updated — txnRef={}, code={}", txnRef, responseCode);
-        }
 
         String status = "00".equals(responseCode) ? "success" : "failed";
         return "/payment/result?orderId=" + orderId + "&status=" + status;

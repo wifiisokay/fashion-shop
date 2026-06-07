@@ -2,6 +2,7 @@ package com.fashionshop.backend.module.ai;
 
 import com.fashionshop.backend.domain.Category;
 import com.fashionshop.backend.domain.repository.CategoryRepository;
+import com.fashionshop.backend.common.enums.CategoryRole;
 import org.junit.jupiter.api.Test;
 
 import java.util.List;
@@ -32,6 +33,20 @@ class CategoryKeywordMapperTest {
 
         assertThat(mapper.detectCategoryIds("hoodie nam mặc với gì")).containsExactly(14);
         assertThat(mapper.detectCategoryIds("áo nỉ nam dưới 500k")).containsExactly(14);
+    }
+
+    @Test
+    void infersBroadRoleWhenSpecificCategoryDoesNotExist() {
+        CategoryRepository repository = mock(CategoryRepository.class);
+        when(repository.findAll()).thenReturn(List.of());
+        CategoryKeywordMapper mapper = new CategoryKeywordMapper(repository);
+
+        assertThat(mapper.detectRole("quan jeans nam")).contains(CategoryRole.BOTTOM);
+        assertThat(mapper.detectRole("ao polo nam")).contains(CategoryRole.TOP);
+        assertThat(mapper.detectRole("ao ba lo nam")).contains(CategoryRole.TOP);
+        assertThat(mapper.detectRole("balo nam")).isEmpty();
+        assertThat(mapper.detectRole("ao khoac nam")).contains(CategoryRole.OUTER);
+        assertThat(mapper.detectRole("vay nu")).contains(CategoryRole.DRESS);
     }
 
     private List<Category> seedCategories() {

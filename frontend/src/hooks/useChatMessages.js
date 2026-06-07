@@ -1,4 +1,4 @@
-import { useCallback, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useMutation, useQuery } from '@tanstack/react-query';
 import { useLocation } from 'react-router-dom';
 import { chatApi } from '../api/chatApi';
@@ -6,23 +6,137 @@ import { useAuth } from '../contexts/AuthContext';
 import { QUERY_KEYS } from '../constants/queryKeys';
 
 const welcomeMessage = {
+  id: 'welcome-message',
   role: 'assistant',
   text: 'Xin chào! Mình là Fashi, trợ lý thời trang của Fashion Shop. Bạn cần tìm sản phẩm, phối đồ hay hỗ trợ đơn hàng?',
   suggestedQuestions: ['Tìm áo thun nam', 'Gợi ý outfit đi chơi', 'Chính sách đổi trả'],
+  products: [],
+  outfitCombos: [],
+  styleTips: [],
 };
 
-const normalizeMessage = (msg) => ({
-  role: msg.role === 'user' ? 'user' : 'assistant',
-  text: msg.content ?? msg.text ?? '',
-  products: msg.products || [],
-  outfitCombos: msg.outfitCombos || [],
-  styleTips: msg.styleTips || [],
-  context: msg.context || null,
-  isFromFallback: msg.isFromFallback || false,
-  suggestedQuestions: msg.suggestedQuestions || [],
-  intent: msg.intent || null,
-  isError: msg.isError || false,
-});
+const normalizeChatResponse = (apiResult) => {
+  if (!apiResult) {
+    throw new Error('EMPTY_RESPONSE');
+  }
+
+  let dataPayload = null;
+  if (apiResult.data !== undefined) {
+    if (apiResult.data?.data !== undefined) {
+      dataPayload = apiResult.data.data;
+    } else {
+      dataPayload = apiResult.data;
+    }
+  } else {
+    dataPayload = apiResult;
+  }
+
+  if (!dataPayload || typeof dataPayload !== 'object') {
+    throw new Error('INVALID_FORMAT');
+  }
+
+  const content = dataPayload.content ?? dataPayload.text ?? dataPayload.message;
+  if (content === undefined || content === null) {
+    throw new Error('MISSING_CONTENT');
+  }
+
+  return {
+    id: dataPayload.id || ('msg-' + Date.now() + '-' + Math.random().toString(36).substr(2, 4)),
+    role: dataPayload.role === 'user' ? 'user' : 'assistant',
+    text: String(content),
+    products: Array.isArray(dataPayload.products) ? dataPayload.products : [],
+    outfitCombos: Array.isArray(dataPayload.outfitCombos) ? dataPayload.outfitCombos : [],
+    styleTips: Array.isArray(dataPayload.styleTips) ? dataPayload.styleTips : [],
+    context: dataPayload.context || null,
+    isFromFallback: dataPayload.isFromFallback !== undefined ? !!dataPayload.isFromFallback : false,
+    suggestedQuestions: Array.isArray(dataPayload.suggestedQuestions) ? dataPayload.suggestedQuestions : [],
+    intent: dataPayload.intent || null,
+    searchStatus: dataPayload.searchStatus || null,
+    requestedKeyword: dataPayload.requestedKeyword || null,
+    fallbackRole: dataPayload.fallbackRole || null,
+    internalIntent: dataPayload.internalIntent || null,
+    isError: !!dataPayload.isError,
+  };
+};
+
+const normalizeMessage = (msg) => {
+  try {
+    return normalizeChatResponse(msg);
+  } catch (e) {
+    return {
+      id: msg?.id || null,
+      role: msg?.role === 'user' ? 'user' : 'assistant',
+      text: String(msg?.content ?? msg?.text ?? ''),
+      products: Array.isArray(msg?.products) ? msg.products : [],
+      outfitCombos: Array.isArray(msg?.outfitCombos) ? msg.outfitCombos : [],
+      styleTips: Array.isArray(msg?.styleTips) ? msg.styleTips : [],
+      context: msg?.context || null,
+      isFromFallback: !!msg?.isFromFallback,
+      suggestedQuestions: Array.isArray(msg?.suggestedQuestions) ? msg.suggestedQuestions : [],
+      intent: msg?.intent || null,
+      searchStatus: msg?.searchStatus || null,
+      requestedKeyword: msg?.requestedKeyword || null,
+      fallbackRole: msg?.fallbackRole || null,
+      internalIntent: msg?.internalIntent || null,
+      isError: !!msg?.isError,
+    };
+  }
+};
+
+const getFriendlyErrorMessage = (error) => {
+  if (!error) {
+    return 'Xin lỗi, Fashi đang gặp sự cố khi xử lý câu hỏi này. Bạn thử hỏi lại giúp mình nhé.';
+  }
+
+  const isAxiosError = error.isAxiosError || (error.config && error.request);
+  if (isAxiosError) {
+    if (error.code === 'ECONNABORTED' || error.message?.toLowerCase().includes('timeout')) {
+      return 'Fashi đang mất nhiều thời gian để phản hồi. Bạn thử gửi lại câu hỏi giúp mình nhé.';
+    }
+
+    if (error.code === 'ERR_CANCELED' || error.name === 'CanceledError') {
+      return 'Yêu cầu phối đồ đã bị hủy. Bạn có thể thử lại nhé.';
+    }
+
+    const status = error.response?.status;
+    if (status === 401) {
+      return 'Bạn cần đăng nhập để tiếp tục sử dụng chatbot.';
+    }
+    if (status === 403) {
+      return 'Tài khoản hiện không có quyền thực hiện thao tác này.';
+    }
+    if (status >= 500) {
+      return 'Xin lỗi, hiện tại chatbot đang gặp lỗi tạm thời. Bạn thử lại sau ít phút nhé.';
+    }
+
+    if (!error.response) {
+      return 'Không thể kết nối đến máy chủ. Bạn kiểm tra kết nối mạng hoặc thử lại sau nhé.';
+    }
+  }
+
+  if (error.message === 'EMPTY_RESPONSE' || error.message === 'INVALID_FORMAT' || error.message === 'MISSING_CONTENT') {
+    return 'Xin lỗi, phản hồi từ hệ thống không đúng định dạng. Bạn thử lại nhé.';
+  }
+
+  if (error.message === 'LOGIN_REQUIRED') {
+    return 'Bạn cần đăng nhập để tiếp tục sử dụng chatbot.';
+  }
+
+  return 'Xin lỗi, Fashi đang gặp sự cố khi xử lý câu hỏi này. Bạn thử hỏi lại giúp mình nhé.';
+};
+
+const replaceMessageById = (messages, id, newMessage) => {
+  if (!id) {
+    return [...messages, newMessage];
+  }
+  const index = messages.findIndex((m) => m.id === id);
+  if (index !== -1) {
+    const updated = [...messages];
+    updated[index] = { ...newMessage, id };
+    return updated;
+  }
+  return [...messages, newMessage];
+};
 
 const readPageContext = (pathname) => {
   const match = pathname.match(/^\/products\/(\d+)/);
@@ -41,7 +155,15 @@ const readPageContext = (pathname) => {
   } catch (_error) {
     colorId = null;
   }
-  return colorId != null ? { productId: Number(match[1]), colorId } : { productId: Number(match[1]) };
+  const productId = Number(match[1]);
+  return {
+    productId,
+    colorId,
+    productContext: {
+      productId,
+      colorId,
+    },
+  };
 };
 
 export const useChatMessages = (enabled = false) => {
@@ -49,7 +171,23 @@ export const useChatMessages = (enabled = false) => {
   const location = useLocation();
   const isAuthenticated = !!user;
   const lastFailedTextRef = useRef(null);
+  const isSendingRef = useRef(false);
+  const abortControllerRef = useRef(null);
+  const activeRequestIdRef = useRef(null);
+  const isMountedRef = useRef(true);
+
   const [localMessages, setLocalMessages] = useState([welcomeMessage]);
+  const [isLoadingState, setIsLoadingState] = useState(false);
+
+  useEffect(() => {
+    isMountedRef.current = true;
+    return () => {
+      isMountedRef.current = false;
+      if (abortControllerRef.current) {
+        abortControllerRef.current.abort();
+      }
+    };
+  }, []);
 
   const historyQuery = useQuery({
     queryKey: QUERY_KEYS.chatMessages('today'),
@@ -68,48 +206,120 @@ export const useChatMessages = (enabled = false) => {
   }, [historyQuery.data, isAuthenticated, localMessages]);
 
   const sendMutation = useMutation({
-    mutationFn: async ({ text, context }) => {
+    mutationFn: async ({ text, context, signal }) => {
       const currentPageContext = context || readPageContext(location.pathname);
       if (isAuthenticated) {
-        return chatApi.sendMessage(text, currentPageContext);
+        const response = await chatApi.sendMessage(text, { ...currentPageContext, signal });
+        return normalizeChatResponse(response);
       }
       throw new Error('LOGIN_REQUIRED');
     },
-    onMutate: ({ text }) => {
+    onMutate: ({ text, userMsgId, loadingMessageId }) => {
       lastFailedTextRef.current = null;
-      setLocalMessages((prev) => [...prev, { role: 'user', text, localOnly: true }]);
-      return { text };
+
+      const userMessage = {
+        id: userMsgId,
+        role: 'user',
+        text,
+        localOnly: true,
+      };
+
+      const loadingMessage = {
+        id: loadingMessageId,
+        role: 'assistant',
+        text: 'Fashi đang suy nghĩ...',
+        isLoading: true,
+        localOnly: true,
+        products: [],
+        outfitCombos: [],
+        styleTips: [],
+        suggestedQuestions: [],
+      };
+
+      setLocalMessages((prev) => [...prev, userMessage, loadingMessage]);
+      return { userMsgId, loadingMessageId };
     },
-    onSuccess: (response, variables) => {
+    onSuccess: async (response, variables, context) => {
       if (!response) return;
-      const text = variables?.text || '';
-      const assistantMessage = normalizeMessage(response);
+      const { userMsgId, loadingMessageId } = context || {};
+
+      const assistantMessage = {
+        ...response,
+        id: loadingMessageId,
+        localOnly: true,
+      };
+
+      if (isMountedRef.current) {
+        setLocalMessages((prev) => replaceMessageById(prev, loadingMessageId, assistantMessage));
+      }
+
       if (isAuthenticated) {
-        setLocalMessages((prev) => prev.filter((msg) => !msg.localOnly));
-        historyQuery.refetch();
-      } else {
-        setLocalMessages((prev) => [...prev, assistantMessage]);
+        try {
+          await historyQuery.refetch();
+        } catch (e) {
+          console.error('Refetch history error:', e);
+        } finally {
+          if (isMountedRef.current) {
+            setLocalMessages((prev) => prev.filter((msg) => msg.id !== loadingMessageId && msg.id !== userMsgId));
+          }
+        }
       }
     },
-    onError: (_error, variables) => {
-      const text = variables?.text || '';
-      lastFailedTextRef.current = text;
-      setLocalMessages((prev) => [
-        ...prev,
-        {
-          role: 'assistant',
-          text: 'Xin lỗi, hệ thống AI đang bận. Bạn có thể thử lại tin nhắn này.',
-          isError: true,
-          suggestedQuestions: ['Thử lại'],
-        },
-      ]);
+    onError: (error, variables, context) => {
+      const { userMsgId, loadingMessageId } = context || {};
+      const errorMessage = getFriendlyErrorMessage(error);
+
+      const errorMsgObj = {
+        id: loadingMessageId || 'error-' + Date.now(),
+        role: 'assistant',
+        text: errorMessage,
+        isError: true,
+        localOnly: true,
+        suggestedQuestions: ['Thử lại'],
+        products: [],
+        outfitCombos: [],
+        styleTips: [],
+      };
+
+      if (isMountedRef.current) {
+        setLocalMessages((prev) => replaceMessageById(prev, loadingMessageId, errorMsgObj));
+      }
+
+      lastFailedTextRef.current = variables?.text || '';
     },
   });
 
-  const sendMessage = useCallback((text, context = null) => {
-    if (!isAuthenticated || !text?.trim() || sendMutation.isPending) return;
-    sendMutation.mutate({ text: text.trim(), context });
-  }, [isAuthenticated, sendMutation]);
+  const sendMessage = useCallback(async (text, context = null) => {
+    if (!isAuthenticated || !text?.trim() || isSendingRef.current || sendMutation.isPending || historyQuery.isFetching) return;
+
+    const controller = new AbortController();
+    abortControllerRef.current = controller;
+
+    const requestId = 'req-' + Date.now() + '-' + Math.random().toString(36).substr(2, 9);
+    activeRequestIdRef.current = requestId;
+    isSendingRef.current = true;
+    setIsLoadingState(true);
+
+    const userMsgId = 'user-' + Date.now() + '-' + Math.random().toString(36).substr(2, 4);
+    const loadingMessageId = 'loading-' + Date.now() + '-' + Math.random().toString(36).substr(2, 4);
+
+    try {
+      await sendMutation.mutateAsync({
+        text: text.trim(),
+        context,
+        userMsgId,
+        loadingMessageId,
+        signal: controller.signal,
+      });
+    } catch (error) {
+      console.error('SendMessage error:', error);
+    } finally {
+      if (activeRequestIdRef.current === requestId && isMountedRef.current) {
+        isSendingRef.current = false;
+        setIsLoadingState(false);
+      }
+    }
+  }, [isAuthenticated, sendMutation, historyQuery.isFetching]);
 
   const retryLast = useCallback(() => {
     if (lastFailedTextRef.current) {
@@ -119,7 +329,7 @@ export const useChatMessages = (enabled = false) => {
 
   return {
     messages,
-    isLoading: sendMutation.isPending || historyQuery.isFetching,
+    isLoading: isLoadingState || sendMutation.isPending || historyQuery.isFetching,
     sendMessage,
     retryLast,
     isAuthenticated,
