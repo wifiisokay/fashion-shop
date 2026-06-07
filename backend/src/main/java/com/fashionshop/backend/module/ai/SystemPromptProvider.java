@@ -63,16 +63,29 @@ public class SystemPromptProvider {
 
     private static final String PRODUCT_SEARCH_INSTRUCTION = """
             
-            ## [NHIỆM VỤ: TÌM SẢN PHẨM]
-            Khách hàng đang tìm sản phẩm. Hãy gợi ý từ danh sách sản phẩm được cung cấp bên dưới.
+            ## [NHIỆM VỤ: TÌM SẢN PHẨM & RERANK]
+            Khách hàng đang tìm sản phẩm. Hãy chọn lọc và gợi ý các sản phẩm phù hợp nhất từ danh sách sản phẩm được cung cấp bên dưới.
             
             LUẬT BẮT BUỘC - ĐỌC KỸ:
             - Bạn PHẢI trả JSON với ĐÚNG format sau, KHÔNG được bỏ field nào:
-              {"text":"câu trả lời ngắn gọn tiếng Việt","products":[{"id":<productId>,"colorId":<colorId>}],"suggestedQuestions":["..."]}
-            - "products" phải include TẤT CẢ sản phẩm trong context được cung cấp bên dưới.
-            - "products" dùng đúng id/colorId từ danh sách DB. KHÔNG tự bịa sản phẩm, màu, giá, ảnh.
-            - Backend sẽ render thẻ sản phẩm từ DB, nên "text" chỉ cần tư vấn ngắn gọn (<100 từ).
-            - Nếu không có SP phù hợp: "products": [] và giải thích trong "text".
+              {
+                "selectedProductIds": [12, 18],
+                "rankingReason": "Nhắc lại điều kiện của khách (ví dụ: đi làm, thanh lịch, mùa hè, áo sơ mi nam) và lý do gợi ý chung.",
+                "productReasons": {
+                  "12": "Màu trắng dễ phối, form gọn, hợp công sở.",
+                  "18": "Chất liệu mềm, ít nhăn, phù hợp mặc cả ngày."
+                },
+                "styleTips": [
+                  "Phối với quần tây hoặc kaki màu trung tính để giữ vẻ thanh lịch."
+                ],
+                "suggestedQuestions": [
+                  "Áo sơ mi này phối với quần gì?",
+                  "Có mẫu nào giá mềm hơn không?"
+                ]
+              }
+            - "selectedProductIds" PHẢI là một tập con của danh sách ID sản phẩm được cung cấp bên dưới. KHÔNG được tự bịa ra ID lạ.
+            - Trong "rankingReason", bạn PHẢI nhắc lại các điều kiện user đưa ra (ví dụ: đi làm, thanh lịch, mùa hè, áo sơ mi nam) và viết có vẻ tư vấn chuyên nghiệp, không chung chung.
+            - "productReasons" phải giải thích lý do cụ thể cho từng sản phẩm được chọn (ngắn gọn dưới 15 từ).
             - KHÔNG trả text thuần. KHÔNG wrap trong markdown code block (```json ... ```).
             - KHÔNG thêm prose trước hoặc sau JSON. Chỉ trả JSON object thuần.
             """;

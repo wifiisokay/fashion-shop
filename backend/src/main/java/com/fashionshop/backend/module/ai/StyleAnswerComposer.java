@@ -21,6 +21,17 @@ public class StyleAnswerComposer {
     public StyleAnswerResult compose(ChatContext context, ChatProductCard anchor, List<OutfitComboResponse> combos) {
         GeminiStyleAnswerService.StyleAnswerPayload payload = geminiStyleAnswerService.generate(context, anchor, combos);
         if (payload != null) {
+            if (payload.comboExplanations != null && combos != null) {
+                for (int i = 0; i < combos.size(); i++) {
+                    String targetComboId = "combo-" + (i + 1);
+                    for (GeminiStyleAnswerService.ComboExplanation expl : payload.comboExplanations) {
+                        if (targetComboId.equalsIgnoreCase(expl.comboId)) {
+                            combos.get(i).setDescription(expl.reason);
+                            combos.get(i).setReason(expl.reason);
+                        }
+                    }
+                }
+            }
             return StyleAnswerResult.builder()
                 .content(payload.content)
                 .styleTips(payload.styleTips)

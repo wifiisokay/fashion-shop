@@ -28,27 +28,40 @@ public class ProductContextResolver {
     );
 
     private final ProductRetrieverService productRetrieverService;
+    private final CategoryKeywordMapper categoryKeywordMapper;
     private final ObjectMapper objectMapper;
 
     public Optional<ProductContextDto> resolve(String message, ProductContextDto explicitContext, List<ChatMessage> recentMessages) {
         Optional<ProductContextDto> explicit = validateExplicit(explicitContext);
+        Optional<ProductContextDto> resolved = Optional.empty();
         if (explicit.isPresent()) {
-            return explicit;
-        }
-
-        Optional<ProductContextDto> ordinal = resolveOrdinal(message, recentMessages);
-        if (ordinal.isPresent()) {
-            return ordinal;
-        }
-
-        if (hasPronounReference(message)) {
-            Optional<ProductContextDto> primary = latestPrimaryContext(recentMessages);
-            if (primary.isPresent()) {
-                return primary;
+            resolved = explicit;
+        } else {
+            Optional<ProductContextDto> ordinal = resolveOrdinal(message, recentMessages);
+            if (ordinal.isPresent()) {
+                resolved = ordinal;
+            } else if (hasPronounReference(message)) {
+                Optional<ProductContextDto> primary = latestPrimaryContext(recentMessages);
+                if (primary.isPresent()) {
+                    resolved = primary;
+                }
             }
         }
 
-        return Optional.empty();
+        if (resolved.isPresent()) {
+            List<Integer> msgCategoryIds = categoryKeywordMapper.detectCategoryIds(message);
+            if (!msgCategoryIds.isEmpty()) {
+                Long productId = resolved.get().getProductId();
+                Integer productCategoryId = productRetrieverService.getProductCategoryId(productId);
+                if (productCategoryId != null && !msgCategoryIds.contains(productCategoryId)) {
+                    log.info("[AI_CONTEXT_REJECTED] current_message='{}' resolved_productId={} resolved_categoryId={} requested_categoryIds={}",
+                        message, productId, productCategoryId, msgCategoryIds);
+                    return Optional.empty();
+                }
+            }
+        }
+
+        return resolved;
     }
 
     public boolean hasPronounReference(String message) {
@@ -92,7 +105,9 @@ public class ProductContextResolver {
             try {
                 JsonNode products = objectMapper.readTree(messageRow.getMetadata()).path("products");
                 if (products.isArray() && products.size() > index) {
-                    return Optional.of(contextFromJson(products.get(index)));
+                    ProductContextDto resolvedProduct = contextFromJson(products.get(index));
+                    log.info("[AI_FOLLOW_UP_ORDINAL_RESOLVE] message='{}' index={} resolvedProductId={}", message, index, resolvedProduct.getProductId());
+                    return Optional.of(resolvedProduct);
                 }
             } catch (Exception e) {
                 log.debug("[AI_CONTEXT_RESOLVE] ordinal metadata skipped: {}", e.getMessage());
