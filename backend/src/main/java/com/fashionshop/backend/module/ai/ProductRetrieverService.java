@@ -157,6 +157,21 @@ public class ProductRetrieverService {
         }
         List<ChatProductCard> cards = queryProducts(params, limit);
         long total = countProducts(params);
+        
+        if (cards.isEmpty() && params.hasColorConstraint()) {
+            SearchParams fallbackParams = params.withoutColor();
+            if (fallbackParams.hasExactSearchCriteria()) {
+                log.info("[AI_SEARCH_COLOR_FALLBACK] message='{}' limit={} params={} fallbackParams={}",
+                        shorten(logMessage), limit, params, fallbackParams);
+                List<ChatProductCard> fallbackCards = queryProducts(fallbackParams, limit);
+                long fallbackTotal = countProducts(fallbackParams);
+                if (!fallbackCards.isEmpty()) {
+                    return new ProductSearchResult(fallbackTotal, fallbackCards, formatContext(fallbackTotal, fallbackCards),
+                            "NEAR_COLOR_FALLBACK", null);
+                }
+            }
+        }
+        
         if (cards.isEmpty()) {
             logEmptyResultDiagnostics(params);
         }
@@ -233,7 +248,8 @@ public class ProductRetrieverService {
         log.debug("[AI_SEARCH_SQL] type=query params={} sql={}", params, sql);
         Query query = entityManager.createNativeQuery(sql.toString());
         bindFilters(query, params);
-        return mapRows(query.getResultList());
+        List<ChatProductCard> cards = mapRows(query.getResultList());
+        return ColorNormalizer.boostByColorRelevance(cards, params.colorKeyword, params.colorFamily, params.darkColor);
     }
 
     String buildSearchSqlForAudit(String message) {
@@ -541,14 +557,15 @@ public class ProductRetrieverService {
     }
 
     private boolean isDarkColorHint(String colorKeyword, String message) {
-        String normalizedColor = VietnameseTextNormalizer.normalize(colorKeyword == null ? "" : colorKeyword);
         String normalizedMessage = normalizeVi(message);
-        return isGenericDarkColorKeyword(normalizedColor)
-                || normalizedMessage.contains(" mau toi ")
+        return normalizedMessage.contains(" mau toi ")
                 || normalizedMessage.contains(" tong toi ")
                 || normalizedMessage.contains(" tone toi ")
+                || normalizedMessage.contains(" den ")
+                || normalizedMessage.contains(" black ")
+                || normalizedMessage.contains(" navy ")
                 || normalizedMessage.contains(" xam dam ")
-                || containsAnyNormalized(normalizedMessage, "toi", "den", "navy");
+                || normalizedMessage.contains(" nau dam ");
     }
 
     private boolean isGenericDarkColorKeyword(String value) {
@@ -572,7 +589,8 @@ public class ProductRetrieverService {
         String colorKeyword = extractColor(lower, normalized);
         String colorFamily = extractColorFamily(lower, normalized);
         boolean darkColor = normalized.contains("mau toi") || normalized.contains("tong toi") || normalized.contains("tone toi")
-            || containsAnyNormalized(normalized, "toi", "den", "navy") || normalized.contains(" xam dam ");
+            || normalized.contains(" den ") || normalized.contains(" black ") || normalized.contains(" navy ")
+            || normalized.contains(" xam dam ") || normalized.contains(" nau dam ");
         boolean saleOnly = normalized.contains("sale") || normalized.contains("giam gia") || normalized.contains("khuyen mai");
         List<Integer> categoryIds = categoryKeywordMapper.detectCategoryIds(lower);
         String styleTag = tagTranslationService.detectStyleTag(lower).orElse(null);

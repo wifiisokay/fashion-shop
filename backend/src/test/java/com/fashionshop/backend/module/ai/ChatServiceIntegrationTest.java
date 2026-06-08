@@ -89,4 +89,53 @@ public class ChatServiceIntegrationTest {
         System.out.println("--- SECOND RESPONSE (Có mẫu khác không) ---");
         System.out.println("Products: " + (response2.getProducts() != null ? response2.getProducts().size() : 0));
     }
+
+    @Test
+    void testColorNormalizationAndScoring() {
+        // Test color mapping
+        assertThat(ColorNormalizer.normalizeColor("Màu đen huyền bí")).isEqualTo("black");
+        assertThat(ColorNormalizer.normalizeColor("xanh navy đậm")).isEqualTo("navy");
+        assertThat(ColorNormalizer.normalizeColor("đỏ rượu vang")).isEqualTo("red");
+        assertThat(ColorNormalizer.normalizeColor("kem sữa")).isEqualTo("beige");
+        
+        // Test derived temperature & tone
+        assertThat(ColorNormalizer.getColorTone("black")).isEqualTo("dark");
+        assertThat(ColorNormalizer.getColorTone("beige")).isEqualTo("light");
+        assertThat(ColorNormalizer.getColorTemperature("brown")).isEqualTo("earth");
+        assertThat(ColorNormalizer.getColorTemperature("navy")).isEqualTo("cool");
+        
+        // Test color scoring compatibility
+        com.fashionshop.backend.module.ai.dto.response.ChatProductCard cardA = 
+            com.fashionshop.backend.module.ai.dto.response.ChatProductCard.builder().colorName("Màu đen").build();
+        com.fashionshop.backend.module.ai.dto.response.ChatProductCard cardB = 
+            com.fashionshop.backend.module.ai.dto.response.ChatProductCard.builder().colorName("Màu trắng").build();
+        com.fashionshop.backend.module.ai.dto.response.ChatProductCard cardC = 
+            com.fashionshop.backend.module.ai.dto.response.ChatProductCard.builder().colorName("Màu cam").build();
+        com.fashionshop.backend.module.ai.dto.response.ChatProductCard cardD = 
+            com.fashionshop.backend.module.ai.dto.response.ChatProductCard.builder().colorName("xanh lá").build();
+
+        // black + white = optimal (30)
+        assertThat(ColorNormalizer.calculateColorScore(cardA, cardB)).isEqualTo(30.0);
+        // cool (green) + warm (orange) = avoid (5)
+        assertThat(ColorNormalizer.calculateColorScore(cardC, cardD)).isEqualTo(5.0);
+    }
+
+    @Test
+    void testColorFallbackSearch() {
+        // Query for an out-of-stock color, e.g. "áo thun màu hồng sen cánh hoa" or "áo thun màu cam neon"
+        String fallbackMsg = "áo thun màu cam neon";
+        ChatMessageResponse response = chatService.processMessage(testUser.getId(), fallbackMsg);
+        
+        System.out.println("--- COLOR FALLBACK SEARCH RESPONSE ---");
+        System.out.println("Intent: " + response.getIntent());
+        System.out.println("SearchStatus: " + response.getSearchStatus());
+        System.out.println("Content: " + response.getContent());
+        System.out.println("Products size: " + (response.getProducts() != null ? response.getProducts().size() : 0));
+        
+        // Should fallback and notify NEAR_ROLE_FALLBACK
+        assertThat(response.getSearchStatus()).isEqualTo("NEAR_ROLE_FALLBACK");
+        String content = response.getContent().toLowerCase();
+        boolean matches = content.contains("chưa có") || content.contains("không có") || content.contains("không tìm thấy") || content.contains("chưa tìm thấy");
+        assertThat(matches).isTrue();
+    }
 }

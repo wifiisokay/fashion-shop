@@ -317,7 +317,8 @@ public class ChatServiceImpl implements ChatService {
                     requestedKeyword, null, startedAt);
             return response;
             }
-            retrievedData = withSearchStatus("TYPE_MATCH", requestedKeyword(content), productResult, null, retrievedData);
+            String resolvedSearchStatus = "NEAR_COLOR_FALLBACK".equals(productResult.fallbackLevel()) ? "NEAR_ROLE_FALLBACK" : "TYPE_MATCH";
+            retrievedData = withSearchStatus(resolvedSearchStatus, requestedKeyword(content), productResult, null, retrievedData);
         } else {
             retrievedData = dataRetriever.retrieveContext(intent, content, userId);
             log.info("[AI_CHAT_RETRIEVE] userId={} sessionId={} intent={} contextLength={}",
@@ -362,12 +363,13 @@ public class ChatServiceImpl implements ChatService {
             response.setSuggestedQuestions(response.getSuggestedQuestions() != null
                     ? response.getSuggestedQuestions()
                     : getDefaultSuggestions(intent));
-            boolean contradiction = guardProductSearchText(response, productResult, "TYPE_MATCH");
-            response.setSearchStatus("TYPE_MATCH");
+            String finalSearchStatus = "NEAR_COLOR_FALLBACK".equals(productResult.fallbackLevel()) ? "NEAR_ROLE_FALLBACK" : "TYPE_MATCH";
+            boolean contradiction = guardProductSearchText(response, productResult, finalSearchStatus);
+            response.setSearchStatus(finalSearchStatus);
             response.setInternalIntent(chatContext.getInternalIntent().name());
             logSearchStatus(userId, session.getId(), requestedKeyword(content), productResult, null, response,
-                    contradiction ? "TYPE_MATCH_AI_CONTRADICTION"
-                            : (rerankResult.geminiUsed() ? "TYPE_MATCH_GEMINI_RERANK" : "TYPE_MATCH"));
+                    contradiction ? (finalSearchStatus + "_AI_CONTRADICTION")
+                            : (rerankResult.geminiUsed() ? (finalSearchStatus + "_GEMINI_RERANK") : finalSearchStatus));
         }
         logParsedResponse(userId, session.getId(), intent, response, productResult);
 
@@ -693,6 +695,15 @@ public class ChatServiceImpl implements ChatService {
             response.setContent(noMatchText());
             response.setIsFromFallback(true);
             return true;
+        }
+        if ("NEAR_ROLE_FALLBACK".equals(searchStatus)) {
+            String content = response.getContent();
+            if (content == null || content.equals("Mình đã tìm các sản phẩm phù hợp từ dữ liệu của shop cho bạn.")
+                    || (!content.contains("chưa có") && !content.contains("không có") && !content.contains("không tìm thấy") && !content.contains("chưa tìm thấy"))) {
+                response.setContent("Hiện shop chưa có đúng màu sắc hoặc sản phẩm bạn tìm. Tuy nhiên, bạn có thể tham khảo một số sản phẩm tương tự dưới đây.");
+                response.setIsFromFallback(true);
+                return true;
+            }
         }
         return false;
     }
