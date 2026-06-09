@@ -7,6 +7,7 @@ import MainLayout from '../components/common/MainLayout';
 import StaffReturnManagePage from '../pages/staff/StaffReturnManagePage';
 import StaffOrderListPage from '../pages/staff/StaffOrderListPage';
 import StaffOrderDetailPage from '../pages/staff/StaffOrderDetailPage';
+import StaffInventoryPage from '../pages/staff/StaffInventoryPage';
 import HomePage from '../pages/customer/HomePage';
 import ProductListPage from '../pages/customer/ProductListPage';
 import ProductDetailPage from '../pages/customer/ProductDetailPage';
@@ -73,6 +74,7 @@ const AppRouter = () => {
           <Route path="orders" element={<StaffOrderListPage />} />
           <Route path="orders/:id" element={<StaffOrderDetailPage />} />
           <Route path="returns" element={<StaffReturnManagePage />} />
+          <Route path="inventory" element={<StaffInventoryPage />} />
         </Route>
 
         {/* Admin only */}

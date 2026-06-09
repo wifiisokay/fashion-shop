@@ -625,7 +625,7 @@ public class OrderServiceImpl implements OrderService {
 
     private java.util.Set<Long> nonReviewableReturnItemIds(Long orderId) {
         return new java.util.HashSet<>(returnItemRepository.findOrderItemIdsByOrderIdAndStatuses(
-            orderId, List.of(ReturnStatus.RECEIVED, ReturnStatus.COMPLETED)));
+            orderId, List.of(ReturnStatus.RECEIVED, ReturnStatus.REFUNDED, ReturnStatus.COMPLETED)));
     }
 
     private PageResponse<OrderSummaryResponse> buildPageResponse(Page<Order> orders) {

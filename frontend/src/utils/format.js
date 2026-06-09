@@ -13,9 +13,9 @@ export const formatOrderStatus = (status) => ({
   DELIVERED: { label: 'Đã giao', color: 'green' },
   COMPLETED: { label: 'Hoàn thành', color: 'green' },
   CANCELLED: { label: 'Đã hủy', color: 'red' },
-  RETURN_REQUESTED: { label: 'Yêu cầu đổi/trả hoặc khiếu nại', color: 'orange' },
-  RETURNING: { label: 'Đang xử lý đổi/trả', color: 'orange' },
-  RETURNED: { label: 'Đã xử lý đổi/trả', color: 'purple' },
+  RETURN_REQUESTED: { label: 'Yêu cầu trả hàng', color: 'orange' },
+  RETURNING: { label: 'Đang xử lý trả hàng', color: 'orange' },
+  RETURNED: { label: 'Đã trả hàng', color: 'purple' },
 }[status] ?? { label: status, color: 'default' });
 
 export const formatReturnType = (type) => ({

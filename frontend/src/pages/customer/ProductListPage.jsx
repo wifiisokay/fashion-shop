@@ -1,10 +1,10 @@
-import { useState, useMemo } from 'react';
+import { useEffect, useState, useMemo } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import { useProducts } from '../../hooks/useProducts';
 import { useCategories } from '../../hooks/useCategories';
 import ProductCard from '../../components/product/ProductCard';
 import Spinner from '../../components/ui/Spinner';
-import { Filter, X } from 'lucide-react';
+import { Filter, Search, X } from 'lucide-react';
 import { clsx } from 'clsx';
 
 const GENDER_OPTIONS = [
@@ -14,17 +14,32 @@ const GENDER_OPTIONS = [
 ];
 
 const ProductListPage = () => {
-  const [searchParams] = useSearchParams();
+  const [searchParams, setSearchParams] = useSearchParams();
+  const searchParamString = searchParams.toString();
   
   const [filters, setFilters] = useState({
+    keyword: searchParams.get('keyword') || '',
     categoryId: searchParams.get('category') ? parseInt(searchParams.get('category')) : '',
     gender: searchParams.get('gender') || '',
     isSale: searchParams.get('isSale') === 'true',
   });
+  const [keywordInput, setKeywordInput] = useState(searchParams.get('keyword') || '');
   
   const [sortBy, setSortBy] = useState('newest');
   const [page, setPage] = useState(0);
   const [isMobileFilterOpen, setIsMobileFilterOpen] = useState(false);
+
+  useEffect(() => {
+    const nextKeyword = searchParams.get('keyword') || '';
+    setKeywordInput(nextKeyword);
+    setFilters({
+      keyword: nextKeyword,
+      categoryId: searchParams.get('category') ? parseInt(searchParams.get('category')) : '',
+      gender: searchParams.get('gender') || '',
+      isSale: searchParams.get('isSale') === 'true',
+    });
+    setPage(0);
+  }, [searchParamString]);
 
   // Fetch true category tree
   const { data: categoriesData = [] } = useCategories();
@@ -42,6 +57,7 @@ const ProductListPage = () => {
 
   // Request to true backend API
   const queryParams = {
+    keyword: filters.keyword || undefined,
     categoryId: filters.categoryId || undefined,
     gender: filters.gender || undefined,
     isSale: filters.isSale || undefined,
@@ -55,16 +71,38 @@ const ProductListPage = () => {
   const products = data?.content || [];
   const totalPages = data?.totalPages || 0;
 
+  const syncUrlFilters = (nextFilters) => {
+    const params = new URLSearchParams();
+    if (nextFilters.keyword?.trim()) params.set('keyword', nextFilters.keyword.trim());
+    if (nextFilters.categoryId) params.set('category', String(nextFilters.categoryId));
+    if (nextFilters.gender) params.set('gender', nextFilters.gender);
+    if (nextFilters.isSale) params.set('isSale', 'true');
+    setSearchParams(params);
+  };
+
+  const handleSearchSubmit = (event) => {
+    event.preventDefault();
+    const nextFilters = { ...filters, keyword: keywordInput.trim() };
+    setFilters(nextFilters);
+    syncUrlFilters(nextFilters);
+    setPage(0);
+  };
+
   const handleFilterChange = (key, value) => {
-    setFilters(prev => ({
-      ...prev,
-      [key]: prev[key] === value ? (typeof value === 'boolean' ? false : '') : value
-    }));
+    const nextFilters = {
+      ...filters,
+      [key]: filters[key] === value ? (typeof value === 'boolean' ? false : '') : value
+    };
+    setFilters(nextFilters);
+    syncUrlFilters(nextFilters);
     setPage(0);
   };
 
   const clearFilters = () => {
-    setFilters({ categoryId: '', gender: '', isSale: false });
+    const emptyFilters = { keyword: '', categoryId: '', gender: '', isSale: false };
+    setKeywordInput('');
+    setFilters(emptyFilters);
+    syncUrlFilters(emptyFilters);
     setPage(0);
   };
 
@@ -96,13 +134,39 @@ const ProductListPage = () => {
         </div>
       </div>
 
+      <form onSubmit={handleSearchSubmit} className="flex flex-col sm:flex-row gap-2">
+        <div className="relative flex-1">
+          <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
+          <input
+            type="search"
+            value={keywordInput}
+            onChange={(event) => setKeywordInput(event.target.value)}
+            placeholder="Tìm theo tên sản phẩm, mô tả..."
+            className="w-full h-11 pl-10 pr-4 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-black/10 focus:border-black outline-none"
+          />
+        </div>
+        <button
+          type="submit"
+          className="h-11 px-5 bg-black text-white rounded-lg text-sm font-semibold hover:bg-gray-800 transition-colors inline-flex items-center justify-center gap-2"
+        >
+          <Search className="w-4 h-4" />
+          <span>Tìm kiếm</span>
+        </button>
+      </form>
+
+      {filters.keyword && (
+        <p className="text-sm text-gray-500 -mt-3">
+          Kết quả tìm kiếm cho <span className="font-semibold text-gray-900">"{filters.keyword}"</span>
+        </p>
+      )}
+
       <div className="flex flex-col lg:flex-row gap-8">
         {/* Sidebar Filters (Desktop) */}
         <div className="hidden lg:block w-64 flex-shrink-0 space-y-8">
           <div>
             <div className="flex items-center justify-between mb-4">
               <h3 className="font-bold text-gray-900">Bộ lọc</h3>
-              {(filters.categoryId || filters.gender || filters.isSale) && (
+              {(filters.keyword || filters.categoryId || filters.gender || filters.isSale) && (
                 <button onClick={clearFilters} className="text-xs text-blue-600 hover:underline">Xóa tất cả</button>
               )}
             </div>

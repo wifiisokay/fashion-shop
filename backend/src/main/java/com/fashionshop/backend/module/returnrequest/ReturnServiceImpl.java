@@ -73,7 +73,7 @@ public class ReturnServiceImpl implements ReturnService {
         if (order.getStatus() != OrderStatus.COMPLETED) {
             throw new BusinessException(ErrorCode.RETURN_NOT_ELIGIBLE, HttpStatus.BAD_REQUEST);
         }
-        if (order.getDeliveredAt() == null || order.getDeliveredAt().plusDays(7).isBefore(LocalDateTime.now())) {
+        if (order.getCompletedAt() == null || order.getCompletedAt().plusDays(7).isBefore(LocalDateTime.now())) {
             throw new BusinessException(ErrorCode.RETURN_WINDOW_EXPIRED, HttpStatus.BAD_REQUEST);
         }
         if (order.getPaymentStatus() == OrderPaymentStatus.REFUNDED) {
@@ -132,6 +132,9 @@ public class ReturnServiceImpl implements ReturnService {
         returnRequest.setRefundAmount(totalRefund);
         returnRepository.save(returnRequest);
 
+        order.setStatus(OrderStatus.RETURN_REQUESTED);
+        orderRepository.save(order);
+
         log.info("Return created userId={}, orderId={}, returnId={}, refundAmount={}", userId, order.getId(), returnRequest.getId(), totalRefund);
         return ReturnResponse.from(returnRequest, returnStatusService.getLabel(returnRequest.getStatus()));
     }
@@ -178,6 +181,11 @@ public class ReturnServiceImpl implements ReturnService {
         if (note != null && !note.isBlank()) {
             r.setAdminNote(note);
         }
+
+        Order order = r.getOrder();
+        order.setStatus(OrderStatus.RETURNING);
+        orderRepository.save(order);
+
         log.info("Return approved returnId={}, staffId={}", returnId, staffId);
     }
 
@@ -195,6 +203,10 @@ public class ReturnServiceImpl implements ReturnService {
         r.setProcessedBy(findUserOrThrow(staffId));
         r.setAdminNote(note);
 
+        Order order = r.getOrder();
+        order.setStatus(OrderStatus.COMPLETED);
+        orderRepository.save(order);
+
         log.info("Return rejected returnId={}, staffId={}", returnId, staffId);
     }
 
@@ -203,7 +215,7 @@ public class ReturnServiceImpl implements ReturnService {
     public void markReceived(Long adminId, Long returnId) {
         ReturnRequest r = returnRepository.findByIdForUpdate(returnId)
             .orElseThrow(() -> new BusinessException(ErrorCode.RETURN_NOT_FOUND, HttpStatus.NOT_FOUND));
-        if (r.getStatus() == ReturnStatus.RECEIVED || r.getStatus() == ReturnStatus.COMPLETED) {
+        if (r.getStatus() == ReturnStatus.RECEIVED || r.getStatus() == ReturnStatus.COMPLETED || r.getStatus() == ReturnStatus.REFUNDED) {
             log.info("Return already received returnId={}, status={}", returnId, r.getStatus());
             return;
         }
@@ -221,9 +233,9 @@ public class ReturnServiceImpl implements ReturnService {
     @Transactional
     public void completeReturn(Long adminId, Long returnId, String note) {
         ReturnRequest r = findReturnOrThrow(returnId);
-        returnStatusService.validateTransition(r.getStatus(), ReturnStatus.COMPLETED);
+        returnStatusService.validateTransition(r.getStatus(), ReturnStatus.REFUNDED);
 
-        r.setStatus(ReturnStatus.COMPLETED);
+        r.setStatus(ReturnStatus.REFUNDED);
         r.setProcessedBy(findUserOrThrow(adminId));
         r.setRefundedAt(LocalDateTime.now());
         if (note != null && !note.isBlank()) {

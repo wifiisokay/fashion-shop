@@ -52,24 +52,25 @@ const PRESETS = [
 
 // Order status styling map
 const ORDER_STATUS_MAP = {
-  'PENDING': { label: 'Chờ xử lý', color: '#F59E0B' },
+  'PENDING': { label: 'Chờ xác nhận', color: '#F59E0B' },
   'CONFIRMED': { label: 'Đã xác nhận', color: '#3B82F6' },
   'SHIPPING': { label: 'Đang giao', color: '#6366F1' },
   'DELIVERED': { label: 'Đã giao', color: '#10B981' },
   'COMPLETED': { label: 'Hoàn thành', color: '#047857' },
   'CANCELLED': { label: 'Đã hủy', color: '#EF4444' },
-  'RETURNED': { label: 'Đã hoàn trả', color: '#EC4899' },
+  'RETURNED': { label: 'Đã trả hàng', color: '#EC4899' },
   'RETURN_REQUESTED': { label: 'Yêu cầu trả hàng', color: '#F97316' },
-  'RETURNING': { label: 'Đang trả hàng', color: '#A855F7' }
+  'RETURNING': { label: 'Đang xử lý trả hàng', color: '#A855F7' }
 };
 
 // Return status styling map
 const RETURN_STATUS_MAP = {
   'REQUESTED': { label: 'Chờ duyệt', color: '#EF4444', badgeClass: 'bg-red-50 text-red-700 border-red-200' },
   'APPROVED': { label: 'Đã duyệt', color: '#F59E0B', badgeClass: 'bg-amber-50 text-amber-700 border-amber-200' },
-  'RECEIVED': { label: 'Đã nhận', color: '#3B82F6', badgeClass: 'bg-blue-50 text-blue-700 border-blue-200' },
+  'RECEIVED': { label: 'Đã nhận hàng trả', color: '#3B82F6', badgeClass: 'bg-blue-50 text-blue-700 border-blue-200' },
+  'REFUNDED': { label: 'Đã hoàn tiền', color: '#10B981', badgeClass: 'bg-green-50 text-green-700 border-green-200' },
   'COMPLETED': { label: 'Đã hoàn tiền', color: '#10B981', badgeClass: 'bg-green-50 text-green-700 border-green-200' },
-  'REJECTED': { label: 'Từ chối', color: '#6B7280', badgeClass: 'bg-gray-50 text-gray-700 border-gray-200' }
+  'REJECTED': { label: 'Đã từ chối', color: '#6B7280', badgeClass: 'bg-gray-50 text-gray-700 border-gray-200' }
 };
 
 // StatCard Component
@@ -216,7 +217,14 @@ const DashboardPage = () => {
   // Sort daily revenue chronologically
   const dailyRevenueData = useMemo(() => {
     if (!charts?.dailyRevenue) return [];
-    return [...charts.dailyRevenue].sort((a, b) => dayjs(a.date).diff(dayjs(b.date)));
+    return charts.dailyRevenue
+      .map((item) => ({
+        ...item,
+        revenue: Number(item.revenue || 0),
+        orderCount: Number(item.orderCount || 0)
+      }))
+      .filter((item) => item.revenue > 0)
+      .sort((a, b) => dayjs(a.date).diff(dayjs(b.date)));
   }, [charts?.dailyRevenue]);
 
   // Map order status distribution to recharts list
@@ -530,7 +538,7 @@ const DashboardPage = () => {
       <div className="grid grid-cols-1 xl:grid-cols-3 gap-6">
         
         {/* Doanh thu thực nhận theo ngày - Line Chart */}
-        <div className="xl:col-span-2">
+        <div className="xl:col-span-3">
           <ChartCard 
             title="Biểu đồ doanh thu thực nhận theo ngày" 
             empty={dailyRevenueData.length === 0}
@@ -568,45 +576,6 @@ const DashboardPage = () => {
                   activeDot={{ r: 6, strokeWidth: 2 }}
                 />
               </LineChart>
-            </ResponsiveContainer>
-          </ChartCard>
-        </div>
-
-        {/* Donut Chart - Trạng thái trả hàng */}
-        <div>
-          <ChartCard 
-            title="Trạng thái trả hàng"
-            empty={returnChartData.length === 0}
-            emptyMessage="Chưa có yêu cầu trả hàng trong thời gian này."
-          >
-            <ResponsiveContainer width="100%" height="100%">
-              <PieChart>
-                <Pie
-                  data={returnChartData}
-                  cx="50%"
-                  cy="45%"
-                  innerRadius={60}
-                  outerRadius={85}
-                  paddingAngle={3}
-                  dataKey="value"
-                  nameKey="name"
-                >
-                  {returnChartData.map((entry, index) => (
-                    <Cell key={`cell-${index}`} fill={entry.color} />
-                  ))}
-                </Pie>
-                <Tooltip
-                  formatter={(value, name) => [`${value} yêu cầu`, name]}
-                  contentStyle={{ borderRadius: '12px', border: '1px solid #E5E7EB', boxShadow: '0 10px 15px -3px rgba(0, 0, 0, 0.05)' }}
-                />
-                <Legend 
-                  verticalAlign="bottom" 
-                  height={36} 
-                  iconType="circle" 
-                  iconSize={8}
-                  wrapperStyle={{ fontSize: '11px', fontWeight: 600, color: '#374151' }} 
-                />
-              </PieChart>
             </ResponsiveContainer>
           </ChartCard>
         </div>

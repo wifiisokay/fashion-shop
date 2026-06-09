@@ -70,7 +70,7 @@ public class ReviewServiceImpl implements ReviewService {
         }
 
         Long returnedQuantity = returnItemRepository.sumQuantityByOrderItemAndStatuses(
-            orderItem.getId(), List.of(ReturnStatus.COMPLETED));
+            orderItem.getId(), List.of(ReturnStatus.RECEIVED, ReturnStatus.REFUNDED, ReturnStatus.COMPLETED));
         if (returnedQuantity != null && returnedQuantity > 0) {
             throw new BusinessException(ErrorCode.REVIEW_NOT_ELIGIBLE, HttpStatus.BAD_REQUEST);
         }

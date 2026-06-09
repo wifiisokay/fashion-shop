@@ -440,7 +440,7 @@ const StaffOrderDetailPage = () => {
                     </Button>
                   </>
                 )}
-                {(order.status === 'SHIPPING' || order.status === 'DELIVERED') && (
+                {order.status === 'SHIPPING' && authUser?.role === 'ADMIN' && (
                   <Button
                     onClick={() => confirmCompletedMutation.mutate()}
                     loading={confirmCompletedMutation.isPending}
@@ -535,8 +535,8 @@ const StaffOrderDetailPage = () => {
                   </>
                 )}
                 {order.returnStatus === 'APPROVED' && authUser?.role === 'ADMIN' && (
-                  <Button onClick={() => { if (window.confirm('Xác nhận đã nhận hàng/ghi nhận xử lý?')) receiveMutation.mutate(); }} loading={receiveMutation.isPending} className="bg-purple-600 hover:bg-purple-700">
-                    <Package className="w-4 h-4 mr-1" /> Xác nhận xử lý
+                  <Button onClick={() => { if (window.confirm('Xác nhận đã nhận hàng trả?')) receiveMutation.mutate(); }} loading={receiveMutation.isPending} className="bg-purple-600 hover:bg-purple-700">
+                    <Package className="w-4 h-4 mr-1" /> Xác nhận đã nhận hàng
                   </Button>
                 )}
                 {order.returnStatus === 'RECEIVED' && authUser?.role === 'ADMIN' && (

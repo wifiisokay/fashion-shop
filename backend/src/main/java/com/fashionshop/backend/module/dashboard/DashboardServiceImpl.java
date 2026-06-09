@@ -62,37 +62,47 @@ public class DashboardServiceImpl implements DashboardService {
     private final StockAlertService stockAlertService;
 
     private static final String FINALIZED_ORDER_WHERE = """
-                WHERE o.status = 'COMPLETED'
-                    AND o.payment_status = 'PAID'
-                    AND COALESCE(o.completed_at, o.updated_at, o.created_at) >= :fromDate
-                    AND COALESCE(o.completed_at, o.updated_at, o.created_at) < :toDateExclusive
-        """;
+                    WHERE o.status = 'COMPLETED'
+                        AND o.payment_status = 'PAID'
+                        AND COALESCE(o.completed_at, o.updated_at, o.created_at) >= :fromDate
+                        AND COALESCE(o.completed_at, o.updated_at, o.created_at) < :toDateExclusive
+            """;
+
+    private static final String REFUNDED_BY_ORDER_JOIN = """
+                    LEFT JOIN (
+                        SELECT order_id, COALESCE(SUM(refund_amount), 0) AS refunded_amount
+                        FROM returns
+                        WHERE status IN ('COMPLETED', 'REFUNDED')
+                        GROUP BY order_id
+                    ) refunded ON refunded.order_id = o.id
+            """;
 
     @Override
     @Transactional(readOnly = true)
     public DashboardStatsResponse getDashboardStats() {
         // 1. Totals
         BigDecimal totalRevenue = orderRepository.getTotalRevenue();
-        if (totalRevenue == null) totalRevenue = BigDecimal.ZERO;
-        
+        if (totalRevenue == null)
+            totalRevenue = BigDecimal.ZERO;
+
         long totalOrders = orderRepository.count();
         long totalCustomers = userRepository.countByRole(Role.CUSTOMER);
         long totalProducts = productRepository.countByStatus(ProductStatus.ACTIVE);
 
         Totals totals = Totals.builder()
-            .totalRevenue(totalRevenue)
-            .totalOrders(totalOrders)
-            .totalCustomers(totalCustomers)
-            .totalProducts(totalProducts)
-            .build();
+                .totalRevenue(totalRevenue)
+                .totalOrders(totalOrders)
+                .totalCustomers(totalCustomers)
+                .totalProducts(totalProducts)
+                .build();
 
         // 2. Revenue Trend (last 30 days)
         LocalDateTime startDate = LocalDateTime.now().minusDays(30);
         List<Object[]> trendRaw = orderRepository.getRevenueTrend(startDate);
-        
+
         List<RevenuePoint> revenueTrend = trendRaw.stream().map(row -> {
             // Function DATE returns java.sql.Date usually
-            String dateStr = row[0].toString(); 
+            String dateStr = row[0].toString();
             BigDecimal revenue = (BigDecimal) row[1];
             return new RevenuePoint(dateStr, revenue);
         }).collect(Collectors.toList());
@@ -112,31 +122,34 @@ public class DashboardServiceImpl implements DashboardService {
         LocalDateTime monthStart = LocalDate.now().withDayOfMonth(1).atStartOfDay();
         List<OrderStatus> feeStatuses = List.of(OrderStatus.SHIPPING, OrderStatus.COMPLETED);
         BigDecimal shippingFeeTotalThisMonth = orderRepository
-            .sumShippingFeeByCreatedAtAfterAndStatusIn(monthStart, feeStatuses);
+                .sumShippingFeeByCreatedAtAfterAndStatusIn(monthStart, feeStatuses);
         BigDecimal shippingFeeAvgThisMonth = orderRepository
-            .avgShippingFeeByCreatedAtAfterAndStatusIn(monthStart, feeStatuses);
+                .avgShippingFeeByCreatedAtAfterAndStatusIn(monthStart, feeStatuses);
 
         PackingStats packingStats = PackingStats.builder()
-            .confirmedNotPacked(confirmedNotPacked)
-            .confirmedPacked(confirmedPacked)
-            .shippingFeeTotalThisMonth(shippingFeeTotalThisMonth)
-            .shippingFeeAvgThisMonth(shippingFeeAvgThisMonth)
-            .build();
+                .confirmedNotPacked(confirmedNotPacked)
+                .confirmedPacked(confirmedPacked)
+                .shippingFeeTotalThisMonth(shippingFeeTotalThisMonth)
+                .shippingFeeAvgThisMonth(shippingFeeAvgThisMonth)
+                .build();
 
         ReturnStats returnStats = ReturnStats.builder()
-            .pending(returnRequestRepository.countByStatus(ReturnStatus.REQUESTED))
-            .processing(returnRequestRepository.countByStatusIn(List.of(ReturnStatus.APPROVED, ReturnStatus.RECEIVED)))
-            .completedThisMonth(returnRequestRepository.countByStatusAndUpdatedAtAfter(ReturnStatus.COMPLETED, monthStart))
-            .refundAmountThisMonth(returnRequestRepository.sumCompletedRefundAmountSince(monthStart))
-            .build();
+                .pending(returnRequestRepository.countByStatus(ReturnStatus.REQUESTED))
+                .processing(
+                        returnRequestRepository.countByStatusIn(List.of(ReturnStatus.APPROVED, ReturnStatus.RECEIVED)))
+                .completedThisMonth(
+                        returnRequestRepository.countByStatusAndUpdatedAtAfter(ReturnStatus.COMPLETED, monthStart)
+                        + returnRequestRepository.countByStatusAndUpdatedAtAfter(ReturnStatus.REFUNDED, monthStart))
+                .refundAmountThisMonth(returnRequestRepository.sumCompletedRefundAmountSince(monthStart))
+                .build();
 
         return DashboardStatsResponse.builder()
-            .totals(totals)
-            .revenueTrend(revenueTrend)
-            .orderStatusDistribution(statusDistribution)
-            .packingStats(packingStats)
-            .returnStats(returnStats)
-            .build();
+                .totals(totals)
+                .revenueTrend(revenueTrend)
+                .orderStatusDistribution(statusDistribution)
+                .packingStats(packingStats)
+                .returnStats(returnStats)
+                .build();
     }
 
     @Override
@@ -149,175 +162,181 @@ public class DashboardServiceImpl implements DashboardService {
         LocalDateTime fromDate = effectiveFrom.atStartOfDay();
         LocalDateTime toDateExclusive = effectiveTo.plusDays(1).atStartOfDay();
         MapSqlParameterSource params = new MapSqlParameterSource()
-            .addValue("fromDate", fromDate)
-            .addValue("toDateExclusive", toDateExclusive);
+                .addValue("fromDate", fromDate)
+                .addValue("toDateExclusive", toDateExclusive);
 
         BigDecimal finalizedGrossRevenue = queryBigDecimal("""
-            SELECT COALESCE(SUM(o.total_amount), 0)
-            FROM orders o
-            """ + FINALIZED_ORDER_WHERE, params);
+                SELECT COALESCE(SUM(o.total_amount), 0)
+                FROM orders o
+                """ + FINALIZED_ORDER_WHERE, params);
         BigDecimal refundedAmount = queryBigDecimal("""
-            SELECT COALESCE(SUM(r.refund_amount), 0)
-            FROM returns r
-            WHERE r.status = 'COMPLETED'
-              AND COALESCE(r.refunded_at, r.updated_at, r.created_at) >= :fromDate
-              AND COALESCE(r.refunded_at, r.updated_at, r.created_at) < :toDateExclusive
-            """, params);
+                SELECT COALESCE(SUM(r.refund_amount), 0)
+                FROM returns r
+                WHERE r.status IN ('COMPLETED', 'REFUNDED')
+                  AND COALESCE(r.refunded_at, r.updated_at, r.created_at) >= :fromDate
+                  AND COALESCE(r.refunded_at, r.updated_at, r.created_at) < :toDateExclusive
+                """, params);
         long finalizedOrderCount = queryLong("""
-            SELECT COUNT(*)
-            FROM orders o
-            """ + FINALIZED_ORDER_WHERE, params);
+                SELECT COUNT(*)
+                FROM orders o
+                """ + FINALIZED_ORDER_WHERE, params);
 
-        BigDecimal netRevenue = finalizedGrossRevenue;
+        BigDecimal netRevenue = queryBigDecimal("""
+                SELECT COALESCE(SUM(GREATEST(o.total_amount - COALESCE(refunded.refunded_amount, 0), 0)), 0)
+                FROM orders o
+                """ + REFUNDED_BY_ORDER_JOIN + FINALIZED_ORDER_WHERE, params);
         long pendingOrderCount = queryLong("""
-            SELECT COUNT(*)
-            FROM orders
-            WHERE status IN ('PENDING', 'CONFIRMED')
-              AND created_at >= :fromDate
-              AND created_at < :toDateExclusive
-            """, params);
+                SELECT COUNT(*)
+                FROM orders
+                WHERE status IN ('PENDING', 'CONFIRMED')
+                  AND created_at >= :fromDate
+                  AND created_at < :toDateExclusive
+                """, params);
         long shippingOrderCount = queryLong("""
-            SELECT COUNT(*)
-            FROM orders
-            WHERE status = 'SHIPPING'
-              AND created_at >= :fromDate
-              AND created_at < :toDateExclusive
-            """, params);
+                SELECT COUNT(*)
+                FROM orders
+                WHERE status = 'SHIPPING'
+                  AND created_at >= :fromDate
+                  AND created_at < :toDateExclusive
+                """, params);
         long completedOrderCount = queryLong("""
-            SELECT COUNT(*)
-            FROM orders
-            WHERE status = 'COMPLETED'
-              AND COALESCE(completed_at, updated_at, created_at) >= :fromDate
-              AND COALESCE(completed_at, updated_at, created_at) < :toDateExclusive
-            """, params);
+                SELECT COUNT(*)
+                FROM orders
+                WHERE status = 'COMPLETED'
+                  AND COALESCE(completed_at, updated_at, created_at) >= :fromDate
+                  AND COALESCE(completed_at, updated_at, created_at) < :toDateExclusive
+                """, params);
         long cancelledOrders = queryLong("""
-            SELECT COUNT(*)
-            FROM orders
-            WHERE status = 'CANCELLED'
-              AND created_at >= :fromDate
-              AND created_at < :toDateExclusive
-            """, params);
+                SELECT COUNT(*)
+                FROM orders
+                WHERE status = 'CANCELLED'
+                  AND created_at >= :fromDate
+                  AND created_at < :toDateExclusive
+                """, params);
         long returnedOrders = queryLong("""
-            SELECT COUNT(*)
-            FROM orders
-            WHERE status = 'RETURNED'
-              AND COALESCE(updated_at, created_at) >= :fromDate
-              AND COALESCE(updated_at, created_at) < :toDateExclusive
-            """, params);
+                SELECT COUNT(*)
+                FROM orders
+                WHERE status = 'RETURNED'
+                  AND COALESCE(updated_at, created_at) >= :fromDate
+                  AND COALESCE(updated_at, created_at) < :toDateExclusive
+                """, params);
         long pendingReturnCount = queryLong("SELECT COUNT(*) FROM returns WHERE status = 'REQUESTED'", params);
         StockAlertResponse stockAlerts = stockAlertService.getStockAlerts(5);
         long lowStockProductCount = stockAlerts.getLowStockCount();
         long activeProductCount = queryLong("SELECT COUNT(*) FROM products WHERE status = 'ACTIVE'", params);
         Map<String, Long> orderStatusDistribution = countMap("""
-            SELECT o.status AS label, COUNT(*) AS total
-            FROM orders o
-            WHERE o.created_at >= :fromDate
-              AND o.created_at < :toDateExclusive
-            GROUP BY o.status
-            """, params);
+                SELECT o.status AS label, COUNT(*) AS total
+                FROM orders o
+                WHERE o.created_at >= :fromDate
+                  AND o.created_at < :toDateExclusive
+                GROUP BY o.status
+                """, params);
         Map<String, Long> returnStatusDistribution = countMap("""
-            SELECT r.status AS label, COUNT(*) AS total
-            FROM returns r
-            WHERE r.created_at >= :fromDate
-              AND r.created_at < :toDateExclusive
-            GROUP BY r.status
-            """, params);
+                SELECT r.status AS label, COUNT(*) AS total
+                FROM returns r
+                WHERE r.created_at >= :fromDate
+                  AND r.created_at < :toDateExclusive
+                GROUP BY r.status
+                """, params);
         OverviewSummary overview = OverviewSummary.builder()
-            .netRevenue(netRevenue)
-            .finalizedGrossRevenue(finalizedGrossRevenue)
-            .refundedAmount(refundedAmount)
-            .finalizedOrderCount(finalizedOrderCount)
-            .pendingOrderCount(pendingOrderCount)
-            .shippingOrderCount(shippingOrderCount)
-            .completedOrderCount(completedOrderCount)
-            .cancelledOrders(cancelledOrders)
-            .returnedOrders(returnedOrders)
-            .pendingReturnCount(pendingReturnCount)
-            .lowStockProductCount(lowStockProductCount)
-            .activeProductCount(activeProductCount)
-            .build();
+                .netRevenue(netRevenue)
+                .finalizedGrossRevenue(finalizedGrossRevenue)
+                .refundedAmount(refundedAmount)
+                .finalizedOrderCount(finalizedOrderCount)
+                .pendingOrderCount(pendingOrderCount)
+                .shippingOrderCount(shippingOrderCount)
+                .completedOrderCount(completedOrderCount)
+                .cancelledOrders(cancelledOrders)
+                .returnedOrders(returnedOrders)
+                .pendingReturnCount(pendingReturnCount)
+                .lowStockProductCount(lowStockProductCount)
+                .activeProductCount(activeProductCount)
+                .build();
 
         RevenueSummary revenue = RevenueSummary.builder()
-            .finalizedGrossRevenue(finalizedGrossRevenue)
-            .refundedAmount(refundedAmount)
-            .netRevenue(netRevenue)
-            .codRevenue(BigDecimal.ZERO)
-            .vnpayRevenue(BigDecimal.ZERO)
-            .finalizedOrderCount(finalizedOrderCount)
-            .build();
+                .finalizedGrossRevenue(finalizedGrossRevenue)
+                .refundedAmount(refundedAmount)
+                .netRevenue(netRevenue)
+                .codRevenue(BigDecimal.ZERO)
+                .vnpayRevenue(BigDecimal.ZERO)
+                .finalizedOrderCount(finalizedOrderCount)
+                .build();
 
         ReturnSummary returns = ReturnSummary.builder()
-            .pendingReturns(queryLong("SELECT COUNT(*) FROM returns WHERE status = 'REQUESTED'", params))
-            .processingReturns(queryLong("SELECT COUNT(*) FROM returns WHERE status IN ('APPROVED', 'RECEIVED')", params))
-            .rejectedReturns(queryLong("""
-                SELECT COUNT(*) FROM returns
-                WHERE status = 'REJECTED' AND updated_at >= :fromDate AND updated_at < :toDateExclusive
-                """, params))
-            .completedReturns(queryLong("""
-                SELECT COUNT(*) FROM returns
-                WHERE status = 'COMPLETED' AND updated_at >= :fromDate AND updated_at < :toDateExclusive
-                """, params))
-            .pendingOver24h(queryLong("""
-                SELECT COUNT(*) FROM returns
-                WHERE status = 'REQUESTED' AND created_at < DATE_SUB(NOW(), INTERVAL 24 HOUR)
-                """, params))
-            .approvedOver3Days(queryLong("""
-                SELECT COUNT(*) FROM returns
-                WHERE status = 'APPROVED' AND updated_at < DATE_SUB(NOW(), INTERVAL 3 DAY)
-                """, params))
-            .receivedNotCompleted(queryLong("SELECT COUNT(*) FROM returns WHERE status = 'RECEIVED'", params))
-            .processedRefundAmount(refundedAmount)
-            .returnItemQuantity(queryLong("""
-                SELECT COALESCE(SUM(ri.quantity), 0)
-                FROM return_items ri
-                JOIN returns r ON r.id = ri.return_id
-                WHERE r.status = 'COMPLETED'
-                  AND COALESCE(r.refunded_at, r.updated_at, r.created_at) >= :fromDate
-                  AND COALESCE(r.refunded_at, r.updated_at, r.created_at) < :toDateExclusive
-                """, params))
-            .returnItemValue(queryBigDecimal("""
-                SELECT COALESCE(SUM(ri.subtotal), 0)
-                FROM return_items ri
-                JOIN returns r ON r.id = ri.return_id
-                WHERE r.status = 'COMPLETED'
-                  AND COALESCE(r.refunded_at, r.updated_at, r.created_at) >= :fromDate
-                  AND COALESCE(r.refunded_at, r.updated_at, r.created_at) < :toDateExclusive
-                """, params))
-            .queue(returnQueue())
-            .build();
+                .pendingReturns(queryLong("SELECT COUNT(*) FROM returns WHERE status = 'REQUESTED'", params))
+                .processingReturns(
+                        queryLong("SELECT COUNT(*) FROM returns WHERE status IN ('APPROVED', 'RECEIVED')", params))
+                .rejectedReturns(queryLong("""
+                        SELECT COUNT(*) FROM returns
+                        WHERE status = 'REJECTED' AND updated_at >= :fromDate AND updated_at < :toDateExclusive
+                        """, params))
+                .completedReturns(queryLong("""
+                        SELECT COUNT(*) FROM returns
+                        WHERE status = 'COMPLETED' AND updated_at >= :fromDate AND updated_at < :toDateExclusive
+                        """, params))
+                .pendingOver24h(queryLong("""
+                        SELECT COUNT(*) FROM returns
+                        WHERE status = 'REQUESTED' AND created_at < DATE_SUB(NOW(), INTERVAL 24 HOUR)
+                        """, params))
+                .approvedOver3Days(queryLong("""
+                        SELECT COUNT(*) FROM returns
+                        WHERE status = 'APPROVED' AND updated_at < DATE_SUB(NOW(), INTERVAL 3 DAY)
+                        """, params))
+                .receivedNotCompleted(queryLong("SELECT COUNT(*) FROM returns WHERE status = 'RECEIVED'", params))
+                .processedRefundAmount(refundedAmount)
+                .returnItemQuantity(queryLong("""
+                        SELECT COALESCE(SUM(ri.quantity), 0)
+                        FROM return_items ri
+                        JOIN returns r ON r.id = ri.return_id
+                        WHERE r.status = 'COMPLETED'
+                          AND COALESCE(r.refunded_at, r.updated_at, r.created_at) >= :fromDate
+                          AND COALESCE(r.refunded_at, r.updated_at, r.created_at) < :toDateExclusive
+                        """, params))
+                .returnItemValue(queryBigDecimal("""
+                        SELECT COALESCE(SUM(ri.subtotal), 0)
+                        FROM return_items ri
+                        JOIN returns r ON r.id = ri.return_id
+                        WHERE r.status = 'COMPLETED'
+                          AND COALESCE(r.refunded_at, r.updated_at, r.created_at) >= :fromDate
+                          AND COALESCE(r.refunded_at, r.updated_at, r.created_at) < :toDateExclusive
+                        """, params))
+                .queue(returnQueue())
+                .build();
 
         ProductAnalytics products = ProductAnalytics.builder()
-            .topSellingProducts(topSellingProducts(params))
-            .topRevenueProducts(List.of())
-            .topReturnedProducts(List.of())
-            .build();
+                .topSellingProducts(topSellingProducts(params))
+                .topRevenueProducts(List.of())
+                .topReturnedProducts(List.of())
+                .build();
 
         DashboardCharts charts = DashboardCharts.builder()
-            .dailyRevenue(dailyRevenue(params))
-            .paymentMethodRevenue(List.of())
-            .orderStatusDistribution(orderStatusDistribution)
-            .returnStatusDistribution(returnStatusDistribution)
-            .returnTypeDistribution(Map.of())
-            .build();
+                .dailyRevenue(dailyRevenue(params))
+                .paymentMethodRevenue(List.of())
+                .orderStatusDistribution(orderStatusDistribution)
+                .returnStatusDistribution(returnStatusDistribution)
+                .returnTypeDistribution(Map.of())
+                .build();
 
         return AdminDashboardResponse.builder()
-            .dateRange(DashboardDateRange.builder().from(effectiveFrom).to(effectiveTo).build())
-            .overview(overview)
-            .revenue(revenue)
-            .orders(OrderSummary.builder().orderStatusDistribution(orderStatusDistribution).build())
-            .returns(returns)
-            .products(products)
-            .charts(charts)
-            .stockAlerts(stockAlerts)
-            .build();
+                .dateRange(DashboardDateRange.builder().from(effectiveFrom).to(effectiveTo).build())
+                .overview(overview)
+                .revenue(revenue)
+                .orders(OrderSummary.builder().orderStatusDistribution(orderStatusDistribution).build())
+                .returns(returns)
+                .products(products)
+                .charts(charts)
+                .stockAlerts(stockAlerts)
+                .build();
     }
 
     private void validateRange(LocalDate from, LocalDate to) {
         if (from.isAfter(to)) {
-            throw new BusinessException(ErrorCode.VALIDATION_ERROR, HttpStatus.BAD_REQUEST, "from phải nhỏ hơn hoặc bằng to");
+            throw new BusinessException(ErrorCode.VALIDATION_ERROR, HttpStatus.BAD_REQUEST,
+                    "from phải nhỏ hơn hoặc bằng to");
         }
         if (ChronoUnit.DAYS.between(from, to) > 365) {
-            throw new BusinessException(ErrorCode.VALIDATION_ERROR, HttpStatus.BAD_REQUEST, "Khoảng thời gian dashboard không được quá 365 ngày");
+            throw new BusinessException(ErrorCode.VALIDATION_ERROR, HttpStatus.BAD_REQUEST,
+                    "Khoảng thời gian dashboard không được quá 365 ngày");
         }
     }
 
@@ -340,70 +359,76 @@ public class DashboardServiceImpl implements DashboardService {
     }
 
     private List<DailyRevenuePoint> dailyRevenue(MapSqlParameterSource params) {
-        // completed_at is the revenue recognition date; older rows fall back to updated_at/created_at.
+        // completed_at is the revenue recognition date; older rows fall back to
+        // updated_at/created_at.
         return jdbc.query("""
-            SELECT DATE(COALESCE(o.completed_at, o.updated_at, o.created_at)) AS revenue_date,
-                   COALESCE(SUM(o.total_amount), 0) AS revenue,
-                   COUNT(*) AS order_count
-            FROM orders o
-            """ + FINALIZED_ORDER_WHERE + """
-            GROUP BY DATE(COALESCE(o.completed_at, o.updated_at, o.created_at))
-            ORDER BY DATE(COALESCE(o.completed_at, o.updated_at, o.created_at))
-            """, params, (rs, rowNum) -> DailyRevenuePoint.builder()
-            .date(rs.getString("revenue_date"))
-            .revenue(defaultBigDecimal(rs.getBigDecimal("revenue")))
-            .orderCount(rs.getLong("order_count"))
-            .build());
+                SELECT DATE(COALESCE(o.completed_at, o.updated_at, o.created_at)) AS revenue_date,
+                       COALESCE(SUM(GREATEST(o.total_amount - COALESCE(refunded.refunded_amount, 0), 0)), 0) AS revenue,
+                       SUM(CASE
+                           WHEN GREATEST(o.total_amount - COALESCE(refunded.refunded_amount, 0), 0) > 0 THEN 1
+                           ELSE 0
+                       END) AS order_count
+                FROM orders o
+                """ + REFUNDED_BY_ORDER_JOIN + """
+                """ + FINALIZED_ORDER_WHERE + """
+                GROUP BY DATE(COALESCE(o.completed_at, o.updated_at, o.created_at))
+                HAVING revenue > 0
+                ORDER BY DATE(COALESCE(o.completed_at, o.updated_at, o.created_at))
+                """, params, (rs, rowNum) -> DailyRevenuePoint.builder()
+                .date(rs.getString("revenue_date"))
+                .revenue(defaultBigDecimal(rs.getBigDecimal("revenue")))
+                .orderCount(rs.getLong("order_count"))
+                .build());
     }
 
     private List<ProductMetric> topSellingProducts(MapSqlParameterSource params) {
         return jdbc.query("""
-            SELECT oi.product_id,
-                   oi.product_name,
-                   COALESCE(SUM(oi.quantity), 0) AS sold_quantity,
-                   COALESCE(SUM(oi.subtotal), 0) AS revenue
-            FROM order_items oi
-            JOIN orders o ON o.id = oi.order_id
-            """ + FINALIZED_ORDER_WHERE + """
-              AND oi.product_id IS NOT NULL
-            GROUP BY oi.product_id, oi.product_name
-            ORDER BY sold_quantity DESC
-            LIMIT 5
-            """, params, (rs, rowNum) -> ProductMetric.builder()
-            .productId(rs.getLong("product_id"))
-            .productName(rs.getString("product_name"))
-            .quantity(rs.getLong("sold_quantity"))
-            .revenue(defaultBigDecimal(rs.getBigDecimal("revenue")))
-            .build());
+                SELECT oi.product_id,
+                       oi.product_name,
+                       COALESCE(SUM(oi.quantity), 0) AS sold_quantity,
+                       COALESCE(SUM(oi.subtotal), 0) AS revenue
+                FROM order_items oi
+                JOIN orders o ON o.id = oi.order_id
+                """ + FINALIZED_ORDER_WHERE + """
+                  AND oi.product_id IS NOT NULL
+                GROUP BY oi.product_id, oi.product_name
+                ORDER BY sold_quantity DESC
+                LIMIT 5
+                """, params, (rs, rowNum) -> ProductMetric.builder()
+                .productId(rs.getLong("product_id"))
+                .productName(rs.getString("product_name"))
+                .quantity(rs.getLong("sold_quantity"))
+                .revenue(defaultBigDecimal(rs.getBigDecimal("revenue")))
+                .build());
     }
 
     private List<ReturnQueueItem> returnQueue() {
         return jdbc.query("""
-            SELECT r.id AS return_id,
-                   r.order_id,
-                   u.full_name AS customer_name,
-                   CASE
-                       WHEN r.reason LIKE '[TRẢ HÀNG]%' THEN 'Trả hàng'
-                       WHEN r.reason LIKE '[ĐỔI HÀNG]%' THEN 'Đổi hàng'
-                       WHEN r.reason LIKE '[KHIẾU NẠI]%' THEN 'Khiếu nại'
-                       ELSE 'Trả hàng'
-                   END AS request_type_label,
-                   r.status,
-                   r.created_at
-            FROM returns r
-            JOIN users u ON u.id = r.user_id
-            WHERE r.status IN ('REQUESTED', 'APPROVED', 'RECEIVED')
-            ORDER BY CASE r.status WHEN 'REQUESTED' THEN 0 WHEN 'APPROVED' THEN 1 ELSE 2 END,
-                     r.created_at ASC
-            LIMIT 10
-            """, new MapSqlParameterSource(), (rs, rowNum) -> ReturnQueueItem.builder()
-            .returnId(rs.getLong("return_id"))
-            .orderId(rs.getLong("order_id"))
-            .customerName(rs.getString("customer_name"))
-            .requestTypeLabel(rs.getString("request_type_label"))
-            .status(rs.getString("status"))
-            .createdAt(rs.getTimestamp("created_at").toLocalDateTime())
-            .build());
+                SELECT r.id AS return_id,
+                       r.order_id,
+                       u.full_name AS customer_name,
+                       CASE
+                           WHEN r.reason LIKE '[TRẢ HÀNG]%' THEN 'Trả hàng'
+                           WHEN r.reason LIKE '[ĐỔI HÀNG]%' THEN 'Đổi hàng'
+                           WHEN r.reason LIKE '[KHIẾU NẠI]%' THEN 'Khiếu nại'
+                           ELSE 'Trả hàng'
+                       END AS request_type_label,
+                       r.status,
+                       r.created_at
+                FROM returns r
+                JOIN users u ON u.id = r.user_id
+                WHERE r.status IN ('REQUESTED', 'APPROVED', 'RECEIVED')
+                ORDER BY CASE r.status WHEN 'REQUESTED' THEN 0 WHEN 'APPROVED' THEN 1 ELSE 2 END,
+                         r.created_at ASC
+                LIMIT 10
+                """, new MapSqlParameterSource(), (rs, rowNum) -> ReturnQueueItem.builder()
+                .returnId(rs.getLong("return_id"))
+                .orderId(rs.getLong("order_id"))
+                .customerName(rs.getString("customer_name"))
+                .requestTypeLabel(rs.getString("request_type_label"))
+                .status(rs.getString("status"))
+                .createdAt(rs.getTimestamp("created_at").toLocalDateTime())
+                .build());
     }
 
     private BigDecimal defaultBigDecimal(BigDecimal value) {

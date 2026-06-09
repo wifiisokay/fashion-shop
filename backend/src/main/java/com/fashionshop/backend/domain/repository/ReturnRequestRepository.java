@@ -76,6 +76,6 @@ public interface ReturnRequestRepository extends JpaRepository<ReturnRequest, Lo
     List<Object[]> getTypeDistribution();
 
     @Query("SELECT COALESCE(SUM(r.refundAmount), 0) FROM ReturnRequest r " +
-        "WHERE r.status = 'COMPLETED' AND r.updatedAt >= :startDate")
+        "WHERE r.status IN (com.fashionshop.backend.common.enums.ReturnStatus.COMPLETED, com.fashionshop.backend.common.enums.ReturnStatus.REFUNDED) AND r.updatedAt >= :startDate")
     BigDecimal sumCompletedRefundAmountSince(@Param("startDate") LocalDateTime startDate);
 }

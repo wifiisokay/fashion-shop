@@ -42,20 +42,20 @@ const OrderDetailPage = () => {
   const isPaidVnPay = order.paymentMethod === 'VNPAY' && order.paymentStatus === 'PAID';
   const canCancel = isWaitingStatus && !isPaidVnPay;
 
-  // Return window: 7 days from deliveredAt
+  // Return window: 7 days from completedAt
   const canRequestReturn = (() => {
     if (order.status !== 'COMPLETED') return false;
     if (order.paymentStatus === 'REFUNDED') return false;
     if (order.returnStatus && ['REQUESTED', 'APPROVED', 'RECEIVED'].includes(order.returnStatus)) return false;
-    if (!order.deliveredAt) return false;
-    const deadline = new Date(order.deliveredAt);
+    if (!order.completedAt) return false;
+    const deadline = new Date(order.completedAt);
     deadline.setDate(deadline.getDate() + 7);
     return new Date() < deadline;
   })();
 
   const returnDaysLeft = (() => {
-    if (!order.deliveredAt) return 0;
-    const deadline = new Date(order.deliveredAt);
+    if (!order.completedAt) return 0;
+    const deadline = new Date(order.completedAt);
     deadline.setDate(deadline.getDate() + 7);
     const diff = Math.ceil((deadline - new Date()) / (1000 * 60 * 60 * 24));
     return Math.max(0, diff);
@@ -152,12 +152,12 @@ const OrderDetailPage = () => {
         {order.returnStatus && (
           <div className={`p-6 border-b border-gray-200 ${
             order.returnStatus === 'REJECTED' ? 'bg-red-50' :
-            order.returnStatus === 'COMPLETED' ? 'bg-green-50' :
+            (order.returnStatus === 'COMPLETED' || order.returnStatus === 'REFUNDED') ? 'bg-green-50' :
             'bg-blue-50'
           }`}>
             <h3 className={`text-sm font-bold uppercase tracking-wider mb-2 ${
               order.returnStatus === 'REJECTED' ? 'text-red-800' :
-              order.returnStatus === 'COMPLETED' ? 'text-green-800' :
+              (order.returnStatus === 'COMPLETED' || order.returnStatus === 'REFUNDED') ? 'text-green-800' :
               'text-blue-800'
             }`}>
               <RotateCcw className="w-4 h-4 inline mr-1.5" />

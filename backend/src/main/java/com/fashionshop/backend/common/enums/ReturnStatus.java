@@ -10,5 +10,6 @@ public enum ReturnStatus {
     APPROVED,
     REJECTED,
     RECEIVED,
-    COMPLETED
+    COMPLETED,
+    REFUNDED
 }

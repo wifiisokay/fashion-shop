@@ -91,7 +91,7 @@ public class ReturnRequest {
      * Tính từ order.completedAt.
      */
     public boolean isWithinReturnWindow() {
-        if (order == null || order.getDeliveredAt() == null) return false;
-        return !order.getDeliveredAt().plusDays(7).isBefore(LocalDateTime.now());
+        if (order == null || order.getCompletedAt() == null) return false;
+        return !order.getCompletedAt().plusDays(7).isBefore(LocalDateTime.now());
     }
 }

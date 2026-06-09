@@ -9,9 +9,9 @@ const MAIN_STEPS = [
 ];
 
 const RETURN_STEPS = [
-  { key: 'RETURN_REQUESTED', label: 'Yêu cầu đổi/trả' },
+  { key: 'RETURN_REQUESTED', label: 'Yêu cầu trả hàng' },
   { key: 'RETURNING', label: 'Đang xử lý' },
-  { key: 'RETURNED', label: 'Đã xử lý' },
+  { key: 'RETURNED', label: 'Đã trả hàng' },
 ];
 
 const STATUS_ORDER = ['AWAITING_PAYMENT', 'PENDING', 'CONFIRMED', 'SHIPPING', 'COMPLETED'];

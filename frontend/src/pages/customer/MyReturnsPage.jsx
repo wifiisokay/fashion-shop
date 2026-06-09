@@ -11,18 +11,19 @@ import { ROUTES } from '../../constants/routes';
 
 const STATUS_TABS = [
   { key: '', label: 'Tất cả' },
-  { key: 'REQUESTED', label: 'Chờ xử lý' },
+  { key: 'REQUESTED', label: 'Chờ duyệt' },
   { key: 'APPROVED', label: 'Đã duyệt' },
-  { key: 'REJECTED', label: 'Từ chối' },
+  { key: 'REJECTED', label: 'Đã từ chối' },
   { key: 'RECEIVED', label: 'Đã nhận hàng' },
-  { key: 'COMPLETED', label: 'Đã hoàn tiền' },
+  { key: 'REFUNDED', label: 'Đã hoàn tiền' },
 ];
 
 const STATUS_BADGE = {
-  REQUESTED: { label: 'Chờ xử lý',    color: 'bg-yellow-100 text-yellow-800' },
+  REQUESTED: { label: 'Chờ duyệt',    color: 'bg-yellow-100 text-yellow-800' },
   APPROVED:  { label: 'Đã duyệt',     color: 'bg-blue-100 text-blue-800' },
-  REJECTED:  { label: 'Từ chối',       color: 'bg-red-100 text-red-800' },
+  REJECTED:  { label: 'Đã từ chối',       color: 'bg-red-100 text-red-800' },
   RECEIVED:  { label: 'Đã nhận hàng',  color: 'bg-purple-100 text-purple-800' },
+  REFUNDED:  { label: 'Đã hoàn tiền',  color: 'bg-green-100 text-green-800' },
   COMPLETED: { label: 'Đã hoàn tiền',  color: 'bg-green-100 text-green-800' },
 };
 
@@ -177,7 +178,7 @@ const MyReturnsPage = () => {
                 <div>
                   <span className="text-gray-400 block text-xs">Trạng thái:</span>
                   <span className={clsx('font-bold',
-                    detailQuery.data.status === 'COMPLETED' ? 'text-green-600' :
+                    (detailQuery.data.status === 'COMPLETED' || detailQuery.data.status === 'REFUNDED') ? 'text-green-600' :
                     detailQuery.data.status === 'REJECTED' ? 'text-red-600' : 'text-amber-600'
                   )}>{detailQuery.data.statusLabel}</span>
                 </div>

@@ -253,30 +253,30 @@ class PaymentServiceImplTest {
     class HandleReturn {
 
         @Test
-        @DisplayName("Success → redirect frontend, không update DB")
+        @DisplayName("Success → fallback update DB")
         void success_redirectOnly() {
             Payment payment = mockPayment(PaymentMethod.VNPAY, PaymentStatus.PENDING);
             Order order = payment.getOrder();
             Map<String, String> params = mockIpnParams("00", "35000000");
 
             when(vnPayService.verifySignature(eq(params), eq("valid_hash"))).thenReturn(true);
-            when(paymentRepository.findByVnpayTxnRef("12320260429143022")).thenReturn(Optional.of(payment));
+            when(paymentRepository.findByVnpayTxnRefForUpdate("12320260429143022")).thenReturn(Optional.of(payment));
 
             String redirect = sut.handleReturn(params);
 
             assertTrue(redirect.contains("status=success"));
             assertTrue(redirect.contains("orderId=1"));
-            assertEquals(PaymentStatus.PENDING, payment.getStatus());
-            assertNull(payment.getPaidAt());
-            assertEquals(OrderStatus.AWAITING_PAYMENT, order.getStatus());
-            assertEquals(OrderPaymentStatus.UNPAID, order.getPaymentStatus());
-            verify(paymentRepository).findByVnpayTxnRef("12320260429143022");
-            verify(paymentRepository, never()).save(any());
-            verifyNoInteractions(orderRepository);
+            assertEquals(PaymentStatus.SUCCESS, payment.getStatus());
+            assertNotNull(payment.getPaidAt());
+            assertEquals(OrderStatus.PENDING, order.getStatus());
+            assertEquals(OrderPaymentStatus.PAID, order.getPaymentStatus());
+            verify(paymentRepository).findByVnpayTxnRefForUpdate("12320260429143022");
+            verify(paymentRepository).save(payment);
+            verify(orderRepository).save(order);
         }
 
         @Test
-        @DisplayName("Failed → redirect frontend, không update DB")
+        @DisplayName("Failed → fallback update DB")
         void failed_redirectOnly() {
             Payment payment = mockPayment(PaymentMethod.VNPAY, PaymentStatus.PENDING);
             Order order = payment.getOrder();
@@ -284,17 +284,17 @@ class PaymentServiceImplTest {
             Map<String, String> params = mockIpnParams("24", "35000000");
 
             when(vnPayService.verifySignature(eq(params), eq("valid_hash"))).thenReturn(true);
-            when(paymentRepository.findByVnpayTxnRef("12320260429143022")).thenReturn(Optional.of(payment));
+            when(paymentRepository.findByVnpayTxnRefForUpdate("12320260429143022")).thenReturn(Optional.of(payment));
 
             String redirect = sut.handleReturn(params);
 
             assertTrue(redirect.contains("status=failed"));
-            assertEquals(PaymentStatus.PENDING, payment.getStatus());
-            assertEquals(OrderStatus.AWAITING_PAYMENT, order.getStatus());
+            assertEquals(PaymentStatus.FAILED, payment.getStatus());
+            assertEquals(OrderStatus.CANCELLED, order.getStatus());
             assertEquals(OrderPaymentStatus.UNPAID, order.getPaymentStatus());
-            verify(paymentRepository).findByVnpayTxnRef("12320260429143022");
-            verify(paymentRepository, never()).save(any());
-            verifyNoInteractions(orderRepository);
+            verify(paymentRepository).findByVnpayTxnRefForUpdate("12320260429143022");
+            verify(paymentRepository).save(payment);
+            verify(orderRepository, times(2)).save(order);
         }
 
         @Test
@@ -304,13 +304,13 @@ class PaymentServiceImplTest {
             Map<String, String> params = mockIpnParams("00", "35000000");
 
             when(vnPayService.verifySignature(eq(params), eq("valid_hash"))).thenReturn(true);
-            when(paymentRepository.findByVnpayTxnRef("12320260429143022")).thenReturn(Optional.of(payment));
+            when(paymentRepository.findByVnpayTxnRefForUpdate("12320260429143022")).thenReturn(Optional.of(payment));
 
             String redirect = sut.handleReturn(params);
 
             assertTrue(redirect.contains("status=success"));
             assertEquals(PaymentStatus.SUCCESS, payment.getStatus());
-            verify(paymentRepository).findByVnpayTxnRef("12320260429143022");
+            verify(paymentRepository).findByVnpayTxnRefForUpdate("12320260429143022");
             verify(paymentRepository, never()).save(any());
             verifyNoInteractions(orderRepository);
         }
