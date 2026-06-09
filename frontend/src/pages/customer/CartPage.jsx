@@ -1,4 +1,5 @@
-import { Link } from 'react-router-dom';
+import { useEffect, useMemo, useState } from 'react';
+import { Link, useNavigate } from 'react-router-dom';
 import { Minus, Plus, ShoppingCart, Trash2 } from 'lucide-react';
 import { useCart } from '../../hooks/useCart';
 import Spinner from '../../components/ui/Spinner';
@@ -6,15 +7,40 @@ import Button from '../../components/ui/Button';
 import { formatPrice } from '../../utils/format';
 import { ROUTES } from '../../constants/routes';
 
+const CHECKOUT_SELECTION_KEY = 'checkout:selectedVariantIds';
+
 const CartPage = () => {
+  const navigate = useNavigate();
   const { data, isLoading, isError, updateCartItem, removeCartItem } = useCart();
+  const [selectedVariantIds, setSelectedVariantIds] = useState([]);
+
+  const cartItems = useMemo(() => data?.items || [], [data?.items]);
+  const availableItems = useMemo(() => cartItems.filter((item) => item.available), [cartItems]);
+  const selectedItems = useMemo(
+    () => cartItems.filter((item) => selectedVariantIds.includes(item.variantId)),
+    [cartItems, selectedVariantIds]
+  );
+  const selectedTotal = selectedItems.reduce((sum, item) => sum + Number(item.subtotal || 0), 0);
+  const selectedHasUnavailableItems = selectedItems.some((item) => !item.available);
+  const isAllAvailableSelected = availableItems.length > 0
+    && availableItems.every((item) => selectedVariantIds.includes(item.variantId));
+  const hasUnavailableItems = !!data?.hasUnavailableItems;
+
+  useEffect(() => {
+    setSelectedVariantIds((current) => {
+      const currentSet = new Set(current);
+      const validSelected = cartItems
+        .filter((item) => item.available && currentSet.has(item.variantId))
+        .map((item) => item.variantId);
+
+      return validSelected.length > 0
+        ? validSelected
+        : cartItems.filter((item) => item.available).map((item) => item.variantId);
+    });
+  }, [cartItems]);
 
   if (isLoading) return <div className="flex justify-center py-20"><Spinner size="lg" /></div>;
   if (isError) return <div className="text-center py-20 text-red-500">Lỗi tải giỏ hàng</div>;
-
-  const cartItems = data?.items || [];
-  const total = data?.totalPrice || 0;
-  const hasUnavailableItems = !!data?.hasUnavailableItems;
 
   if (cartItems.length === 0) {
     return (
@@ -37,11 +63,29 @@ const CartPage = () => {
     );
   }
 
-  const blockCheckout = (event) => {
-    if (hasUnavailableItems) {
-      event.preventDefault();
-      alert('Giỏ hàng có sản phẩm không khả dụng hoặc không đủ số lượng. Vui lòng cập nhật trước khi thanh toán.');
+  const toggleItem = (variantId) => {
+    setSelectedVariantIds((current) =>
+      current.includes(variantId)
+        ? current.filter((id) => id !== variantId)
+        : [...current, variantId]
+    );
+  };
+
+  const toggleAllAvailable = () => {
+    setSelectedVariantIds(isAllAvailableSelected ? [] : availableItems.map((item) => item.variantId));
+  };
+
+  const proceedToCheckout = () => {
+    if (selectedItems.length === 0) {
+      alert('Vui lòng chọn ít nhất một sản phẩm để thanh toán.');
+      return;
     }
+    if (selectedHasUnavailableItems) {
+      alert('Sản phẩm đã chọn có mặt hàng không khả dụng hoặc không đủ số lượng. Vui lòng cập nhật trước khi thanh toán.');
+      return;
+    }
+    sessionStorage.setItem(CHECKOUT_SELECTION_KEY, JSON.stringify(selectedVariantIds));
+    navigate(ROUTES.CHECKOUT);
   };
 
   return (
@@ -49,11 +93,37 @@ const CartPage = () => {
       <h1 className="text-3xl font-bold text-gray-900">Giỏ hàng của bạn</h1>
       <div className="grid lg:grid-cols-3 gap-8">
         <div className="lg:col-span-2 space-y-4">
-          {cartItems.map(item => (
+          <div className="bg-white px-4 py-3 rounded-2xl border border-gray-100 shadow-sm flex items-center justify-between gap-3">
+            <label className="inline-flex items-center gap-3 cursor-pointer text-sm font-semibold text-gray-800">
+              <input
+                type="checkbox"
+                checked={isAllAvailableSelected}
+                onChange={toggleAllAvailable}
+                disabled={availableItems.length === 0}
+                className="w-5 h-5 rounded border-gray-300 text-black focus:ring-black"
+              />
+              <span>Chọn tất cả sản phẩm có thể thanh toán</span>
+            </label>
+            <span className="text-sm text-gray-500">
+              Đã chọn {selectedItems.length}/{availableItems.length}
+            </span>
+          </div>
+
+          {cartItems.map((item) => (
             <div
               key={item.variantId}
               className={`flex gap-4 bg-white p-4 rounded-2xl border border-gray-100 shadow-sm ${!item.available ? 'opacity-50 grayscale' : ''}`}
             >
+              <div className="flex items-start pt-1">
+                <input
+                  type="checkbox"
+                  checked={selectedVariantIds.includes(item.variantId)}
+                  onChange={() => toggleItem(item.variantId)}
+                  disabled={!item.available}
+                  className="w-5 h-5 rounded border-gray-300 text-black focus:ring-black disabled:cursor-not-allowed"
+                  aria-label={`Chọn ${item.productName}`}
+                />
+              </div>
               <img
                 src={item.primaryImageUrl || `https://picsum.photos/seed/${item.productId}/200/200`}
                 alt={item.productName}
@@ -117,14 +187,18 @@ const CartPage = () => {
         <div className="bg-white p-6 rounded-2xl h-fit border border-gray-200 shadow-sm sticky top-24">
           <h2 className="text-lg font-bold mb-4 text-gray-900">Tổng đơn hàng</h2>
           {hasUnavailableItems && (
-            <div className="mb-4 rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
-              Giỏ hàng có sản phẩm đã ngừng bán hoặc số lượng vượt quá tồn kho. Vui lòng cập nhật trước khi thanh toán.
+            <div className="mb-4 rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-700">
+              Giỏ hàng có sản phẩm không khả dụng. Bạn vẫn có thể thanh toán các sản phẩm hợp lệ đã chọn.
             </div>
           )}
           <div className="space-y-3 text-sm text-gray-600 mb-6">
             <div className="flex justify-between">
+              <span>Đã chọn</span>
+              <span className="font-medium text-gray-900">{selectedItems.length} sản phẩm</span>
+            </div>
+            <div className="flex justify-between">
               <span>Tạm tính</span>
-              <span className="font-medium text-gray-900">{formatPrice(total)}</span>
+              <span className="font-medium text-gray-900">{formatPrice(selectedTotal)}</span>
             </div>
             <div className="flex justify-between">
               <span>Phí vận chuyển</span>
@@ -132,14 +206,17 @@ const CartPage = () => {
             </div>
             <div className="border-t border-gray-200 pt-3 flex justify-between text-base font-bold text-gray-900">
               <span>Tổng cộng</span>
-              <span>{formatPrice(total)}</span>
+              <span>{formatPrice(selectedTotal)}</span>
             </div>
           </div>
-          <Link to={ROUTES.CHECKOUT} className="block" onClick={blockCheckout}>
-            <Button className="w-full" size="lg" disabled={hasUnavailableItems || cartItems.length === 0}>
-              Thanh toán ngay
-            </Button>
-          </Link>
+          <Button
+            className="w-full"
+            size="lg"
+            onClick={proceedToCheckout}
+            disabled={selectedItems.length === 0 || selectedHasUnavailableItems}
+          >
+            Thanh toán {selectedItems.length > 0 ? `${selectedItems.length} sản phẩm` : 'ngay'}
+          </Button>
         </div>
       </div>
     </div>
