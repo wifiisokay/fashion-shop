@@ -1,10 +1,13 @@
-import { Outlet } from 'react-router-dom';
+import { Outlet, useLocation } from 'react-router-dom';
 import Navbar from '../common/Navbar';
 import ChatWidget from '../chat/ChatWidget';
 import { useAuth } from '../../contexts/AuthContext';
 
 const MainLayout = () => {
-  const { isAuthenticated } = useAuth();
+  const { pathname } = useLocation();
+  const { user } = useAuth();
+  const isBackOfficeRoute = pathname.startsWith('/admin') || pathname.startsWith('/staff');
+  const shouldShowChat = user?.role === 'CUSTOMER' && !isBackOfficeRoute;
 
   return (
     <div className="min-h-screen flex flex-col bg-gray-50 relative">
@@ -17,7 +20,7 @@ const MainLayout = () => {
           &copy; {new Date().getFullYear()} Fashion Shop. All rights reserved.
         </div>
       </footer>
-      {isAuthenticated && <ChatWidget />}
+      {shouldShowChat && <ChatWidget />}
     </div>
   );
 };
