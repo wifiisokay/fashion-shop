@@ -85,11 +85,11 @@ public class ReturnResponse {
 
     private static Integer calculateRemainingDays(ReturnRequest r) {
         try {
-            if (r.getOrder() == null || r.getOrder().getCompletedAt() == null) {
+            if (r.getOrder() == null || r.getOrder().getDeliveredAt() == null) {
                 return 0;
             }
-            LocalDate completedDate = r.getOrder().getCompletedAt().toLocalDate();
-            long daysSince = ChronoUnit.DAYS.between(completedDate, LocalDate.now());
+            LocalDate deliveredDate = r.getOrder().getDeliveredAt().toLocalDate();
+            long daysSince = ChronoUnit.DAYS.between(deliveredDate, LocalDate.now());
             long remaining = 7 - daysSince;
             return (int) Math.max(0, remaining);
         } catch (Exception e) {

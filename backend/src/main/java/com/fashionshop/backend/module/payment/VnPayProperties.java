@@ -19,6 +19,7 @@ public class VnPayProperties {
     private String hashSecret;
     private String url;
     private String returnUrl;
+    private String ipnUrl;
 
     /** Version VNPay API (mặc định 2.1.0). */
     private String version = "2.1.0";

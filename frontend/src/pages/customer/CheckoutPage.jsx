@@ -10,7 +10,9 @@ import { ROUTES } from '../../constants/routes';
 import Button from '../../components/ui/Button';
 import Spinner from '../../components/ui/Spinner';
 import { formatPrice } from '../../utils/format';
-import { useState, useEffect } from 'react';
+import { useMemo, useState, useEffect } from 'react';
+
+const CHECKOUT_SELECTION_KEY = 'checkout:selectedVariantIds';
 
 const checkoutSchema = z.object({
   addressId: z.coerce.number({ required_error: 'Vui lòng chọn địa chỉ giao hàng' }).min(1, 'Vui lòng chọn địa chỉ giao hàng'),
@@ -24,6 +26,7 @@ const CheckoutPage = () => {
   const { data: addresses = [], isLoading: addressLoading } = useAddresses();
   const createOrder = useCreateOrder();
   const [error, setError] = useState(null);
+  const [redirectingToVnPay, setRedirectingToVnPay] = useState(false);
 
   const { register, handleSubmit, watch, setValue, formState: { errors, isSubmitting } } = useForm({
     resolver: zodResolver(checkoutSchema),
@@ -45,10 +48,26 @@ const CheckoutPage = () => {
   }, [addresses, selectedAddressId, setValue]);
 
   const cartItems = cartData?.items || [];
-  const subtotal = cartData?.totalPrice || 0;
+  const selectedVariantIds = useMemo(() => {
+    try {
+      const raw = sessionStorage.getItem(CHECKOUT_SELECTION_KEY);
+      const parsed = raw ? JSON.parse(raw) : [];
+      return Array.isArray(parsed) ? parsed.map(Number).filter(Boolean) : [];
+    } catch {
+      return [];
+    }
+  }, []);
+  const checkoutItems = selectedVariantIds.length > 0
+    ? cartItems.filter((item) => selectedVariantIds.includes(Number(item.variantId)))
+    : cartItems;
+  const subtotal = checkoutItems.reduce((sum, item) => sum + Number(item.subtotal || 0), 0);
+  const orderItemsPayload = checkoutItems.map((item) => ({
+    variantId: item.variantId,
+    quantity: item.quantity,
+  }));
 
   // Tính tổng cân nặng ước tính từ giỏ hàng (gram)
-  const totalWeight = cartItems.reduce((sum, item) => 
+  const totalWeight = checkoutItems.reduce((sum, item) => 
     sum + (item.estimatedWeight || 300) * item.quantity, 0) || null;
   
   // GHN Shipping API
@@ -56,7 +75,13 @@ const CheckoutPage = () => {
     data: shippingData, 
     isLoading: shippingLoading, 
     isError: shippingError 
-  } = useShippingFee(selectedAddressId ? Number(selectedAddressId) : null, subtotal, totalWeight);
+  } = useShippingFee(
+    selectedAddressId ? Number(selectedAddressId) : null,
+    subtotal,
+    totalWeight,
+    orderItemsPayload,
+    !redirectingToVnPay
+  );
 
   const shippingFee = shippingData?.fee || 0;
   const total = subtotal + shippingFee;
@@ -70,15 +95,14 @@ const CheckoutPage = () => {
         shippingFee: shippingFee,
         note: formData.note || null,
         estimatedDays: shippingData?.estimatedDays || null,
-        items: cartItems.map((item) => ({
-          variantId: item.variantId,
-          quantity: item.quantity,
-        })),
+        items: orderItemsPayload,
       });
 
       const result = res?.data?.data;
+      sessionStorage.removeItem(CHECKOUT_SELECTION_KEY);
 
       if (formData.paymentMethod === 'VNPAY' && result?.paymentUrl) {
+        setRedirectingToVnPay(true);
         window.location.href = result.paymentUrl;
       } else {
         // COD → chuyển về trang chi tiết đơn hàng (không dùng PaymentResult vì COD chưa thanh toán)
@@ -97,6 +121,15 @@ const CheckoutPage = () => {
       <div className="text-center py-32 space-y-6">
         <h2 className="text-2xl font-bold">Giỏ hàng trống</h2>
         <Link to={ROUTES.PRODUCTS}><Button>Tiếp tục mua sắm</Button></Link>
+      </div>
+    );
+  }
+
+  if (checkoutItems.length === 0) {
+    return (
+      <div className="text-center py-32 space-y-6">
+        <h2 className="text-2xl font-bold">Chưa chọn sản phẩm thanh toán</h2>
+        <Link to={ROUTES.CART}><Button>Quay lại giỏ hàng</Button></Link>
       </div>
     );
   }
@@ -209,7 +242,7 @@ const CheckoutPage = () => {
           <h2 className="text-lg font-bold mb-4 text-gray-900">Đơn hàng của bạn</h2>
 
           <div className="space-y-4 mb-6 max-h-60 overflow-y-auto pr-2">
-            {cartItems.map(item => (
+            {checkoutItems.map(item => (
               <div key={item.variantId} className={`flex justify-between text-sm ${!item.available ? 'opacity-50 line-through' : ''}`}>
                 <div className="flex flex-col flex-1 pr-4">
                   <span className="text-gray-600 line-clamp-1">
@@ -265,9 +298,9 @@ const CheckoutPage = () => {
             className="w-full" 
             size="lg" 
             loading={isSubmitting || createOrder.isPending} 
-            disabled={cartData?.hasUnavailableItems || shippingLoading || (!shippingData && !!selectedAddressId)}
+            disabled={checkoutItems.some((item) => !item.available) || shippingLoading || (!shippingData && !!selectedAddressId)}
           >
-            {cartData?.hasUnavailableItems ? 'Vui lòng cập nhật giỏ hàng' : 'Đặt hàng'}
+            {checkoutItems.some((item) => !item.available) ? 'Vui lòng cập nhật giỏ hàng' : 'Đặt hàng'}
           </Button>
         </div>
       </form>

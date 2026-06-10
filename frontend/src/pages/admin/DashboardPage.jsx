@@ -10,6 +10,7 @@ import {
   AlertCircle, 
   RotateCcw, 
   CheckCircle,
+  XCircle,
   Calendar,
   Truck,
   Clock,
@@ -51,24 +52,25 @@ const PRESETS = [
 
 // Order status styling map
 const ORDER_STATUS_MAP = {
-  'PENDING': { label: 'Chờ xử lý', color: '#F59E0B' },
+  'PENDING': { label: 'Chờ xác nhận', color: '#F59E0B' },
   'CONFIRMED': { label: 'Đã xác nhận', color: '#3B82F6' },
   'SHIPPING': { label: 'Đang giao', color: '#6366F1' },
   'DELIVERED': { label: 'Đã giao', color: '#10B981' },
   'COMPLETED': { label: 'Hoàn thành', color: '#047857' },
   'CANCELLED': { label: 'Đã hủy', color: '#EF4444' },
-  'RETURNED': { label: 'Đã hoàn trả', color: '#EC4899' },
+  'RETURNED': { label: 'Đã trả hàng', color: '#EC4899' },
   'RETURN_REQUESTED': { label: 'Yêu cầu trả hàng', color: '#F97316' },
-  'RETURNING': { label: 'Đang trả hàng', color: '#A855F7' }
+  'RETURNING': { label: 'Đang xử lý trả hàng', color: '#A855F7' }
 };
 
 // Return status styling map
 const RETURN_STATUS_MAP = {
   'REQUESTED': { label: 'Chờ duyệt', color: '#EF4444', badgeClass: 'bg-red-50 text-red-700 border-red-200' },
   'APPROVED': { label: 'Đã duyệt', color: '#F59E0B', badgeClass: 'bg-amber-50 text-amber-700 border-amber-200' },
-  'RECEIVED': { label: 'Đã nhận', color: '#3B82F6', badgeClass: 'bg-blue-50 text-blue-700 border-blue-200' },
+  'RECEIVED': { label: 'Đã nhận hàng trả', color: '#3B82F6', badgeClass: 'bg-blue-50 text-blue-700 border-blue-200' },
+  'REFUNDED': { label: 'Đã hoàn tiền', color: '#10B981', badgeClass: 'bg-green-50 text-green-700 border-green-200' },
   'COMPLETED': { label: 'Đã hoàn tiền', color: '#10B981', badgeClass: 'bg-green-50 text-green-700 border-green-200' },
-  'REJECTED': { label: 'Từ chối', color: '#6B7280', badgeClass: 'bg-gray-50 text-gray-700 border-gray-200' }
+  'REJECTED': { label: 'Đã từ chối', color: '#6B7280', badgeClass: 'bg-gray-50 text-gray-700 border-gray-200' }
 };
 
 // StatCard Component
@@ -96,10 +98,10 @@ const CustomRevenueTooltip = ({ active, payload, label }) => {
         <p className="text-xs font-bold text-gray-400 mb-1">{dayjs(label).format('DD/MM/YYYY')}</p>
         <div className="space-y-1">
           <p className="text-sm font-bold text-indigo-600">
-            Doanh thu: {formatPrice(payload[0].value)}
+            Doanh thu thực nhận: {formatPrice(payload[0].value)}
           </p>
           <p className="text-xs text-gray-500 font-medium">
-            Số đơn chốt: {dataPoint.orderCount || 0} đơn
+            Số đơn hoàn thành: {dataPoint.orderCount || 0} đơn
           </p>
         </div>
       </div>
@@ -112,14 +114,16 @@ const CustomRevenueTooltip = ({ active, payload, label }) => {
 const ChartCard = ({ title, children, empty, emptyMessage = "Chưa có dữ liệu thống kê" }) => (
   <div className="bg-white rounded-2xl border border-gray-200 shadow-sm p-6 flex flex-col h-full">
     <h2 className="text-base font-bold text-gray-900 mb-4 tracking-tight">{title}</h2>
-    <div className="flex-1 min-h-[300px] h-80 relative flex items-center justify-center">
+    <div className="flex-1 min-h-[300px] h-80 relative">
       {empty ? (
-        <div className="text-sm font-medium text-gray-400 flex flex-col items-center gap-2">
+        <div className="absolute inset-0 flex flex-col items-center justify-center text-sm font-medium text-gray-400 gap-2">
           <AlertCircle className="w-8 h-8 text-gray-300" />
           <span>{emptyMessage}</span>
         </div>
       ) : (
-        children
+        <div className="absolute inset-0">
+          {children}
+        </div>
       )}
     </div>
   </div>
@@ -213,7 +217,14 @@ const DashboardPage = () => {
   // Sort daily revenue chronologically
   const dailyRevenueData = useMemo(() => {
     if (!charts?.dailyRevenue) return [];
-    return [...charts.dailyRevenue].sort((a, b) => dayjs(a.date).diff(dayjs(b.date)));
+    return charts.dailyRevenue
+      .map((item) => ({
+        ...item,
+        revenue: Number(item.revenue || 0),
+        orderCount: Number(item.orderCount || 0)
+      }))
+      .filter((item) => item.revenue > 0)
+      .sort((a, b) => dayjs(a.date).diff(dayjs(b.date)));
   }, [charts?.dailyRevenue]);
 
   // Map order status distribution to recharts list
@@ -262,12 +273,16 @@ const DashboardPage = () => {
         </div>
         
         {/* Stats Skeleton */}
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-6 gap-6">
-          <div className="h-32 bg-gray-200 rounded-2xl col-span-1 sm:col-span-2 xl:col-span-2" />
-          <div className="h-32 bg-gray-200 rounded-2xl" />
-          <div className="h-32 bg-gray-200 rounded-2xl" />
-          <div className="h-32 bg-gray-200 rounded-2xl" />
-          <div className="h-32 bg-gray-200 rounded-2xl" />
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 xl:grid-cols-10 gap-5">
+          <div className="h-32 bg-gray-200 rounded-2xl col-span-1 sm:col-span-2 lg:col-span-2 xl:col-span-2" />
+          <div className="h-32 bg-gray-200 rounded-2xl col-span-1 sm:col-span-1 lg:col-span-1 xl:col-span-1" />
+          <div className="h-32 bg-gray-200 rounded-2xl col-span-1 sm:col-span-1 lg:col-span-1 xl:col-span-1" />
+          <div className="h-32 bg-gray-200 rounded-2xl col-span-1 sm:col-span-1 lg:col-span-1 xl:col-span-1" />
+          <div className="h-32 bg-gray-200 rounded-2xl col-span-1 sm:col-span-1 lg:col-span-1 xl:col-span-1" />
+          <div className="h-32 bg-gray-200 rounded-2xl col-span-1 sm:col-span-1 lg:col-span-1 xl:col-span-1" />
+          <div className="h-32 bg-gray-200 rounded-2xl col-span-1 sm:col-span-1 lg:col-span-1 xl:col-span-1" />
+          <div className="h-32 bg-gray-200 rounded-2xl col-span-1 sm:col-span-1 lg:col-span-2 xl:col-span-1" />
+          <div className="h-32 bg-gray-200 rounded-2xl col-span-1 sm:col-span-1 lg:col-span-2 xl:col-span-1" />
         </div>
 
         {/* Charts Skeleton */}
@@ -375,19 +390,19 @@ const DashboardPage = () => {
         <div className="flex items-center gap-2 text-xs text-blue-600 bg-blue-50/40 px-3.5 py-2.5 rounded-xl border border-blue-100/50">
           <AlertCircle className="w-4 h-4 text-blue-500 flex-shrink-0" />
           <span className="font-medium">
-            Doanh thu được thống kê theo ngày tạo đơn vì hệ thống chưa lưu ngày hoàn tất riêng.
+            Chỉ tính doanh thu thực nhận từ đơn COMPLETED và payment PAID. Biểu đồ ưu tiên ngày hoàn tất đơn.
           </span>
         </div>
       </div>
 
       {/* 2. Overview Stats Cards */}
-      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 xl:grid-cols-8 gap-5">
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 xl:grid-cols-10 gap-5">
         
-        {/* Thẻ Doanh thu sau xử lý - Nổi bật nhất */}
+        {/* Thẻ Doanh thu thực nhận - nổi bật nhất */}
         <div className="bg-gradient-to-br from-indigo-900 via-indigo-800 to-slate-900 text-white p-6 rounded-2xl border border-indigo-950 shadow-md shadow-indigo-950/10 flex flex-col justify-between transition-all duration-300 hover:-translate-y-1 hover:shadow-xl hover:shadow-indigo-950/20 col-span-1 sm:col-span-2 lg:col-span-2 xl:col-span-2 min-h-[160px]">
           <div>
             <div className="flex items-center justify-between w-full mb-1">
-              <span className="text-xs font-bold text-indigo-200 uppercase tracking-widest">Doanh thu sau xử lý</span>
+              <span className="text-xs font-bold text-indigo-200 uppercase tracking-widest">Doanh thu thực nhận</span>
               <div className="w-9 h-9 rounded-xl bg-indigo-500/20 text-indigo-300 flex items-center justify-center backdrop-blur-sm">
                 <DollarSign className="w-5 h-5" />
               </div>
@@ -397,12 +412,12 @@ const DashboardPage = () => {
 
           <div className="border-t border-indigo-700/40 pt-3 mt-4 flex flex-col gap-1.5 text-xs text-indigo-200 font-medium">
             <div className="flex justify-between items-center">
-              <span>Đã chốt (COMPLETED):</span>
+              <span>Đơn hoàn thành:</span>
               <span className="font-bold text-emerald-300">{formatPrice(overview?.finalizedGrossRevenue || 0)}</span>
             </div>
             <div className="flex justify-between items-center">
-              <span>Trả hàng đã hoàn tiền:</span>
-              <span className="font-bold text-rose-300">-{formatPrice(overview?.processedRefundAmount || 0)}</span>
+              <span>Tổng tiền đã hoàn:</span>
+              <span className="font-bold text-rose-300">{formatPrice(overview?.refundedAmount || 0)}</span>
             </div>
             <div className="flex justify-between items-center border-t border-indigo-700/20 pt-1.5 mt-1 text-[10px] text-indigo-300/80">
               <span>Số đơn đã chốt doanh thu:</span>
@@ -447,6 +462,28 @@ const DashboardPage = () => {
           <p className="text-[11px] text-gray-400 mt-2 font-medium">Đơn hàng đã hoàn tất</p>
         </StatCard>
 
+        {/* Đơn hủy */}
+        <StatCard
+          title="Đơn hủy"
+          value={overview?.cancelledOrders || 0}
+          icon={XCircle}
+          iconClassName="bg-red-50 text-red-600 border border-red-100"
+          valueClassName={clsx((overview?.cancelledOrders || 0) > 0 && "text-red-700")}
+        >
+          <p className="text-[11px] text-gray-400 mt-2 font-medium">Status = CANCELLED</p>
+        </StatCard>
+
+        {/* Đơn hoàn hàng */}
+        <StatCard
+          title="Đơn hoàn hàng"
+          value={overview?.returnedOrders || 0}
+          icon={RotateCcw}
+          iconClassName="bg-pink-50 text-pink-600 border border-pink-100"
+          valueClassName={clsx((overview?.returnedOrders || 0) > 0 && "text-pink-700")}
+        >
+          <p className="text-[11px] text-gray-400 mt-2 font-medium">Status = RETURNED</p>
+        </StatCard>
+
         {/* Trả hàng chờ xử lý */}
         <StatCard
           title="Trả hàng chờ xử lý"
@@ -468,7 +505,10 @@ const DashboardPage = () => {
           title="Cảnh báo tồn kho"
           value={(data?.stockAlerts?.lowStockCount !== undefined ? data.stockAlerts.lowStockCount : (overview?.lowStockProductCount || 0)) + (data?.stockAlerts?.outOfStockCount || 0)}
           icon={AlertTriangle}
-          className={clsx(((data?.stockAlerts?.lowStockCount !== undefined ? data.stockAlerts.lowStockCount : (overview?.lowStockProductCount || 0)) + (data?.stockAlerts?.outOfStockCount || 0)) > 0 && "border-orange-200 bg-orange-50/10 shadow-orange-50/5")}
+          className={clsx(
+            "col-span-1 lg:col-span-2 xl:col-span-1",
+            ((data?.stockAlerts?.lowStockCount !== undefined ? data.stockAlerts.lowStockCount : (overview?.lowStockProductCount || 0)) + (data?.stockAlerts?.outOfStockCount || 0)) > 0 && "border-orange-200 bg-orange-50/10 shadow-orange-50/5"
+          )}
           iconClassName={clsx(
             ((data?.stockAlerts?.lowStockCount !== undefined ? data.stockAlerts.lowStockCount : (overview?.lowStockProductCount || 0)) + (data?.stockAlerts?.outOfStockCount || 0)) > 0 
               ? "bg-orange-50 text-orange-600 border border-orange-100" 
@@ -487,6 +527,7 @@ const DashboardPage = () => {
           title="Sản phẩm đang bán"
           value={overview?.activeProductCount || 0}
           icon={Package}
+          className="col-span-1 lg:col-span-2 xl:col-span-1"
           iconClassName="bg-indigo-50 text-indigo-600 border border-indigo-100"
         >
           <p className="text-[11px] text-gray-400 mt-2 font-medium">Sản phẩm trạng thái bán</p>
@@ -496,10 +537,10 @@ const DashboardPage = () => {
       {/* 3. Charts Section */}
       <div className="grid grid-cols-1 xl:grid-cols-3 gap-6">
         
-        {/* Doanh thu theo ngày tạo đơn - Line Chart */}
-        <div className="xl:col-span-2">
+        {/* Doanh thu thực nhận theo ngày - Line Chart */}
+        <div className="xl:col-span-3">
           <ChartCard 
-            title="Biểu đồ doanh thu theo ngày tạo đơn" 
+            title="Biểu đồ doanh thu thực nhận theo ngày" 
             empty={dailyRevenueData.length === 0}
             emptyMessage="Chưa có doanh thu trong khoảng thời gian này."
           >
@@ -535,45 +576,6 @@ const DashboardPage = () => {
                   activeDot={{ r: 6, strokeWidth: 2 }}
                 />
               </LineChart>
-            </ResponsiveContainer>
-          </ChartCard>
-        </div>
-
-        {/* Donut Chart - Trạng thái trả hàng */}
-        <div>
-          <ChartCard 
-            title="Trạng thái trả hàng"
-            empty={returnChartData.length === 0}
-            emptyMessage="Chưa có yêu cầu trả hàng trong thời gian này."
-          >
-            <ResponsiveContainer width="100%" height="100%">
-              <PieChart>
-                <Pie
-                  data={returnChartData}
-                  cx="50%"
-                  cy="45%"
-                  innerRadius={60}
-                  outerRadius={85}
-                  paddingAngle={3}
-                  dataKey="value"
-                  nameKey="name"
-                >
-                  {returnChartData.map((entry, index) => (
-                    <Cell key={`cell-${index}`} fill={entry.color} />
-                  ))}
-                </Pie>
-                <Tooltip
-                  formatter={(value, name) => [`${value} yêu cầu`, name]}
-                  contentStyle={{ borderRadius: '12px', border: '1px solid #E5E7EB', boxShadow: '0 10px 15px -3px rgba(0, 0, 0, 0.05)' }}
-                />
-                <Legend 
-                  verticalAlign="bottom" 
-                  height={36} 
-                  iconType="circle" 
-                  iconSize={8}
-                  wrapperStyle={{ fontSize: '11px', fontWeight: 600, color: '#374151' }} 
-                />
-              </PieChart>
             </ResponsiveContainer>
           </ChartCard>
         </div>

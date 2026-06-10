@@ -2,6 +2,7 @@ package com.fashionshop.backend.module.payment;
 
 import com.fashionshop.backend.common.ApiResponse;
 import com.fashionshop.backend.module.payment.dto.response.PaymentResponse;
+import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -36,8 +37,10 @@ public class PaymentController {
      * Trả {RspCode, Message} theo format VNPay yêu cầu.
      */
     @GetMapping("/vnpay-ipn")
-    public ResponseEntity<Map<String, String>> vnPayIpn(@RequestParam Map<String, String> params) {
-        log.info("VNPay IPN received — params={}", params.keySet());
+    public ResponseEntity<Map<String, String>> vnPayIpn(@RequestParam Map<String, String> params,
+                                                        HttpServletRequest request) {
+        log.info("[VNPAY_REQUEST] method={} path={} txnRef={} params={}",
+            request.getMethod(), request.getRequestURI(), params.get("vnp_TxnRef"), params.keySet());
         Map<String, String> result = paymentService.handleIpn(params);
         return ResponseEntity.ok(result);
     }
@@ -47,12 +50,15 @@ public class PaymentController {
     // ================================================================
 
     /**
-     * VNPay redirect browser của user về đây sau thanh toán.
-     * KHÔNG update DB — chỉ verify signature + redirect sang FE.
+     * VNPay redirect browser về đây sau thanh toán. Backend verify callback,
+     * fallback cập nhật DB nếu IPN chưa đến, sau đó redirect sang frontend result page.
      */
     @GetMapping("/vnpay-return")
     public void vnPayReturn(@RequestParam Map<String, String> params,
+                            HttpServletRequest request,
                             HttpServletResponse response) throws Exception {
+        log.info("[VNPAY_REQUEST] method={} path={} txnRef={} action=return_redirect",
+            request.getMethod(), request.getRequestURI(), params.get("vnp_TxnRef"));
         String redirectPath = paymentService.handleReturn(params);
         // Redirect về frontend
         response.sendRedirect(frontendUrl + redirectPath);
@@ -86,7 +92,10 @@ public class PaymentController {
      */
     @GetMapping("/status/{orderId}")
     public ResponseEntity<ApiResponse<Map<String, String>>> getPaymentStatus(
-            @PathVariable Long orderId) {
+            @PathVariable Long orderId,
+            HttpServletRequest request) {
+        log.info("[VNPAY_REQUEST] method={} path={} orderId={} action=read_payment_status",
+            request.getMethod(), request.getRequestURI(), orderId);
         String status = paymentService.getPaymentStatusByOrderId(orderId);
         return ResponseEntity.ok(ApiResponse.success(Map.of("status", status)));
     }

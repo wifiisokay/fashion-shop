@@ -19,49 +19,45 @@ import lombok.Setter;
 @Setter
 public class ProductRequest {
 
-    @NotBlank(message = "Tên sản phẩm không được để trống")
-    @Size(max = 200, message = "Tên sản phẩm tối đa 200 ký tự")
+    @NotBlank(message = "Product name is required")
+    @Size(max = 200, message = "Product name must be at most 200 characters")
     private String name;
 
-    @Size(min = 20, message = "Mô tả cần ít nhất 20 ký tự để AI gợi ý chính xác")
+    @Size(min = 20, message = "Description must be at least 20 characters")
     private String description;
 
-    @NotNull(message = "Giá cơ bản không được để trống")
-    @DecimalMin(value = "0", inclusive = false, message = "Giá phải lớn hơn 0")
+    @NotNull(message = "Base price is required")
+    @DecimalMin(value = "0", inclusive = false, message = "Base price must be greater than 0")
     private BigDecimal basePrice;
 
     private BigDecimal salePrice;
-
     private LocalDateTime saleStartAt;
-
     private LocalDateTime saleEndAt;
 
-    @NotNull(message = "isSale không được để trống")
+    @NotNull(message = "isSale is required")
     private Boolean isSale;
 
-    @NotNull(message = "categoryId không được để trống")
+    @NotNull(message = "categoryId is required")
     private Integer categoryId;
 
-    @NotNull(message = "Giới tính không được để trống")
+    @NotNull(message = "Gender is required")
     private Gender gender;
 
     private String material;
 
-    /** Cân nặng ước tính (gram) — dùng tính phí ship. Default 300g */
-    @Min(value = 50, message = "Cân nặng tối thiểu 50g")
-    @Max(value = 50000, message = "Cân nặng tối đa 50kg")
+    @Min(value = 1, message = "Estimated weight must be greater than 0")
+    @Max(value = 50000, message = "Estimated weight must be at most 50kg")
     private Integer estimatedWeight;
 
-    @Min(value = 0, message = "NgÆ°á»¡ng cáº£nh bÃ¡o tá»“n kho khÃ´ng Ä‘Æ°á»£c Ã¢m")
+    @Min(value = 0, message = "Low stock threshold must not be negative")
     private Integer lowStockThreshold;
 
-    @Size(max = 4, message = "Chọn tối đa 4 phong cách")
+    @Size(max = 4, message = "Choose at most 4 style tags")
     private List<String> styleTags;
 
-    @Size(max = 4, message = "Chọn tối đa 4 dịp phù hợp")
+    @Size(max = 4, message = "Choose at most 4 occasion tags")
     private List<String> occasionTags;
 
     private String fitType;
-
     private String season;
 }

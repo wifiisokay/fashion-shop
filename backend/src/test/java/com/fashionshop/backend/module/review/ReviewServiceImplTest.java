@@ -1,10 +1,12 @@
 package com.fashionshop.backend.module.review;
 
 import com.fashionshop.backend.common.PageResponse;
+import com.fashionshop.backend.common.enums.OrderPaymentStatus;
 import com.fashionshop.backend.common.enums.OrderStatus;
 import com.fashionshop.backend.domain.*;
 import com.fashionshop.backend.domain.repository.OrderItemRepository;
 import com.fashionshop.backend.domain.repository.ProductRepository;
+import com.fashionshop.backend.domain.repository.ReturnItemRepository;
 import com.fashionshop.backend.domain.repository.ReviewRepository;
 import com.fashionshop.backend.exception.BusinessException;
 import com.fashionshop.backend.module.review.dto.request.CreateReviewRequest;
@@ -36,6 +38,7 @@ class ReviewServiceImplTest {
     @Mock ReviewRepository reviewRepository;
     @Mock OrderItemRepository orderItemRepository;
     @Mock ProductRepository productRepository;
+    @Mock ReturnItemRepository returnItemRepository;
 
     @InjectMocks ReviewServiceImpl sut;
 
@@ -52,6 +55,7 @@ class ReviewServiceImplTest {
     private Order mockOrder(OrderStatus status, Long userId) {
         return Order.builder()
             .id(1L).user(mockUser(userId)).status(status)
+            .paymentStatus(status == OrderStatus.COMPLETED ? OrderPaymentStatus.PAID : OrderPaymentStatus.UNPAID)
             .items(new java.util.ArrayList<>())
             .build();
     }
@@ -67,7 +71,7 @@ class ReviewServiceImplTest {
 
     private Review mockReview(Long userId) {
         User user = mockUser(userId);
-        Order order = mockOrder(OrderStatus.DELIVERED, userId);
+        Order order = mockOrder(OrderStatus.COMPLETED, userId);
         OrderItem item = mockOrderItem(order);
         return Review.builder()
             .id(1L).user(user).orderItem(item).product(mockProduct())
@@ -90,13 +94,14 @@ class ReviewServiceImplTest {
     class CreateReview {
 
         @Test
-        @DisplayName("Tạo review thành công cho đơn DELIVERED")
+        @DisplayName("Tạo review thành công cho đơn COMPLETED")
         void success_delivered() {
-            Order order = mockOrder(OrderStatus.DELIVERED, 1L);
+            Order order = mockOrder(OrderStatus.COMPLETED, 1L);
             OrderItem item = mockOrderItem(order);
             Product product = mockProduct();
 
             when(orderItemRepository.findById(10L)).thenReturn(Optional.of(item));
+            when(returnItemRepository.sumQuantityByOrderItemAndStatuses(eq(10L), anyCollection())).thenReturn(0L);
             when(reviewRepository.existsByOrderItemId(10L)).thenReturn(false);
             when(productRepository.findById(100L)).thenReturn(Optional.of(product));
             when(reviewRepository.save(any(Review.class))).thenAnswer(inv -> {
@@ -121,6 +126,7 @@ class ReviewServiceImplTest {
             OrderItem item = mockOrderItem(order);
 
             when(orderItemRepository.findById(10L)).thenReturn(Optional.of(item));
+            when(returnItemRepository.sumQuantityByOrderItemAndStatuses(eq(10L), anyCollection())).thenReturn(0L);
             when(reviewRepository.existsByOrderItemId(10L)).thenReturn(false);
             when(productRepository.findById(100L)).thenReturn(Optional.of(mockProduct()));
             when(reviewRepository.save(any(Review.class))).thenAnswer(inv -> {
@@ -149,7 +155,7 @@ class ReviewServiceImplTest {
         @Test
         @DisplayName("Lỗi — không phải chủ đơn hàng")
         void fail_notOwner() {
-            Order order = mockOrder(OrderStatus.DELIVERED, 2L); // user 2 là chủ
+            Order order = mockOrder(OrderStatus.COMPLETED, 2L); // user 2 là chủ
             OrderItem item = mockOrderItem(order);
             when(orderItemRepository.findById(10L)).thenReturn(Optional.of(item));
 
@@ -173,9 +179,10 @@ class ReviewServiceImplTest {
         @Test
         @DisplayName("Lỗi — đã review rồi (duplicate)")
         void fail_alreadyReviewed() {
-            Order order = mockOrder(OrderStatus.DELIVERED, 1L);
+            Order order = mockOrder(OrderStatus.COMPLETED, 1L);
             OrderItem item = mockOrderItem(order);
             when(orderItemRepository.findById(10L)).thenReturn(Optional.of(item));
+            when(returnItemRepository.sumQuantityByOrderItemAndStatuses(eq(10L), anyCollection())).thenReturn(0L);
             when(reviewRepository.existsByOrderItemId(10L)).thenReturn(true);
 
             BusinessException ex = assertThrows(BusinessException.class,

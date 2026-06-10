@@ -11,11 +11,6 @@ import org.springframework.stereotype.Service;
 import java.util.Optional;
 import java.util.concurrent.TimeUnit;
 
-/**
- * In-memory cache cho phí ship.
- * Key: "{districtCode}:{wardCode}" — fee chỉ phụ thuộc vị trí, không phụ thuộc user.
- * Dùng Caffeine: TTL 5 phút, max 500 entries.
- */
 @Service
 @RequiredArgsConstructor
 public class ShippingCacheService {
@@ -32,18 +27,16 @@ public class ShippingCacheService {
     }
 
     public Optional<ShippingFeeResponse> get(String key) {
-        ShippingFeeResponse value = cache.getIfPresent(key);
-        return Optional.ofNullable(value);
+        return Optional.ofNullable(cache.getIfPresent(key));
     }
 
     public void put(String key, ShippingFeeResponse value) {
         cache.put(key, value);
     }
 
-    /**
-     * Build cache key từ district code và ward code.
-     */
-    public static String buildKey(int districtCode, String wardCode) {
-        return districtCode + ":" + wardCode;
+    public static String buildKey(int districtCode, String wardCode, int weight, int length, int width, int height,
+                                  int serviceId) {
+        return districtCode + ":" + wardCode + ":" + weight + ":" + length + ":" + width + ":" + height + ":"
+                + serviceId;
     }
 }

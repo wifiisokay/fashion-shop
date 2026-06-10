@@ -21,7 +21,10 @@ public final class ProductSearchDictionary {
         concept("ao thun", "áo thun", "ao thun", "áo phông", "ao phong", "t-shirt", "tshirt", "tee");
         concept("ao polo", "áo polo", "ao polo", "polo", "áo có cổ", "ao co co");
         concept("ao so mi", "áo sơ mi", "ao so mi", "sơ mi", "so mi", "shirt");
-        concept("quan jean", "quần jean", "quan jean", "jeans", "denim");
+        concept("ao ba lo", "áo ba lỗ", "ao ba lo", "tank top", "tanktop");
+        concept("quan jean", "quần jean", "quan jean", "quần jeans", "quan jeans", "jean", "jeans", "denim");
+        concept("quan kaki", "quần kaki", "quan kaki", "kaki");
+        concept("quan dai", "quần dài", "quan dai", "pants", "trousers");
         concept("quan short", "quần short", "quan short", "short", "quần ngắn", "quan ngan", "quần đùi", "quan dui");
         concept("vay dam", "váy", "vay", "đầm", "dam", "chân váy", "chan vay", "dress", "skirt");
         concept("hoodie", "hoodie", "áo nỉ", "ao ni", "áo khoác", "ao khoac");

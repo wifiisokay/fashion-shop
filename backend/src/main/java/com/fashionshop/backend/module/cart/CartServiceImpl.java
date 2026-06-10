@@ -8,6 +8,7 @@ import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import com.fashionshop.backend.common.enums.ProductStatus;
 import com.fashionshop.backend.domain.CartItem;
 import com.fashionshop.backend.domain.ProductVariant;
 import com.fashionshop.backend.domain.User;
@@ -35,8 +36,6 @@ public class CartServiceImpl implements CartService {
     private final UserRepository userRepository;
     private final ProductPriceService productPriceService;
 
-    // ===================== PUBLIC =====================
-
     @Override
     @Transactional(readOnly = true)
     public CartSummaryResponse getCart(Long userId) {
@@ -47,22 +46,17 @@ public class CartServiceImpl implements CartService {
     @Override
     @Transactional
     public CartSummaryResponse addItem(Long userId, AddToCartRequest request) {
-        // Validate variant tồn tại
         ProductVariant variant = variantRepository.findById(request.getVariantId())
             .orElseThrow(() -> new BusinessException(ErrorCode.VARIANT_NOT_FOUND, HttpStatus.NOT_FOUND));
 
-        Optional<CartItem> existing =
-            cartItemRepository.findByUserIdAndVariantId(userId, request.getVariantId());
-
+        Optional<CartItem> existing = cartItemRepository.findByUserIdAndVariantId(userId, request.getVariantId());
         if (existing.isPresent()) {
-            // Merge: cộng dồn quantity
             CartItem item = existing.get();
             int newQty = item.getQuantity() + request.getQuantity();
             validateStock(variant, newQty);
             item.setQuantity(newQty);
             cartItemRepository.save(item);
         } else {
-            // Tạo mới
             validateStock(variant, request.getQuantity());
             User userRef = userRepository.getReferenceById(userId);
             CartItem newItem = CartItem.builder()
@@ -115,12 +109,6 @@ public class CartServiceImpl implements CartService {
         return cartItemRepository.findByUserIdWithDetails(userId);
     }
 
-    // ===================== PRIVATE =====================
-
-    /**
-     * Build CartSummaryResponse từ danh sách CartItem entity.
-     * Với mỗi item, lookup primaryImage 1 lần theo productId.
-     */
     private CartSummaryResponse buildSummary(List<CartItem> items) {
         if (items.isEmpty()) {
             return CartSummaryResponse.empty();
@@ -170,22 +158,25 @@ public class CartServiceImpl implements CartService {
             .orElse(null);
     }
 
-    /**
-     * Validate tồn kho — throw INSUFFICIENT_STOCK với message kèm số còn lại.
-     */
     private void validateStock(ProductVariant variant, int requestedQty) {
-        if (requestedQty > variant.getStockQuantity()) {
+        if (variant.getProduct() == null || variant.getProduct().getStatus() != ProductStatus.ACTIVE) {
+            throw new BusinessException(
+                ErrorCode.PRODUCT_OUT_OF_STOCK,
+                HttpStatus.BAD_REQUEST,
+                "San pham khong con ban"
+            );
+        }
+
+        int stockQuantity = variant.getStockQuantity() != null ? variant.getStockQuantity() : 0;
+        if (requestedQty > stockQuantity) {
             throw new BusinessException(
                 ErrorCode.INSUFFICIENT_STOCK,
                 HttpStatus.BAD_REQUEST,
-                "Chỉ còn " + variant.getStockQuantity() + " sản phẩm trong kho"
+                "Chi con " + stockQuantity + " san pham trong kho"
             );
         }
     }
 
-    /**
-     * Tìm CartItem theo (userId, variantId) — throw CART_ITEM_NOT_FOUND nếu không có.
-     */
     private CartItem findCartItemOrThrow(Long userId, Long variantId) {
         return cartItemRepository.findByUserIdAndVariantId(userId, variantId)
             .orElseThrow(() -> new BusinessException(

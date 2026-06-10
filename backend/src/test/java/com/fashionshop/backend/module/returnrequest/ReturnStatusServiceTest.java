@@ -32,16 +32,19 @@ class ReturnStatusServiceTest {
     }
 
     @Test
-    @DisplayName("RECEIVED → COMPLETED — valid")
+    @DisplayName("RECEIVED → COMPLETED/REFUNDED — valid")
     void receivedToCompleted() {
         assertDoesNotThrow(() -> sut.validateTransition(ReturnStatus.RECEIVED, ReturnStatus.COMPLETED));
+        assertDoesNotThrow(() -> sut.validateTransition(ReturnStatus.RECEIVED, ReturnStatus.REFUNDED));
     }
 
     @Test
-    @DisplayName("REQUESTED → COMPLETED — INVALID (skip step)")
+    @DisplayName("REQUESTED → COMPLETED/REFUNDED — INVALID (skip step)")
     void requestedToCompleted_invalid() {
         assertThrows(BusinessException.class,
             () -> sut.validateTransition(ReturnStatus.REQUESTED, ReturnStatus.COMPLETED));
+        assertThrows(BusinessException.class,
+            () -> sut.validateTransition(ReturnStatus.REQUESTED, ReturnStatus.REFUNDED));
     }
 
     @Test
@@ -52,10 +55,12 @@ class ReturnStatusServiceTest {
     }
 
     @Test
-    @DisplayName("COMPLETED → REQUESTED — INVALID (terminal state)")
+    @DisplayName("COMPLETED/REFUNDED → REQUESTED — INVALID (terminal state)")
     void completedToRequested_invalid() {
         assertThrows(BusinessException.class,
             () -> sut.validateTransition(ReturnStatus.COMPLETED, ReturnStatus.REQUESTED));
+        assertThrows(BusinessException.class,
+            () -> sut.validateTransition(ReturnStatus.REFUNDED, ReturnStatus.REQUESTED));
     }
 
     // ==================== getLabel ====================
@@ -63,10 +68,11 @@ class ReturnStatusServiceTest {
     @Test
     @DisplayName("getLabel — known status")
     void getLabel_known() {
-        assertEquals("Chờ xử lý", sut.getLabel(ReturnStatus.REQUESTED));
+        assertEquals("Chờ duyệt", sut.getLabel(ReturnStatus.REQUESTED));
         assertEquals("Đã duyệt", sut.getLabel(ReturnStatus.APPROVED));
-        assertEquals("Từ chối", sut.getLabel(ReturnStatus.REJECTED));
-        assertEquals("Đã nhận hàng", sut.getLabel(ReturnStatus.RECEIVED));
+        assertEquals("Đã từ chối", sut.getLabel(ReturnStatus.REJECTED));
+        assertEquals("Đã nhận hàng trả", sut.getLabel(ReturnStatus.RECEIVED));
+        assertEquals("Đã hoàn tiền", sut.getLabel(ReturnStatus.REFUNDED));
         assertEquals("Đã hoàn tiền", sut.getLabel(ReturnStatus.COMPLETED));
     }
 }

@@ -1,17 +1,28 @@
-import { Link, useNavigate } from 'react-router-dom';
+import { useState } from 'react';
+import { Link, useLocation, useNavigate } from 'react-router-dom';
 import { useAuth } from '../../contexts/AuthContext';
 import { useCart } from '../../hooks/useCart';
 import { ROUTES } from '../../constants/routes';
-import { LogOut, ShoppingCart, User } from 'lucide-react';
+import { LogOut, Search, ShoppingCart, User } from 'lucide-react';
 
 const Navbar = () => {
   const { user, isAuthenticated, logout } = useAuth();
   const navigate = useNavigate();
-  const { data: cartData } = useCart();
+  const location = useLocation();
+  const [searchKeyword, setSearchKeyword] = useState('');
+  const isPaymentResultPage = location.pathname === ROUTES.PAYMENT_RESULT;
+  const { data: cartData } = useCart({ enabled: !isPaymentResultPage });
 
   const handleLogout = () => {
     logout();
     navigate(ROUTES.LOGIN);
+  };
+
+  const handleProductSearch = (event) => {
+    event.preventDefault();
+    const keyword = searchKeyword.trim();
+    navigate(keyword ? `${ROUTES.PRODUCTS}?keyword=${encodeURIComponent(keyword)}` : ROUTES.PRODUCTS);
+    setSearchKeyword('');
   };
 
   const customerMenuItems = [
@@ -21,6 +32,7 @@ const Navbar = () => {
   ];
 
   const staffMenuItems = [
+    { label: 'Tồn kho', path: ROUTES.STAFF_INVENTORY },
     { label: 'Đơn hàng', path: ROUTES.STAFF_ORDERS },
     { label: 'Đổi/Trả hàng', path: ROUTES.STAFF_RETURNS },
   ];
@@ -28,6 +40,7 @@ const Navbar = () => {
   const adminMenuItems = [
     { label: 'Dashboard', path: ROUTES.ADMIN_DASHBOARD },
     { label: 'Sản phẩm', path: ROUTES.ADMIN_PRODUCTS },
+    { label: 'Tồn kho', path: ROUTES.STAFF_INVENTORY },
     { label: 'Danh mục', path: ROUTES.ADMIN_CATEGORIES },
     { label: 'Người dùng', path: ROUTES.ADMIN_USERS },
     { label: 'Đánh giá', path: ROUTES.ADMIN_REVIEWS },
@@ -45,6 +58,7 @@ const Navbar = () => {
     user?.role === 'ADMIN' ? ROUTES.ADMIN_DASHBOARD :
       user?.role === 'EMPLOYEE' ? ROUTES.STAFF_ORDERS :
         ROUTES.HOME;
+  const showProductSearch = !isAuthenticated || user?.role === 'CUSTOMER';
 
   return (
     <nav className="bg-white border-b border-gray-200 sticky top-0 z-50">
@@ -66,6 +80,20 @@ const Navbar = () => {
               ))}
             </div>
           </div>
+          {showProductSearch && (
+            <form onSubmit={handleProductSearch} className="hidden lg:flex items-center flex-1 max-w-sm mx-6">
+              <div className="relative w-full">
+                <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
+                <input
+                  type="search"
+                  value={searchKeyword}
+                  onChange={(event) => setSearchKeyword(event.target.value)}
+                  placeholder="Tìm kiếm sản phẩm..."
+                  className="w-full h-10 pl-10 pr-3 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-black/10 focus:border-black"
+                />
+              </div>
+            </form>
+          )}
           <div className="flex items-center space-x-4">
             {isAuthenticated ? (
               <>

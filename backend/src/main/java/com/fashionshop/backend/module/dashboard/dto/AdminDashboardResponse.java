@@ -44,12 +44,13 @@ public class AdminDashboardResponse {
     public static class OverviewSummary {
         private BigDecimal netRevenue;
         private BigDecimal finalizedGrossRevenue;
-        private BigDecimal processedRefundAmount;
-        private BigDecimal pendingRevenue;
+        private BigDecimal refundedAmount;
         private long finalizedOrderCount;
         private long pendingOrderCount;
         private long shippingOrderCount;
         private long completedOrderCount;
+        private long cancelledOrders;
+        private long returnedOrders;
         private long pendingReturnCount;
         private long lowStockProductCount;
         private long activeProductCount;
@@ -61,12 +62,11 @@ public class AdminDashboardResponse {
     @AllArgsConstructor
     public static class RevenueSummary {
         private BigDecimal finalizedGrossRevenue;
-        private BigDecimal processedRefundAmount;
+        private BigDecimal refundedAmount;
         private BigDecimal netRevenue;
         private BigDecimal codRevenue;
         private BigDecimal vnpayRevenue;
         private long finalizedOrderCount;
-        private BigDecimal pendingRevenue;
     }
 
     @Data

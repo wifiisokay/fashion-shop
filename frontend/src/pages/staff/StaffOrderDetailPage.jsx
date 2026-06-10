@@ -5,6 +5,7 @@ import { useConfirmPacking } from '../../hooks/useConfirmPacking';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { returnApi } from '../../api/returnApi';
 import { orderApi } from '../../api/orderApi';
+import { shippingApi } from '../../api/shippingApi';
 import { useAuth } from '../../contexts/AuthContext';
 import Spinner from '../../components/ui/Spinner';
 import Button from '../../components/ui/Button';
@@ -27,7 +28,9 @@ const StaffOrderDetailPage = () => {
   const [cancelReason, setCancelReason] = useState('');
 
   // Packing form
-  const [packing, setPacking] = useState({ length: '', width: '', height: '', actualWeight: '', packingNote: '' });
+  const [packing, setPacking] = useState({ packageLength: '', packageWidth: '', packageHeight: '', actualWeight: '', packingNote: '' });
+  const [previewData, setPreviewData] = useState(null);
+  const [isPreviewLoading, setIsPreviewLoading] = useState(false);
 
   // Return actions
   const [rejectNote, setRejectNote] = useState('');
@@ -85,6 +88,7 @@ const StaffOrderDetailPage = () => {
       : feeDiffValue < 0
         ? 'text-green-600'
         : 'text-gray-700';
+  const isPaidVnPayOrder = order.paymentMethod === 'VNPAY' && order.paymentStatus === 'PAID';
 
   const handleUpdateStatus = async (newStatus) => {
     try {
@@ -94,39 +98,81 @@ const StaffOrderDetailPage = () => {
       }
       await updateStatus({ status: newStatus });
       refetch?.();
+      toast.success('Cập nhật trạng thái thành công');
     } catch (error) {
-      alert(error?.response?.data?.message || 'Lỗi khi cập nhật trạng thái');
+      toast.error(error?.response?.data?.message || 'Lỗi khi cập nhật trạng thái');
     }
   };
 
   const handleCancel = async () => {
     if (!cancelReason.trim()) {
-      alert('Vui lòng nhập lý do hủy đơn');
+      toast.error('Vui lòng nhập lý do hủy đơn');
       return;
     }
     try {
       await updateStatus({ status: 'CANCELLED', cancelReason: cancelReason.trim() });
       setShowCancelDialog(false);
       refetch?.();
+      toast.success('Hủy đơn hàng thành công');
     } catch (error) {
-      alert(error?.response?.data?.message || 'Lỗi khi hủy đơn');
+      toast.error(error?.response?.data?.message || 'Lỗi khi hủy đơn');
+    }
+  };
+
+  const handlePreviewFee = async () => {
+    const { packageLength, packageWidth, packageHeight, actualWeight } = packing;
+    const lengthNum = Number(packageLength);
+    const widthNum = Number(packageWidth);
+    const heightNum = Number(packageHeight);
+    const weightNum = Number(actualWeight);
+
+    if (isNaN(lengthNum) || lengthNum <= 0 ||
+      isNaN(widthNum) || widthNum <= 0 ||
+      isNaN(heightNum) || heightNum <= 0 ||
+      isNaN(weightNum) || weightNum <= 0) {
+      alert('Kích thước và cân nặng phải lớn hơn 0');
+      return;
+    }
+
+    try {
+      setIsPreviewLoading(true);
+      const res = await shippingApi.previewActualFee(id, {
+        packageLength: lengthNum,
+        packageWidth: widthNum,
+        packageHeight: heightNum,
+        actualWeight: weightNum
+      });
+      setPreviewData(res.data?.data || null);
+      toast.success('Đã tải phí ship thực tế từ GHN');
+    } catch (error) {
+      alert(error?.response?.data?.message || 'Lỗi khi xem trước phí ship');
+    } finally {
+      setIsPreviewLoading(false);
     }
   };
 
   const handleConfirmPacking = async () => {
-    const { length, width, height, actualWeight, packingNote } = packing;
-    if (!length || !width || !height || !actualWeight) {
-      alert('Vui lòng nhập đầy đủ kích thước và cân nặng');
+    const { packageLength, packageWidth, packageHeight, actualWeight, packingNote } = packing;
+    const lengthNum = Number(packageLength);
+    const widthNum = Number(packageWidth);
+    const heightNum = Number(packageHeight);
+    const weightNum = Number(actualWeight);
+
+    if (isNaN(lengthNum) || lengthNum <= 0 ||
+      isNaN(widthNum) || widthNum <= 0 ||
+      isNaN(heightNum) || heightNum <= 0 ||
+      isNaN(weightNum) || weightNum <= 0) {
+      alert('Kích thước và cân nặng phải lớn hơn 0');
       return;
     }
     try {
       await confirmPacking.mutateAsync({
         orderId: id,
         data: {
-          length: Number(length),
-          width: Number(width),
-          height: Number(height),
-          actualWeight: Number(actualWeight),
+          packageLength: lengthNum,
+          packageWidth: widthNum,
+          packageHeight: heightNum,
+          actualWeight: weightNum,
           packingNote: packingNote || null,
         },
       });
@@ -140,7 +186,7 @@ const StaffOrderDetailPage = () => {
     switch (status) {
       case 'PENDING': case 'AWAITING_PAYMENT': return <Clock className="w-5 h-5" />;
       case 'CONFIRMED': return <Package className="w-5 h-5" />;
-      case 'SHIPPING':  return <Truck className="w-5 h-5" />;
+      case 'SHIPPING': return <Truck className="w-5 h-5" />;
       case 'DELIVERED': case 'COMPLETED': return <CheckCircle className="w-5 h-5" />;
       case 'CANCELLED': return <XCircle className="w-5 h-5" />;
       case 'RETURN_REQUESTED': case 'RETURNING': case 'RETURNED': return <RotateCcw className="w-5 h-5" />;
@@ -168,7 +214,11 @@ const StaffOrderDetailPage = () => {
         <div className="ml-auto">
           <span className={clsx('px-3 py-1 rounded-full text-sm font-medium flex items-center gap-2', statusColor(order.status))}>
             {getStatusIcon(order.status)}
-            {formatOrderStatus(order.status).label}
+            {order.status === 'AWAITING_PAYMENT' && order.paymentMethod === 'VNPAY'
+              ? 'Chờ thanh toán VNPay'
+              : order.status === 'PENDING' && order.paymentMethod === 'VNPAY' && order.paymentStatus === 'PAID'
+                ? 'Đã thanh toán - chờ shop xác nhận'
+                : formatOrderStatus(order.status).label}
           </span>
         </div>
       </div>
@@ -230,30 +280,60 @@ const StaffOrderDetailPage = () => {
               <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 mb-4">
                 <div>
                   <label className="block text-xs text-gray-500 mb-1">Dài (cm)</label>
-                  <input type="number" min="1" max="200" value={packing.length} onChange={e => setPacking(p => ({...p, length: e.target.value}))}
+                  <input type="number" min="1" max="200" value={packing.packageLength} onChange={e => setPacking(p => ({ ...p, packageLength: e.target.value }))}
                     className="w-full border border-gray-300 rounded-lg p-2 text-sm focus:ring-blue-500 focus:border-blue-500" placeholder="cm" />
                 </div>
                 <div>
                   <label className="block text-xs text-gray-500 mb-1">Rộng (cm)</label>
-                  <input type="number" min="1" max="200" value={packing.width} onChange={e => setPacking(p => ({...p, width: e.target.value}))}
+                  <input type="number" min="1" max="200" value={packing.packageWidth} onChange={e => setPacking(p => ({ ...p, packageWidth: e.target.value }))}
                     className="w-full border border-gray-300 rounded-lg p-2 text-sm focus:ring-blue-500 focus:border-blue-500" placeholder="cm" />
                 </div>
                 <div>
                   <label className="block text-xs text-gray-500 mb-1">Cao (cm)</label>
-                  <input type="number" min="1" max="200" value={packing.height} onChange={e => setPacking(p => ({...p, height: e.target.value}))}
+                  <input type="number" min="1" max="200" value={packing.packageHeight} onChange={e => setPacking(p => ({ ...p, packageHeight: e.target.value }))}
                     className="w-full border border-gray-300 rounded-lg p-2 text-sm focus:ring-blue-500 focus:border-blue-500" placeholder="cm" />
                 </div>
                 <div>
                   <label className="block text-xs text-gray-500 mb-1">Cân nặng (g)</label>
-                  <input type="number" min="1" max="50000" value={packing.actualWeight} onChange={e => setPacking(p => ({...p, actualWeight: e.target.value}))}
+                  <input type="number" min="1" max="50000" value={packing.actualWeight} onChange={e => setPacking(p => ({ ...p, actualWeight: e.target.value }))}
                     className="w-full border border-gray-300 rounded-lg p-2 text-sm focus:ring-blue-500 focus:border-blue-500" placeholder="gram" />
                 </div>
               </div>
               <div className="mb-4">
                 <label className="block text-xs text-gray-500 mb-1">Ghi chú đóng gói (không bắt buộc)</label>
-                <input type="text" value={packing.packingNote} onChange={e => setPacking(p => ({...p, packingNote: e.target.value}))}
+                <input type="text" value={packing.packingNote} onChange={e => setPacking(p => ({ ...p, packingNote: e.target.value }))}
                   className="w-full border border-gray-300 rounded-lg p-2 text-sm focus:ring-blue-500 focus:border-blue-500" placeholder="VD: Bọc thêm bubble wrap..." />
               </div>
+
+              <div className="flex flex-wrap gap-3 mb-4">
+                <Button type="button" onClick={handlePreviewFee} loading={isPreviewLoading} variant="outline" className="text-blue-600 border-blue-200 hover:bg-blue-50">
+                  Tính thử phí ship GHN
+                </Button>
+              </div>
+
+              {previewData && (
+                <div className="mb-4 p-4 bg-blue-50 border border-blue-200 rounded-lg space-y-2 text-sm text-gray-700">
+                  <div className="flex justify-between">
+                    <span>Phí ship khách đã trả:</span>
+                    <span className="font-semibold text-gray-900">{formatPrice(previewData.customerShippingFee)}</span>
+                  </div>
+                  <div className="flex justify-between">
+                    <span>Phí ship thực tế (GHN):</span>
+                    <span className="font-semibold text-gray-900">{formatPrice(previewData.actualGhnFee)}</span>
+                  </div>
+                  <div className="flex justify-between">
+                    <span>Chênh lệch:</span>
+                    <span className={`font-bold ${Number(previewData.difference) > 0 ? 'text-red-600' :
+                        Number(previewData.difference) < 0 ? 'text-green-600' : 'text-gray-700'
+                      }`}>
+                      {Number(previewData.difference) > 0 ? `+${formatPrice(previewData.difference)}` :
+                        Number(previewData.difference) < 0 ? `-${formatPrice(Math.abs(previewData.difference))}` :
+                          formatPrice(0)}
+                    </span>
+                  </div>
+                </div>
+              )}
+
               <Button onClick={handleConfirmPacking} loading={confirmPacking.isPending} className="bg-blue-600 hover:bg-blue-700">
                 <Package className="w-4 h-4 mr-2" /> Xác nhận đóng gói
               </Button>
@@ -267,11 +347,12 @@ const StaffOrderDetailPage = () => {
                 <CheckCircle className="w-5 h-5 text-green-600" />
                 Đã đóng gói
               </h2>
-              <div className="grid grid-cols-2 sm:grid-cols-4 gap-4 text-sm">
+              <div className="grid grid-cols-2 sm:grid-cols-3 gap-4 text-sm">
                 <div><span className="text-gray-500 block">Kích thước</span><span className="font-medium">{order.packageLength}×{order.packageWidth}×{order.packageHeight} cm</span></div>
-                <div><span className="text-gray-500 block">Cân thực</span><span className="font-medium">{order.actualWeight}g</span></div>
-                <div><span className="text-gray-500 block">KL quy đổi</span><span className="font-medium">{order.volumetricWeight}g</span></div>
-                <div><span className="text-gray-500 block">Tính cước</span><span className="font-bold text-blue-700">{order.chargeableWeight}g</span></div>
+                <div><span className="text-gray-500 block">Cân nặng</span><span className="font-medium">{order.actualWeight}g</span></div>
+                {order.packingNote && (
+                  <div><span className="text-gray-500 block">Ghi chú đóng gói</span><span className="font-medium">{order.packingNote}</span></div>
+                )}
               </div>
 
               {order.estimatedShippingFee != null && (
@@ -326,22 +407,6 @@ const StaffOrderDetailPage = () => {
                   <AlertTriangle className="w-5 h-5" /> Đơn hàng đang trong quá trình xử lý Trả hàng.
                 </p>
               </div>
-            ) : order.status === 'DELIVERED' ? (
-              authUser?.role === 'ADMIN' ? (
-                <div className="flex flex-wrap gap-3">
-                  <Button
-                    onClick={() => confirmCompletedMutation.mutate()}
-                    loading={confirmCompletedMutation.isPending}
-                    className="bg-green-600 hover:bg-green-700"
-                  >
-                    <CheckCircle className="w-4 h-4 mr-2" /> Xác nhận hoàn thành
-                  </Button>
-                </div>
-              ) : (
-                <p className="text-green-600 font-medium flex items-center gap-2">
-                  <CheckCircle className="w-5 h-5" /> Đơn hàng đã giao. Chờ admin xác nhận hoàn thành.
-                </p>
-              )
             ) : (
               <div className="flex flex-wrap gap-3">
                 {order.status === 'AWAITING_PAYMENT' && (
@@ -355,7 +420,7 @@ const StaffOrderDetailPage = () => {
                       Xác nhận đơn hàng
                     </Button>
                     <Button variant="outline" onClick={() => handleUpdateStatus('CANCELLED')} className="text-red-600 border-red-200 hover:bg-red-50">
-                      Hủy đơn
+                      Từ chối đơn
                     </Button>
                   </>
                 )}
@@ -375,9 +440,13 @@ const StaffOrderDetailPage = () => {
                     </Button>
                   </>
                 )}
-                {order.status === 'SHIPPING' && (
-                  <Button onClick={() => handleUpdateStatus('DELIVERED')} loading={isUpdating} className="bg-green-600 hover:bg-green-700">
-                    <CheckCircle className="w-4 h-4 mr-2" /> Đã giao thành công
+                {order.status === 'SHIPPING' && authUser?.role === 'ADMIN' && (
+                  <Button
+                    onClick={() => confirmCompletedMutation.mutate()}
+                    loading={confirmCompletedMutation.isPending}
+                    className="bg-green-600 hover:bg-green-700"
+                  >
+                    <CheckCircle className="w-4 h-4 mr-2" /> Xác nhận hoàn thành
                   </Button>
                 )}
               </div>
@@ -389,6 +458,12 @@ const StaffOrderDetailPage = () => {
             <div className="bg-white rounded-xl shadow-sm border border-red-200 p-6 space-y-4">
               <h3 className="font-bold text-red-800">Hủy đơn hàng #{order.id}</h3>
               <p className="text-sm text-gray-600">Staff/Admin bắt buộc phải nhập lý do hủy đơn.</p>
+              {isPaidVnPayOrder && (
+                <div className="flex items-start gap-2 rounded-lg border border-amber-200 bg-amber-50 p-3 text-sm text-amber-800">
+                  <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0" />
+                  <span>Đơn hàng đã thanh toán qua VNPay. Khi hủy, hệ thống sẽ ghi nhận hoàn tiền mô phỏng.</span>
+                </div>
+              )}
               <textarea
                 value={cancelReason}
                 onChange={(e) => setCancelReason(e.target.value)}
@@ -460,8 +535,8 @@ const StaffOrderDetailPage = () => {
                   </>
                 )}
                 {order.returnStatus === 'APPROVED' && authUser?.role === 'ADMIN' && (
-                  <Button onClick={() => { if (window.confirm('Xác nhận đã nhận hàng/ghi nhận xử lý?')) receiveMutation.mutate(); }} loading={receiveMutation.isPending} className="bg-purple-600 hover:bg-purple-700">
-                    <Package className="w-4 h-4 mr-1" /> Xác nhận xử lý
+                  <Button onClick={() => { if (window.confirm('Xác nhận đã nhận hàng trả?')) receiveMutation.mutate(); }} loading={receiveMutation.isPending} className="bg-purple-600 hover:bg-purple-700">
+                    <Package className="w-4 h-4 mr-1" /> Xác nhận đã nhận hàng
                   </Button>
                 )}
                 {order.returnStatus === 'RECEIVED' && authUser?.role === 'ADMIN' && (
@@ -507,14 +582,13 @@ const StaffOrderDetailPage = () => {
               </div>
               <div className="flex justify-between items-center">
                 <span className="text-gray-500">Trạng thái TT</span>
-                <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium ${
-                  order.paymentStatus === 'PAID' ? 'bg-green-100 text-green-700' :
-                  order.paymentStatus === 'REFUNDED' ? 'bg-gray-100 text-gray-600' :
-                  'bg-yellow-100 text-yellow-700'
-                }`}>
+                <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium ${order.paymentStatus === 'PAID' ? 'bg-green-100 text-green-700' :
+                    order.paymentStatus === 'REFUNDED' ? 'bg-gray-100 text-gray-600' :
+                      'bg-yellow-100 text-yellow-700'
+                  }`}>
                   {order.paymentStatus === 'PAID' ? 'Đã thanh toán' :
-                   order.paymentStatus === 'REFUNDED' ? 'Đã hoàn tiền' :
-                   'Chưa thanh toán'}
+                    order.paymentStatus === 'REFUNDED' ? 'Đã hoàn tiền' :
+                      'Chưa thanh toán'}
                 </span>
               </div>
               <div className="flex justify-between">

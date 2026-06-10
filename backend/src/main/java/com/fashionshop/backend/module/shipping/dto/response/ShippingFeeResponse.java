@@ -4,29 +4,25 @@ import lombok.AllArgsConstructor;
 import lombok.Builder;
 import lombok.Getter;
 
-/**
- * Response trả về frontend với đầy đủ thông tin phí ship.
- */
 @Getter
 @Builder
 @AllArgsConstructor
 public class ShippingFeeResponse {
 
-    /** Phí vận chuyển (VND) */
+    private String provider;
+
+    /** Backward-compatible fee field for existing clients. */
     private long fee;
 
-    /** Số ngày giao dự kiến */
+    private long shippingFee;
+    private int estimatedWeight;
+    private int packageLength;
+    private int packageWidth;
+    private int packageHeight;
+    private int serviceId;
     private int estimatedDays;
-
-    /** Text mô tả ngày giao, ví dụ: "Dự kiến giao Thứ 4, 23/04" */
     private String estimatedDateText;
-
-    /** Tên dịch vụ GHN, ví dụ: "Giao hàng chuẩn" */
     private String serviceName;
-
-    /** true nếu lấy từ cache */
     private boolean cached;
-
-    /** true nếu đang dùng giá trị fallback do GHN lỗi */
     private boolean fallback;
 }

@@ -21,7 +21,6 @@ public class CreateOrderRequest {
     @NotNull(message = "Vui long chon phuong thuc thanh toan")
     private PaymentMethod paymentMethod;
 
-    @NotNull(message = "Phi van chuyen khong duoc de trong")
     @Min(value = 0, message = "Phi van chuyen khong hop le")
     @Max(value = 500000, message = "Phi van chuyen khong hop le")
     private Long shippingFee;

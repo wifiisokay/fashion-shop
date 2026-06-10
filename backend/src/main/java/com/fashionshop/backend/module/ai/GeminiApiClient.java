@@ -8,8 +8,10 @@ import lombok.extern.slf4j.Slf4j;
 import org.springframework.http.MediaType;
 import org.springframework.http.client.SimpleClientHttpRequestFactory;
 import org.springframework.stereotype.Component;
+import org.springframework.util.StreamUtils;
 import org.springframework.web.client.RestClient;
 
+import java.nio.charset.StandardCharsets;
 import java.time.Duration;
 import java.util.List;
 
@@ -46,13 +48,28 @@ public class GeminiApiClient implements AiClient {
             String responseBody = restClient.post()
                 .uri("/models/{model}:generateContent?key={key}", props.getModel(), props.getApiKey())
                 .contentType(MediaType.APPLICATION_JSON)
+                .accept(MediaType.APPLICATION_JSON)
                 .body(buildRequestBody(systemPrompt, history, userMessage))
-                .retrieve()
-                .body(String.class);
+                .exchange((request, response) -> {
+                    MediaType contentType = response.getHeaders().getContentType();
+                    String body = StreamUtils.copyToString(response.getBody(), StandardCharsets.UTF_8);
+                    if (!response.getStatusCode().is2xxSuccessful()) {
+                        log.warn("[GEMINI] status={} contentType={} bodyPreview={}",
+                            response.getStatusCode(), contentType, preview(body));
+                        throw new AiServiceException("GEMINI_HTTP_ERROR");
+                    }
+                    if (contentType != null && !MediaType.APPLICATION_JSON.isCompatibleWith(contentType)) {
+                        log.warn("[GEMINI] unexpected_content_type={} bodyPreview={}", contentType, preview(body));
+                        throw new AiServiceException("GEMINI_UNEXPECTED_CONTENT_TYPE");
+                    }
+                    return body;
+                });
             return extractText(responseBody);
+        } catch (AiServiceException e) {
+            throw e;
         } catch (Exception e) {
-            log.error("Gemini API call failed: {}", e.getMessage());
-            throw new IllegalStateException("AI_SERVICE_UNAVAILABLE", e);
+            log.warn("[GEMINI] call_failed reason={}", e.getMessage());
+            throw new AiServiceException("AI_SERVICE_UNAVAILABLE", e);
         }
     }
 
@@ -78,7 +95,7 @@ public class GeminiApiClient implements AiClient {
             root.set("generationConfig", config);
             return objectMapper.writeValueAsString(root);
         } catch (Exception e) {
-            throw new IllegalStateException("Failed to build Gemini request", e);
+            throw new AiServiceException("GEMINI_REQUEST_BUILD_FAILED", e);
         }
     }
 
@@ -101,11 +118,21 @@ public class GeminiApiClient implements AiClient {
                 .path("candidates").path(0).path("content").path("parts");
             String text = parts.isArray() && !parts.isEmpty() ? parts.get(0).path("text").asText("") : "";
             if (text.isBlank()) {
-                throw new IllegalStateException("Gemini returned empty content");
+                throw new AiServiceException("GEMINI_EMPTY_CONTENT");
             }
             return text;
+        } catch (AiServiceException e) {
+            throw e;
         } catch (Exception e) {
-            throw new IllegalStateException("Failed to parse Gemini response", e);
+            throw new AiServiceException("GEMINI_PARSE_FAILED", e);
         }
+    }
+
+    private String preview(String value) {
+        if (value == null) {
+            return "";
+        }
+        String compact = value.replaceAll("\\s+", " ").trim();
+        return compact.length() > 300 ? compact.substring(0, 300) + "..." : compact;
     }
 }

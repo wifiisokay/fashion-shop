@@ -7,8 +7,10 @@ export const useCreateOrder = () => {
 
   return useMutation({
     mutationFn: (data) => orderApi.createOrder(data),
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: QUERY_KEYS.cart() });
+    onSuccess: (_response, variables) => {
+      if (variables?.paymentMethod !== 'VNPAY') {
+        queryClient.invalidateQueries({ queryKey: QUERY_KEYS.cart() });
+      }
       queryClient.invalidateQueries({ queryKey: ['myOrders'] });
     },
   });

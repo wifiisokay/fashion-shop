@@ -16,6 +16,7 @@ public class ChatProductCard {
     private Long id;
     private Long colorId;
     private String name;
+    private String description;
     private BigDecimal price;
     private BigDecimal salePrice;
     private BigDecimal displayPrice;

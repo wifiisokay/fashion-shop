@@ -3,6 +3,7 @@ package com.fashionshop.backend.module.cart.dto.response;
 import com.fashionshop.backend.domain.CartItem;
 import com.fashionshop.backend.domain.Product;
 import com.fashionshop.backend.domain.ProductVariant;
+import com.fashionshop.backend.common.enums.ProductStatus;
 import com.fashionshop.backend.module.product.ProductPriceService;
 import lombok.Builder;
 import lombok.Getter;
@@ -54,7 +55,8 @@ public class CartItemResponse {
         Product product = variant.getProduct();
 
         BigDecimal unitPrice = priceService.getFinalUnitPrice(product, variant);
-        boolean available = variant.getStockQuantity() > 0;
+        int stockQuantity = variant.getStockQuantity() != null ? variant.getStockQuantity() : 0;
+        boolean available = product.getStatus() == ProductStatus.ACTIVE && stockQuantity >= item.getQuantity();
 
         return CartItemResponse.builder()
             .variantId(variant.getId())
@@ -66,7 +68,7 @@ public class CartItemResponse {
             .unitPrice(unitPrice)
             .quantity(item.getQuantity())
             .subtotal(unitPrice.multiply(BigDecimal.valueOf(item.getQuantity())))
-            .stockQuantity(variant.getStockQuantity())
+            .stockQuantity(stockQuantity)
             .available(available)
             .estimatedWeight(product.getEstimatedWeight())
             .build();

@@ -3,7 +3,7 @@ package com.fashionshop.backend.common.enums;
 /**
  * Order lifecycle:
  * AWAITING_PAYMENT → (VNPay paid / COD) → PENDING
- * PENDING → CONFIRMED (admin) → SHIPPING (GHN) → DELIVERED → COMPLETED
+ * PENDING -> CONFIRMED -> SHIPPING -> COMPLETED
  * Any non-COMPLETED → CANCELLED
  */
 public enum OrderStatus {

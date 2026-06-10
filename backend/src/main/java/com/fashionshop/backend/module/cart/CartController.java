@@ -9,6 +9,7 @@ import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.security.SecurityRequirement;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import jakarta.validation.Valid;
+import lombok.extern.slf4j.Slf4j;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.access.prepost.PreAuthorize;
@@ -18,6 +19,7 @@ import org.springframework.web.bind.annotation.*;
 @RestController
 @RequestMapping("/api/cart")
 @RequiredArgsConstructor
+@Slf4j
 @PreAuthorize("hasRole('CUSTOMER')")
 @Tag(name = "Cart", description = "Quản lý giỏ hàng")
 public class CartController {
@@ -31,6 +33,7 @@ public class CartController {
     public ResponseEntity<ApiResponse<CartSummaryResponse>> getCart(
         @AuthenticationPrincipal User user
     ) {
+        log.info("[CHECKOUT_CART_ACCESS] endpoint=/api/cart userId={} reason=cart_summary_request", user.getId());
         return ResponseEntity.ok(ApiResponse.success(cartService.getCart(user.getId())));
     }
 

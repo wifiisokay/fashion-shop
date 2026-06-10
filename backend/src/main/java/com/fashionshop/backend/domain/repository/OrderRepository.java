@@ -2,9 +2,11 @@ package com.fashionshop.backend.domain.repository;
 
 import com.fashionshop.backend.common.enums.OrderStatus;
 import com.fashionshop.backend.domain.Order;
+import jakarta.persistence.LockModeType;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
 import org.springframework.data.jpa.repository.JpaRepository;
+import org.springframework.data.jpa.repository.Lock;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
 
@@ -31,6 +33,14 @@ public interface OrderRepository extends JpaRepository<Order, Long> {
                                    Pageable pageable);
 
     Optional<Order> findByIdAndUserId(Long id, Long userId);
+
+    @Lock(LockModeType.PESSIMISTIC_WRITE)
+    @Query("SELECT o FROM Order o WHERE o.id = :id")
+    Optional<Order> findByIdForUpdate(@Param("id") Long id);
+
+    @Lock(LockModeType.PESSIMISTIC_WRITE)
+    @Query("SELECT o FROM Order o WHERE o.id = :id AND o.user.id = :userId")
+    Optional<Order> findByIdAndUserIdForUpdate(@Param("id") Long id, @Param("userId") Long userId);
 
     // Staff — danh sách tất cả đơn
     Page<Order> findAllByOrderByCreatedAtDesc(Pageable pageable);
@@ -74,19 +84,19 @@ public interface OrderRepository extends JpaRepository<Order, Long> {
                 SELECT COALESCE(SUM(o.total_amount), 0)
                 FROM orders o
                 WHERE o.status = 'COMPLETED'
-                    AND (o.payment_status IS NULL OR o.payment_status <> 'REFUNDED')
+                    AND o.payment_status = 'PAID'
         """, nativeQuery = true)
     java.math.BigDecimal getTotalRevenue();
 
     @Query(value = """
-                SELECT DATE(o.created_at) AS date,
+                SELECT DATE(COALESCE(o.completed_at, o.updated_at, o.created_at)) AS date,
                              COALESCE(SUM(o.total_amount), 0) AS revenue
                 FROM orders o
-                WHERE o.created_at >= :startDate
+                WHERE COALESCE(o.completed_at, o.updated_at, o.created_at) >= :startDate
                     AND o.status = 'COMPLETED'
-                    AND (o.payment_status IS NULL OR o.payment_status <> 'REFUNDED')
-                GROUP BY DATE(o.created_at)
-                ORDER BY DATE(o.created_at) ASC
+                    AND o.payment_status = 'PAID'
+                GROUP BY DATE(COALESCE(o.completed_at, o.updated_at, o.created_at))
+                ORDER BY DATE(COALESCE(o.completed_at, o.updated_at, o.created_at)) ASC
         """, nativeQuery = true)
     List<Object[]> getRevenueTrend(@Param("startDate") LocalDateTime startDate);
 

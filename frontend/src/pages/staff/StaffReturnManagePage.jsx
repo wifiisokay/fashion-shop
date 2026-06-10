@@ -10,39 +10,33 @@ import { useAuth } from '../../contexts/AuthContext';
 import { clsx } from 'clsx';
 import { Eye, Check, X as XIcon, Package, CheckCircle, AlertCircle, RotateCcw, DollarSign } from 'lucide-react';
 import { toast } from 'sonner';
-import {
-  ResponsiveContainer,
-  PieChart,
-  Pie,
-  Cell,
-  Tooltip as ChartTooltip,
-  Legend as ChartLegend
-} from 'recharts';
 
-const CHART_COLORS = ['#3B82F6', '#10B981', '#F59E0B', '#EF4444', '#8B5CF6', '#EC4899', '#6B7280'];
 
 const STATUS_LABELS = {
-  REQUESTED: 'Chờ xử lý',
+  REQUESTED: 'Chờ duyệt',
   APPROVED: 'Đã duyệt',
-  REJECTED: 'Từ chối',
-  RECEIVED: 'Đã nhận hàng',
+  REJECTED: 'Đã từ chối',
+  RECEIVED: 'Đã nhận hàng trả',
+  REFUNDED: 'Đã hoàn tiền',
   COMPLETED: 'Đã hoàn tiền'
 };
 
 const STATUS_OPTIONS = [
   { value: '', label: 'Tất cả trạng thái' },
-  { value: 'REQUESTED', label: 'Chờ xử lý' },
+  { value: 'REQUESTED', label: 'Chờ duyệt' },
   { value: 'APPROVED', label: 'Đã duyệt' },
-  { value: 'REJECTED', label: 'Từ chối' },
-  { value: 'RECEIVED', label: 'Đã nhận hàng' },
-  { value: 'COMPLETED', label: 'Đã hoàn tiền' },
+  { value: 'REJECTED', label: 'Đã từ chối' },
+  { value: 'RECEIVED', label: 'Đã nhận hàng trả' },
+  { value: 'REFUNDED', label: 'Đã hoàn tiền' },
+  { value: 'COMPLETED', label: 'Đã hoàn tiền (Cũ)' },
 ];
 
 const STATUS_BADGE = {
-  REQUESTED: { label: 'Chờ xử lý',    color: 'bg-yellow-100 text-yellow-800' },
+  REQUESTED: { label: 'Chờ duyệt',    color: 'bg-yellow-100 text-yellow-800' },
   APPROVED:  { label: 'Đã duyệt',     color: 'bg-blue-100 text-blue-800' },
-  REJECTED:  { label: 'Từ chối',       color: 'bg-red-100 text-red-800' },
-  RECEIVED:  { label: 'Đã nhận hàng',  color: 'bg-purple-100 text-purple-800' },
+  REJECTED:  { label: 'Đã từ chối',       color: 'bg-red-100 text-red-800' },
+  RECEIVED:  { label: 'Đã nhận hàng trả',  color: 'bg-purple-100 text-purple-800' },
+  REFUNDED:  { label: 'Đã hoàn tiền',  color: 'bg-green-100 text-green-800' },
   COMPLETED: { label: 'Đã hoàn tiền',  color: 'bg-green-100 text-green-800' },
 };
 
@@ -254,44 +248,6 @@ const StaffReturnManagePage = () => {
         </div>
       )}
 
-      {/* Recharts Distributions */}
-      {dashboardQuery.data && (
-        <div className="grid grid-cols-1 gap-6">
-          {/* Status Chart */}
-          <div className="bg-white p-6 rounded-xl border border-gray-200 shadow-sm flex flex-col">
-            <h2 className="text-sm font-bold text-gray-900 mb-4">Phân bổ Trạng thái Yêu cầu</h2>
-            <div className="h-60 w-full">
-              {dashboardQuery.data.statusChart && dashboardQuery.data.statusChart.length > 0 ? (
-                <ResponsiveContainer width="100%" height="100%">
-                  <PieChart>
-                    <Pie
-                      data={dashboardQuery.data.statusChart.map(item => ({
-                        ...item,
-                        mappedLabel: STATUS_LABELS[item.label] || item.label
-                      }))}
-                      cx="50%"
-                      cy="50%"
-                      innerRadius={50}
-                      outerRadius={75}
-                      paddingAngle={3}
-                      dataKey="value"
-                      nameKey="mappedLabel"
-                    >
-                      {dashboardQuery.data.statusChart.map((entry, index) => (
-                        <Cell key={`cell-${index}`} fill={CHART_COLORS[index % CHART_COLORS.length]} />
-                      ))}
-                    </Pie>
-                    <ChartTooltip formatter={(value) => [`${value} yêu cầu`, 'Số lượng']} />
-                    <ChartLegend verticalAlign="bottom" height={36} iconType="circle" fontSize={11} />
-                  </PieChart>
-                </ResponsiveContainer>
-              ) : (
-                <div className="flex h-full items-center justify-center text-xs text-gray-500">Chưa có dữ liệu trạng thái</div>
-              )}
-            </div>
-          </div>
-        </div>
-      )}
 
       {/* Urgent Queue & Top Returned Products */}
       {dashboardQuery.data && (
@@ -520,7 +476,7 @@ const StaffReturnManagePage = () => {
               {detailQuery.data.status === 'APPROVED' && isAdmin && (
                 <Button onClick={() => setShowReceiveDialog(detailQuery.data.id)}
                   loading={receiveMutation.isPending}>
-                  <Package className="w-4 h-4 mr-1" /> Xác nhận xử lý
+                  <Package className="w-4 h-4 mr-1" /> Xác nhận đã nhận hàng
                 </Button>
               )}
               {detailQuery.data.status === 'RECEIVED' && isAdmin && (

@@ -60,24 +60,24 @@ public class ProductServiceImpl implements ProductService {
         Category category = findCategoryOrThrow(request.getCategoryId());
 
         Product product = Product.builder()
-            .name(request.getName().trim())
-            .description(request.getDescription())
-            .basePrice(request.getBasePrice())
-            .salePrice(request.getSalePrice())
-            .saleStartAt(request.getSaleStartAt())
-            .saleEndAt(request.getSaleEndAt())
-            .isSale(request.getIsSale())
-            .gender(request.getGender())
-            .material(request.getMaterial())
-            .estimatedWeight(request.getEstimatedWeight() != null ? request.getEstimatedWeight() : 300)
-            .lowStockThreshold(request.getLowStockThreshold() != null ? request.getLowStockThreshold() : 10)
-            .fitType(request.getFitType())
-            .season(request.getSeason())
-            .styleTags(request.getStyleTags() != null ? request.getStyleTags() : new ArrayList<>())
-            .occasionTags(request.getOccasionTags() != null ? request.getOccasionTags() : new ArrayList<>())
-            .category(category)
-            .createdBy(currentUser)
-            .build();
+                .name(request.getName().trim())
+                .description(request.getDescription())
+                .basePrice(request.getBasePrice())
+                .salePrice(request.getSalePrice())
+                .saleStartAt(request.getSaleStartAt())
+                .saleEndAt(request.getSaleEndAt())
+                .isSale(request.getIsSale())
+                .gender(request.getGender())
+                .material(request.getMaterial())
+                .estimatedWeight(request.getEstimatedWeight())
+                .lowStockThreshold(request.getLowStockThreshold() != null ? request.getLowStockThreshold() : 10)
+                .fitType(request.getFitType())
+                .season(request.getSeason())
+                .styleTags(request.getStyleTags() != null ? request.getStyleTags() : new ArrayList<>())
+                .occasionTags(request.getOccasionTags() != null ? request.getOccasionTags() : new ArrayList<>())
+                .category(category)
+                .createdBy(currentUser)
+                .build();
 
         return ProductDetailResponse.from(productRepository.save(product), productPriceService);
     }
@@ -100,8 +100,9 @@ public class ProductServiceImpl implements ProductService {
         product.setIsSale(request.getIsSale());
         product.setGender(request.getGender());
         product.setMaterial(request.getMaterial());
-        product.setEstimatedWeight(request.getEstimatedWeight() != null ? request.getEstimatedWeight() : product.getEstimatedWeight());
-        product.setLowStockThreshold(request.getLowStockThreshold() != null ? request.getLowStockThreshold() : product.getLowStockThreshold());
+        product.setEstimatedWeight(request.getEstimatedWeight());
+        product.setLowStockThreshold(request.getLowStockThreshold() != null ? request.getLowStockThreshold()
+                : product.getLowStockThreshold());
         product.setFitType(request.getFitType());
         product.setSeason(request.getSeason());
         product.setStyleTags(request.getStyleTags() != null ? request.getStyleTags() : new ArrayList<>());
@@ -116,7 +117,7 @@ public class ProductServiceImpl implements ProductService {
     public ProductDetailResponse updateSale(Long id, UpdateProductSaleRequest request) {
         Product product = findProductOrThrow(id);
         validateSaleRequest(product.getBasePrice(), Boolean.TRUE.equals(request.getIsSale()),
-            request.getSalePrice(), request.getSaleStartAt(), request.getSaleEndAt());
+                request.getSalePrice(), request.getSaleStartAt(), request.getSaleEndAt());
 
         product.setIsSale(Boolean.TRUE.equals(request.getIsSale()));
         product.setSalePrice(request.getSalePrice());
@@ -143,7 +144,7 @@ public class ProductServiceImpl implements ProductService {
     @Override
     @Transactional(readOnly = true)
     public PageResponse<ProductSummaryResponse> listAdmin(String keyword, Integer categoryId, String status,
-                                                           String gender, int page, int size) {
+            String gender, int page, int size) {
         Specification<Product> spec = buildSpec(keyword, categoryId, gender, null, null, null, null, null, false);
 
         // Admin filter thêm status
@@ -152,7 +153,7 @@ public class ProductServiceImpl implements ProductService {
         }
 
         Page<Product> products = productRepository.findAll(spec,
-            PageRequest.of(page, size, Sort.by(Sort.Direction.DESC, "createdAt")));
+                PageRequest.of(page, size, Sort.by(Sort.Direction.DESC, "createdAt")));
 
         return enrichWithReviewStats(products);
     }
@@ -162,10 +163,11 @@ public class ProductServiceImpl implements ProductService {
     @Override
     @Transactional(readOnly = true)
     public PageResponse<ProductSummaryResponse> listPublic(String keyword, Integer categoryId, String gender,
-                                                           Boolean isSale, String color, String sizeOption,
-                                                           BigDecimal minPrice, BigDecimal maxPrice,
-                                                           String sort, int page, int size) {
-        Specification<Product> spec = buildSpec(keyword, categoryId, gender, isSale, color, sizeOption, minPrice, maxPrice, true);
+            Boolean isSale, String color, String sizeOption,
+            BigDecimal minPrice, BigDecimal maxPrice,
+            String sort, int page, int size) {
+        Specification<Product> spec = buildSpec(keyword, categoryId, gender, isSale, color, sizeOption, minPrice,
+                maxPrice, true);
 
         Sort sortOrder = resolveSort(sort);
         Page<Product> products = productRepository.findAll(spec, PageRequest.of(page, size, sortOrder));
@@ -176,18 +178,17 @@ public class ProductServiceImpl implements ProductService {
     /** Batch fill avgRating + reviewCount cho listing page. */
     private PageResponse<ProductSummaryResponse> enrichWithReviewStats(Page<Product> products) {
         List<ProductSummaryResponse> summaries = products.getContent().stream()
-            .map(product -> ProductSummaryResponse.from(product, productPriceService)).collect(Collectors.toList());
+                .map(product -> ProductSummaryResponse.from(product, productPriceService)).collect(Collectors.toList());
 
         List<Long> productIds = summaries.stream().map(ProductSummaryResponse::getId).toList();
         if (!productIds.isEmpty()) {
             Map<Long, double[]> statsMap = reviewRepository.getBatchStatsByProductIds(productIds).stream()
-                .collect(Collectors.toMap(
-                    row -> ((Number) row[0]).longValue(),
-                    row -> new double[]{
-                        ((Number) row[1]).doubleValue(),
-                        ((Number) row[2]).doubleValue()
-                    }
-                ));
+                    .collect(Collectors.toMap(
+                            row -> ((Number) row[0]).longValue(),
+                            row -> new double[] {
+                                    ((Number) row[1]).doubleValue(),
+                                    ((Number) row[2]).doubleValue()
+                            }));
             summaries.forEach(s -> {
                 double[] stat = statsMap.get(s.getId());
                 if (stat != null) {
@@ -206,7 +207,7 @@ public class ProductServiceImpl implements ProductService {
         Product product = findProductOrThrow(id);
         if (product.getStatus() != ProductStatus.ACTIVE) {
             throw new BusinessException(ErrorCode.PRODUCT_NOT_FOUND, HttpStatus.NOT_FOUND,
-                "Sản phẩm không tồn tại");
+                    "Sản phẩm không tồn tại");
         }
         return ProductDetailResponse.from(product, productPriceService);
     }
@@ -215,57 +216,59 @@ public class ProductServiceImpl implements ProductService {
 
     private Product findProductOrThrow(Long id) {
         return productRepository.findById(id)
-            .orElseThrow(() -> new BusinessException(ErrorCode.PRODUCT_NOT_FOUND, HttpStatus.NOT_FOUND));
+                .orElseThrow(() -> new BusinessException(ErrorCode.PRODUCT_NOT_FOUND, HttpStatus.NOT_FOUND));
     }
 
     private Category findCategoryOrThrow(Integer id) {
         return categoryRepository.findById(id)
-            .orElseThrow(() -> new BusinessException(ErrorCode.CATEGORY_NOT_FOUND, HttpStatus.NOT_FOUND));
+                .orElseThrow(() -> new BusinessException(ErrorCode.CATEGORY_NOT_FOUND, HttpStatus.NOT_FOUND));
     }
 
     private void validateSalePrice(ProductRequest req) {
         validateSaleRequest(req.getBasePrice(), Boolean.TRUE.equals(req.getIsSale()),
-            req.getSalePrice(), req.getSaleStartAt(), req.getSaleEndAt());
+                req.getSalePrice(), req.getSaleStartAt(), req.getSaleEndAt());
         if (Boolean.TRUE.equals(req.getIsSale())) {
             if (req.getSalePrice() == null || req.getSalePrice().compareTo(req.getBasePrice()) >= 0) {
                 throw new BusinessException(ErrorCode.INVALID_SALE_PRICE, HttpStatus.BAD_REQUEST,
-                    "Giá khuyến mãi phải nhỏ hơn giá gốc");
+                        "Giá khuyến mãi phải nhỏ hơn giá gốc");
             }
         }
     }
 
     /** Validate style_tags và occasion_tags phải nằm trong ProductTagLibrary. */
     private void validateSaleRequest(BigDecimal basePrice, boolean isSale, BigDecimal salePrice,
-                                     LocalDateTime saleStartAt, LocalDateTime saleEndAt) {
+            LocalDateTime saleStartAt, LocalDateTime saleEndAt) {
         if (isSale) {
             if (salePrice == null || salePrice.compareTo(BigDecimal.ZERO) <= 0 || salePrice.compareTo(basePrice) >= 0) {
                 throw new BusinessException(ErrorCode.INVALID_SALE_PRICE, HttpStatus.BAD_REQUEST,
-                    "GiÃ¡ khuyáº¿n mÃ£i pháº£i lá»›n hÆ¡n 0 vÃ  nhá» hÆ¡n giÃ¡ gá»‘c");
+                        "GiÃ¡ khuyáº¿n mÃ£i pháº£i lá»›n hÆ¡n 0 vÃ  nhá» hÆ¡n giÃ¡ gá»‘c");
             }
         }
         if (saleStartAt != null && saleEndAt != null && !saleEndAt.isAfter(saleStartAt)) {
             throw new BusinessException(ErrorCode.INVALID_SALE_PRICE, HttpStatus.BAD_REQUEST,
-                "Thá»i gian káº¿t thÃºc sale pháº£i sau thá»i gian báº¯t Ä‘áº§u");
+                    "Thá»i gian káº¿t thÃºc sale pháº£i sau thá»i gian báº¯t Ä‘áº§u");
         }
     }
 
     private void validateTags(ProductRequest req) {
         if (req.getStyleTags() != null && !req.getStyleTags().isEmpty()) {
             List<String> invalidStyle = req.getStyleTags().stream()
-                .filter(t -> !ProductTagLibrary.STYLE_TAGS.contains(t))
-                .toList();
+                    .filter(t -> !ProductTagLibrary.STYLE_TAGS.contains(t))
+                    .toList();
             if (!invalidStyle.isEmpty()) {
                 throw new BusinessException(ErrorCode.INVALID_TAG, HttpStatus.BAD_REQUEST,
-                    "style_tags không hợp lệ: " + invalidStyle + ". Xem danh sách tại GET /api/admin/products/tag-library");
+                        "style_tags không hợp lệ: " + invalidStyle
+                                + ". Xem danh sách tại GET /api/admin/products/tag-library");
             }
         }
         if (req.getOccasionTags() != null && !req.getOccasionTags().isEmpty()) {
             List<String> invalidOccasion = req.getOccasionTags().stream()
-                .filter(t -> !ProductTagLibrary.OCCASION_TAGS.contains(t))
-                .toList();
+                    .filter(t -> !ProductTagLibrary.OCCASION_TAGS.contains(t))
+                    .toList();
             if (!invalidOccasion.isEmpty()) {
                 throw new BusinessException(ErrorCode.INVALID_TAG, HttpStatus.BAD_REQUEST,
-                    "occasion_tags không hợp lệ: " + invalidOccasion + ". Xem danh sách tại GET /api/admin/products/tag-library");
+                        "occasion_tags không hợp lệ: " + invalidOccasion
+                                + ". Xem danh sách tại GET /api/admin/products/tag-library");
             }
         }
     }
@@ -275,12 +278,13 @@ public class ProductServiceImpl implements ProductService {
         if (req.getFitType() != null && !req.getFitType().isBlank()
                 && !ProductTagLibrary.FIT_TYPES.contains(req.getFitType())) {
             throw new BusinessException(ErrorCode.INVALID_FIELD_VALUE, HttpStatus.BAD_REQUEST,
-                "fit_type '" + req.getFitType() + "' không hợp lệ. Giá trị chấp nhận: " + ProductTagLibrary.FIT_TYPES);
+                    "fit_type '" + req.getFitType() + "' không hợp lệ. Giá trị chấp nhận: "
+                            + ProductTagLibrary.FIT_TYPES);
         }
         if (req.getSeason() != null && !req.getSeason().isBlank()
                 && !ProductTagLibrary.SEASONS.contains(req.getSeason())) {
             throw new BusinessException(ErrorCode.INVALID_FIELD_VALUE, HttpStatus.BAD_REQUEST,
-                "season '" + req.getSeason() + "' không hợp lệ. Giá trị chấp nhận: " + ProductTagLibrary.SEASONS);
+                    "season '" + req.getSeason() + "' không hợp lệ. Giá trị chấp nhận: " + ProductTagLibrary.SEASONS);
         }
     }
 
@@ -289,22 +293,23 @@ public class ProductServiceImpl implements ProductService {
      * publicOnly = true → chỉ ACTIVE + có variant còn hàng.
      */
     private Specification<Product> buildSpec(String keyword, Integer categoryId, String gender,
-                                             Boolean isSale, String color, String sizeOption,
-                                             BigDecimal minPrice, BigDecimal maxPrice, boolean publicOnly) {
+            Boolean isSale, String color, String sizeOption,
+            BigDecimal minPrice, BigDecimal maxPrice, boolean publicOnly) {
         return (root, query, cb) -> {
             List<Predicate> predicates = new ArrayList<>();
             LocalDateTime now = LocalDateTime.now();
             Predicate currentlyOnSale = cb.and(
-                cb.isTrue(root.<Boolean>get("isSale")),
-                cb.isNotNull(root.get("salePrice")),
-                cb.greaterThan(root.<BigDecimal>get("salePrice"), BigDecimal.ZERO),
-                cb.lessThan(root.<BigDecimal>get("salePrice"), root.<BigDecimal>get("basePrice")),
-                cb.or(cb.isNull(root.get("saleStartAt")), cb.lessThanOrEqualTo(root.<LocalDateTime>get("saleStartAt"), now)),
-                cb.or(cb.isNull(root.get("saleEndAt")), cb.greaterThanOrEqualTo(root.<LocalDateTime>get("saleEndAt"), now))
-            );
+                    cb.isTrue(root.<Boolean>get("isSale")),
+                    cb.isNotNull(root.get("salePrice")),
+                    cb.greaterThan(root.<BigDecimal>get("salePrice"), BigDecimal.ZERO),
+                    cb.lessThan(root.<BigDecimal>get("salePrice"), root.<BigDecimal>get("basePrice")),
+                    cb.or(cb.isNull(root.get("saleStartAt")),
+                            cb.lessThanOrEqualTo(root.<LocalDateTime>get("saleStartAt"), now)),
+                    cb.or(cb.isNull(root.get("saleEndAt")),
+                            cb.greaterThanOrEqualTo(root.<LocalDateTime>get("saleEndAt"), now)));
             Expression<BigDecimal> effectivePrice = cb.<BigDecimal>selectCase()
-                .when(currentlyOnSale, root.<BigDecimal>get("salePrice"))
-                .otherwise(root.<BigDecimal>get("basePrice"));
+                    .when(currentlyOnSale, root.<BigDecimal>get("salePrice"))
+                    .otherwise(root.<BigDecimal>get("basePrice"));
 
             if (publicOnly) {
                 predicates.add(cb.equal(root.get("status"), ProductStatus.ACTIVE));
@@ -321,7 +326,7 @@ public class ProductServiceImpl implements ProductService {
             if (publicOnly || (sizeOption != null && !sizeOption.isBlank())) {
                 query.distinct(true);
                 Join<Product, ProductVariant> variantJoin = root.join("variants", JoinType.INNER);
-                
+
                 if (publicOnly) {
                     predicates.add(cb.greaterThan(variantJoin.get("stockQuantity"), 0));
                 }
@@ -333,9 +338,8 @@ public class ProductServiceImpl implements ProductService {
             if (keyword != null && !keyword.isBlank()) {
                 String pattern = "%" + keyword.trim().toLowerCase() + "%";
                 predicates.add(cb.or(
-                    cb.like(cb.lower(root.get("name")), pattern),
-                    cb.like(cb.lower(root.get("description")), pattern)
-                ));
+                        cb.like(cb.lower(root.get("name")), pattern),
+                        cb.like(cb.lower(root.get("description")), pattern)));
             }
 
             if (categoryId != null) {
@@ -373,12 +377,13 @@ public class ProductServiceImpl implements ProductService {
     }
 
     private Sort resolveSort(String sort) {
-        if (sort == null) return Sort.by(Sort.Direction.DESC, "createdAt");
+        if (sort == null)
+            return Sort.by(Sort.Direction.DESC, "createdAt");
         return switch (sort) {
-            case "price_asc"  -> Sort.by(Sort.Direction.ASC, "basePrice");
+            case "price_asc" -> Sort.by(Sort.Direction.ASC, "basePrice");
             case "price_desc" -> Sort.by(Sort.Direction.DESC, "basePrice");
-            case "name_asc"   -> Sort.by(Sort.Direction.ASC, "name");
-            default           -> Sort.by(Sort.Direction.DESC, "createdAt"); // "newest"
+            case "name_asc" -> Sort.by(Sort.Direction.ASC, "name");
+            default -> Sort.by(Sort.Direction.DESC, "createdAt"); // "newest"
         };
     }
 }

@@ -12,12 +12,13 @@ import static com.fashionshop.backend.common.enums.ReturnStatus.COMPLETED;
 import static com.fashionshop.backend.common.enums.ReturnStatus.RECEIVED;
 import static com.fashionshop.backend.common.enums.ReturnStatus.REJECTED;
 import static com.fashionshop.backend.common.enums.ReturnStatus.REQUESTED;
+import static com.fashionshop.backend.common.enums.ReturnStatus.REFUNDED;
 import com.fashionshop.backend.exception.BusinessException;
 import com.fashionshop.backend.exception.ErrorCode;
 
 /**
  * Quản lý luồng trạng thái yêu cầu trả hàng.
- * REQUESTED → APPROVED → RECEIVED → COMPLETED
+ * REQUESTED → APPROVED → RECEIVED → REFUNDED
  *             ↘ REJECTED
  */
 @Service
@@ -26,14 +27,15 @@ public class ReturnStatusService {
     private static final Map<ReturnStatus, Set<ReturnStatus>> ALLOWED_TRANSITIONS = Map.of(
         REQUESTED, Set.of(APPROVED, REJECTED),
         APPROVED, Set.of(RECEIVED),
-        RECEIVED, Set.of(COMPLETED)
+        RECEIVED, Set.of(REFUNDED, COMPLETED)
     );
 
     private static final Map<ReturnStatus, String> STATUS_LABELS = Map.of(
-        REQUESTED, "Chờ xử lý",
+        REQUESTED, "Chờ duyệt",
         APPROVED, "Đã duyệt",
-        REJECTED, "Từ chối",
-        RECEIVED, "Đã nhận hàng",
+        REJECTED, "Đã từ chối",
+        RECEIVED, "Đã nhận hàng trả",
+        REFUNDED, "Đã hoàn tiền",
         COMPLETED, "Đã hoàn tiền"
     );
 

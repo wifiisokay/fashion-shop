@@ -1,9 +1,11 @@
 package com.fashionshop.backend.module.ai;
 
+import java.time.Duration;
 import java.time.LocalDateTime;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
+import java.util.Optional;
 import java.util.Random;
 import java.util.Set;
 import java.util.concurrent.CompletableFuture;
@@ -24,6 +26,9 @@ import lombok.extern.slf4j.Slf4j;
 @Service
 @RequiredArgsConstructor
 public class OutfitSuggestionService {
+
+    private static final Duration REDIS_LOCK_WAIT_TIMEOUT = Duration.ofSeconds(5);
+    private static final Duration REDIS_LOCK_POLL_INTERVAL = Duration.ofMillis(250);
 
     private static final List<StyleProfile> STYLE_PROFILES = List.of(
         new StyleProfile("daily", "Dao pho de mac", "hang ngay, dao pho hoac cuoi tuan"),
@@ -135,6 +140,19 @@ public class OutfitSuggestionService {
             }
         }
 
+        Optional<String> lockToken = outfitCacheManager.tryAcquireBuildLock(productId, colorId);
+        if (lockToken.isEmpty()) {
+            Optional<OutfitCacheManager.CachedOutfit> cacheAfterWait =
+                waitForRedisCache(productId, colorId, REDIS_LOCK_WAIT_TIMEOUT);
+            if (cacheAfterWait.isPresent()
+                && isValidCachedOutfit(productId, colorId, cacheAfterWait.get().combos())) {
+                future.complete(cacheAfterWait.get().combos());
+                buildingMap.remove(key, future);
+                return cacheAfterWait.get().combos();
+            }
+            log.warn("[OUTFIT] cache_lock_wait_timeout key={} -> local_build", key);
+        }
+
         try {
             List<OutfitComboResponse> combos = buildCombos(productId, colorId, userId);
             if (!combos.isEmpty()) {
@@ -156,8 +174,27 @@ public class OutfitSuggestionService {
             future.completeExceptionally(e);
             throw e;
         } finally {
+            lockToken.ifPresent(token -> outfitCacheManager.releaseBuildLock(productId, colorId, token));
             buildingMap.remove(key, future);
         }
+    }
+
+    private Optional<OutfitCacheManager.CachedOutfit> waitForRedisCache(
+            Long productId, Long colorId, Duration timeout) {
+        long deadline = System.nanoTime() + timeout.toNanos();
+        while (System.nanoTime() < deadline) {
+            Optional<OutfitCacheManager.CachedOutfit> cached = outfitCacheManager.tryLoadValidCache(productId, colorId);
+            if (cached.isPresent() && !cached.get().combos().isEmpty()) {
+                return cached;
+            }
+            try {
+                Thread.sleep(REDIS_LOCK_POLL_INTERVAL.toMillis());
+            } catch (InterruptedException e) {
+                Thread.currentThread().interrupt();
+                return Optional.empty();
+            }
+        }
+        return Optional.empty();
     }
 
     private String buildKey(Long productId, Long colorId) {

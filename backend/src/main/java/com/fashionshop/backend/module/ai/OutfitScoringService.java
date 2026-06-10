@@ -56,16 +56,7 @@ public class OutfitScoringService {
      * - Unknown: +10 (assume OK)
      */
     private double colorFamilyScore(ChatProductCard base, ChatProductCard candidate) {
-        String baseFamily = base.getColorFamily();
-        String candFamily = candidate.getColorFamily();
-        if (baseFamily == null || candFamily == null) return 10;
-
-        if (baseFamily.equals(candFamily)) return 30;
-        if ("neutral".equals(baseFamily) || "neutral".equals(candFamily)) return 25;
-        if (COMPLEMENTARY_COOL_EARTH.contains(baseFamily) && COMPLEMENTARY_COOL_EARTH.contains(candFamily)) return 20;
-        if (COMPLEMENTARY_WARM_EARTH.contains(baseFamily) && COMPLEMENTARY_WARM_EARTH.contains(candFamily)) return 20;
-        if ("earth".equals(baseFamily) || "earth".equals(candFamily)) return 18;
-        return 8; // other combinations — tránh lạnh+ấm
+        return ColorNormalizer.calculateColorScore(base, candidate);
     }
 
     /**

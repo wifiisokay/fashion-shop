@@ -66,6 +66,12 @@ public class ChatContextBuilder {
     }
 
     private String resolveOccasionTag(String message, NluSearchParams nluParams) {
+        if (nluParams != null && nluParams.getOccasion() != null && !nluParams.getOccasion().isBlank()) {
+            Optional<String> nluTag = tagTranslationService.detectOccasionTag(nluParams.getOccasion());
+            if (nluTag.isPresent()) {
+                return nluTag.get();
+            }
+        }
         if (nluParams != null && nluParams.getOccasionKeywords() != null && !nluParams.getOccasionKeywords().isEmpty()) {
             String joined = String.join(" ", nluParams.getOccasionKeywords());
             Optional<String> nluTag = tagTranslationService.detectOccasionTag(joined);
@@ -81,6 +87,13 @@ public class ChatContextBuilder {
     }
 
     private String resolveStyleTag(String message, NluSearchParams nluParams) {
+        if (nluParams != null && nluParams.getStyle() != null && !nluParams.getStyle().isBlank()) {
+            Optional<String> nluTag = tagTranslationService.detectStyleTag(nluParams.getStyle());
+            if (nluTag.isPresent()) {
+                return nluTag.get();
+            }
+            return nluParams.getStyle();
+        }
         if (nluParams != null && nluParams.getStyleKeywords() != null && !nluParams.getStyleKeywords().isEmpty()) {
             String joined = String.join(" ", nluParams.getStyleKeywords());
             Optional<String> nluTag = tagTranslationService.detectStyleTag(joined);
@@ -122,6 +135,12 @@ public class ChatContextBuilder {
     }
 
     private String resolveProductType(String message, NluSearchParams nluParams) {
+        if (nluParams != null && nluParams.getProductType() != null && !nluParams.getProductType().isBlank()) {
+            return nluParams.getProductType();
+        }
+        if (nluParams != null && nluParams.getCategoryHint() != null && !nluParams.getCategoryHint().isBlank()) {
+            return nluParams.getCategoryHint();
+        }
         if (nluParams != null && nluParams.getCategoryKeywords() != null && !nluParams.getCategoryKeywords().isEmpty()) {
             return nluParams.getCategoryKeywords().get(0);
         }
@@ -134,6 +153,9 @@ public class ChatContextBuilder {
     }
 
     private String resolveSeason(String message, NluSearchParams nluParams) {
+        if (nluParams != null && nluParams.getSeason() != null && !nluParams.getSeason().isBlank()) {
+            return nluParams.getSeason();
+        }
         String normalized = normalizeVi(message);
         if (normalized.contains(" he ")) return "summer";
         if (normalized.contains(" dong ")) return "winter";

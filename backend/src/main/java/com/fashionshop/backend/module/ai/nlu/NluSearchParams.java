@@ -16,14 +16,21 @@ import java.util.List;
 @AllArgsConstructor
 public class NluSearchParams {
     private String intent;
+    private String productType;
+    private String categoryHint;
     private String gender;
     private String colorFamily;
     private String colorKeyword;
     private List<String> categoryKeywords;
     private List<String> occasionKeywords;
+    private String occasion;
     private List<String> styleKeywords;
+    private String style;
+    private String season;
     private String fitKeyword;
+    private Long budget;
     private Long priceMax;
+    private Integer referencedProductOrdinal;
     @JsonProperty("isSale")
     private Boolean isSale;
     @JsonProperty("isFollowUp")

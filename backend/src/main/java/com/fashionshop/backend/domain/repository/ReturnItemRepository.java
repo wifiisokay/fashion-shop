@@ -17,6 +17,19 @@ public interface ReturnItemRepository extends JpaRepository<ReturnItem, Long> {
     List<ReturnItem> findByReturnRequestId(Long returnId);
 
     @Query("""
+        SELECT DISTINCT ri.orderItem.id
+        FROM ReturnItem ri
+        JOIN ri.returnRequest r
+        WHERE r.order.id = :orderId
+          AND r.status IN :statuses
+          AND ri.orderItem.id IS NOT NULL
+    """)
+    List<Long> findOrderItemIdsByOrderIdAndStatuses(
+        @Param("orderId") Long orderId,
+        @Param("statuses") Collection<ReturnStatus> statuses
+    );
+
+    @Query("""
         SELECT COALESCE(SUM(ri.quantity), 0)
         FROM ReturnItem ri
         JOIN ri.returnRequest r
@@ -33,7 +46,7 @@ public interface ReturnItemRepository extends JpaRepository<ReturnItem, Long> {
         FROM ReturnItem ri
         JOIN ri.returnRequest r
         WHERE ri.orderItem.id = :orderItemId
-          AND r.status = 'COMPLETED'
+          AND r.status IN (com.fashionshop.backend.common.enums.ReturnStatus.COMPLETED, com.fashionshop.backend.common.enums.ReturnStatus.REFUNDED)
     """)
     Long sumCompletedQuantityByOrderItemId(@Param("orderItemId") Long orderItemId);
 
@@ -41,7 +54,7 @@ public interface ReturnItemRepository extends JpaRepository<ReturnItem, Long> {
         SELECT COALESCE(SUM(ri.quantity), 0)
         FROM ReturnItem ri
         JOIN ri.returnRequest r
-        WHERE r.status = 'COMPLETED'
+        WHERE r.status IN (com.fashionshop.backend.common.enums.ReturnStatus.COMPLETED, com.fashionshop.backend.common.enums.ReturnStatus.REFUNDED)
           AND r.updatedAt >= :startDate
     """)
     Long sumCompletedQuantitySince(@Param("startDate") LocalDateTime startDate);
@@ -50,7 +63,7 @@ public interface ReturnItemRepository extends JpaRepository<ReturnItem, Long> {
         SELECT COALESCE(SUM(ri.subtotal), 0)
         FROM ReturnItem ri
         JOIN ri.returnRequest r
-        WHERE r.status = 'COMPLETED'
+        WHERE r.status IN (com.fashionshop.backend.common.enums.ReturnStatus.COMPLETED, com.fashionshop.backend.common.enums.ReturnStatus.REFUNDED)
           AND r.updatedAt >= :startDate
     """)
     BigDecimal sumCompletedValueSince(@Param("startDate") LocalDateTime startDate);
@@ -60,7 +73,7 @@ public interface ReturnItemRepository extends JpaRepository<ReturnItem, Long> {
         FROM return_items ri
         JOIN returns r ON r.id = ri.return_id
         WHERE r.created_at >= :startDate
-          AND r.status IN ('APPROVED', 'RECEIVED', 'COMPLETED')
+          AND r.status IN ('APPROVED', 'RECEIVED', 'COMPLETED', 'REFUNDED')
           AND ri.product_id IS NOT NULL
         GROUP BY ri.product_id, ri.product_name
         ORDER BY SUM(ri.quantity) DESC

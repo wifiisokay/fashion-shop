@@ -92,6 +92,6 @@ public class ReturnRequest {
      */
     public boolean isWithinReturnWindow() {
         if (order == null || order.getCompletedAt() == null) return false;
-        return order.getCompletedAt().plusDays(7).isAfter(LocalDateTime.now());
+        return !order.getCompletedAt().plusDays(7).isBefore(LocalDateTime.now());
     }
 }

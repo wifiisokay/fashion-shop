@@ -71,9 +71,6 @@ public class SecurityConfig {
                 // Public — GHN master data (province/district/ward cho form address)
                 .requestMatchers(HttpMethod.GET, "/api/ghn/**").permitAll()
 
-                // Public — AI Chat guest mode (giới hạn intent, không lưu DB)
-                .requestMatchers(HttpMethod.POST, "/api/chat/guest/message").permitAll()
-
                 // Public — Swagger / OpenAPI
                 .requestMatchers(
                     "/swagger-ui.html", "/swagger-ui/**",

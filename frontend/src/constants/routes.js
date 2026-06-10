@@ -19,6 +19,7 @@ export const ROUTES = {
   STAFF_ORDERS: '/staff/orders',
   STAFF_ORDER_DETAIL: '/staff/orders/:id',
   STAFF_RETURNS: '/staff/returns',
+  STAFF_INVENTORY: '/staff/inventory',
   // Admin
   ADMIN_DASHBOARD: '/admin/dashboard',
   ADMIN_PRODUCTS: '/admin/products',

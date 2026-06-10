@@ -14,7 +14,6 @@ const STATUS_TABS = [
   { key: 'PENDING', label: 'Chờ xác nhận' },
   { key: 'CONFIRMED', label: 'Đã xác nhận' },
   { key: 'SHIPPING', label: 'Đang giao' },
-  { key: 'DELIVERED', label: 'Đã giao' },
   { key: 'COMPLETED', label: 'Hoàn thành' },
   { key: 'CANCELLED', label: 'Đã hủy' },
 ];
@@ -101,7 +100,7 @@ const OrderListPage = () => {
                   <p className="text-sm text-gray-500">Mã đơn hàng: <span className="font-medium text-gray-900">#{order.id}</span></p>
                   <p className="text-xs text-gray-400 mt-1">{formatDate(order.createdAt)}</p>
                 </div>
-                <OrderStatusBadge status={order.status} />
+                <OrderStatusBadge status={order.status} order={order} />
               </div>
               <div className="flex justify-between items-center mt-4">
                 <div>

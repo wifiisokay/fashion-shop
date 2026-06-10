@@ -13,6 +13,7 @@ import io.swagger.v3.oas.annotations.tags.Tag;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.ResponseEntity;
+import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.web.bind.annotation.*;
 
@@ -69,6 +70,7 @@ public class AdminReturnController {
     }
 
     @PutMapping("/{id}/received")
+    @PreAuthorize("hasRole('ADMIN')")
     @Operation(summary = "Xác nhận đã nhận hàng trả", security = @SecurityRequirement(name = "cookieAuth"))
     public ResponseEntity<ApiResponse<Void>> markReceived(
         @AuthenticationPrincipal User user,
@@ -80,6 +82,7 @@ public class AdminReturnController {
     }
 
     @PutMapping("/{id}/completed")
+    @PreAuthorize("hasRole('ADMIN')")
     @Operation(summary = "Xác nhận đã hoàn tiền", security = @SecurityRequirement(name = "cookieAuth"))
     public ResponseEntity<ApiResponse<Void>> completeReturn(
         @AuthenticationPrincipal User user,

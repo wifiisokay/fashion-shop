@@ -7,35 +7,51 @@ import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
 
+import java.util.ArrayList;
 import java.util.List;
+import java.util.Locale;
+import java.util.Set;
 
 @Slf4j
 @Service
 @RequiredArgsConstructor
 public class NluService {
 
-    private final AiClientRouter aiClientRouter;
-    private final ObjectMapper objectMapper;
+    private static final Set<String> ALLOWED_INTENTS = Set.of(
+        "PRODUCT_SEARCH",
+        "OUTFIT_SUGGEST",
+        "OUTFIT_BY_OCCASION",
+        "OUTFIT_BY_PRODUCT",
+        "OUTFIT_BY_PRODUCT_AND_OCCASION",
+        "STYLE_ADVICE",
+        "CHITCHAT"
+    );
 
     private static final String SYSTEM = """
-        Bạn là AI phân tích yêu cầu mua sắm thời trang. Chỉ trả JSON thuần, không markdown, không giải thích.
-        Intent hợp lệ: PRODUCT_SEARCH, OUTFIT_SUGGEST, CHITCHAT.
-        Gender hợp lệ: MALE, FEMALE, null. Color family hợp lệ: neutral, cool, warm, earth, mixed, null.
-        Quy tắc màu: tím/lavender/purple/burgundy -> warm; xanh/blue/navy/mint/green/teal -> cool;
-        be/kem/nude/trắng/đen/xám/ghi -> neutral; nâu/camel/olive/rêu/gạch/đất -> earth.
-        Nếu message là follow-up như "còn màu nào", "có size L không", "còn mẫu nào không" thì isFollowUp=true.
+        You are Fashion Shop's Vietnamese shopping NLU parser.
+        Return pure JSON only. Do not return markdown or explanations.
+        Normalize vague user shopping requests into structured fields.
+        Never invent product ids or product names.
         """;
+
+    private final AiClientRouter aiClientRouter;
+    private final ObjectMapper objectMapper;
 
     public NluSearchParams extract(String message, String previousIntent, NluSearchParams previousParams) {
         try {
             String raw = aiClientRouter.generate(SYSTEM, List.of(), buildPrompt(message, previousIntent, previousParams));
             NluSearchParams result = objectMapper.readValue(extractJson(raw), NluSearchParams.class);
-            NluSearchParams merged = result.isFollowUp() ? merge(previousParams, result) : result;
-            log.info("[NLU] message='{}' previousIntent={} resultIntent={} followUp={} colorFamily={} categories={}",
-                shorten(message), previousIntent, merged.getIntent(), merged.isFollowUp(), merged.getColorFamily(), merged.getCategoryKeywords());
+            NluSearchParams sanitized = sanitize(result);
+            if (sanitized == null) {
+                return null;
+            }
+            NluSearchParams merged = sanitized.isFollowUp() ? merge(previousParams, sanitized) : sanitized;
+            log.info("[NLU] message='{}' previousIntent={} resultIntent={} followUp={} category={} occasion={} style={}",
+                shorten(message), previousIntent, merged.getIntent(), merged.isFollowUp(),
+                merged.getCategoryKeywords(), merged.getOccasionKeywords(), merged.getStyleKeywords());
             return merged;
         } catch (Exception e) {
-            log.warn("[NLU] extraction failed, fallback to rule-based. message='{}' error={}", shorten(message), e.getMessage());
+            log.warn("[NLU] extraction_failed fallback=rule message='{}' error={}", shorten(message), e.getMessage());
             return null;
         }
     }
@@ -49,25 +65,55 @@ public class NluService {
         } catch (Exception ignored) {
         }
         return """
-            Message hiện tại: "%s"
-            Intent trước: %s
-            Params trước: %s
+            Current message: "%s"
+            Previous intent: %s
+            Previous params: %s
 
-            Trả JSON đúng shape:
+            Return this JSON shape:
             {
-              "intent": "PRODUCT_SEARCH|OUTFIT_SUGGEST|CHITCHAT",
+              "intent": "PRODUCT_SEARCH|OUTFIT_SUGGEST|OUTFIT_BY_OCCASION|OUTFIT_BY_PRODUCT|OUTFIT_BY_PRODUCT_AND_OCCASION|STYLE_ADVICE|CHITCHAT",
+              "productType": "ao|quan|vay|khoac|null",
+              "categoryHint": "ao thun|quan jeans|null",
               "gender": "MALE|FEMALE|null",
+              "occasion": "di choi|di lam|di hoc|du lich|null",
+              "season": "spring|summer|autumn|winter|null",
+              "budget": 300000,
+              "style": "casual|minimal|streetwear|null",
+              "isFollowUp": false,
+              "referencedProductOrdinal": 2,
               "colorFamily": "neutral|cool|warm|earth|mixed|null",
-              "colorKeyword": "tên màu cụ thể user nhắc hoặc null",
-              "categoryKeywords": ["áo thun", "quần jeans"],
-              "occasionKeywords": ["đi làm", "đi chơi"],
+              "colorKeyword": "specific color or null",
+              "categoryKeywords": ["ao thun", "quan jeans"],
+              "occasionKeywords": ["di lam", "di choi"],
               "styleKeywords": ["casual", "minimal"],
-              "fitKeyword": "rộng|ôm|vừa|null",
+              "fitKeyword": "rong|om|vua|null",
               "priceMax": 300000,
-              "isSale": true,
-              "isFollowUp": false
+              "isSale": true
             }
             """.formatted(message, previousIntent == null ? "none" : previousIntent, previousJson);
+    }
+
+    private NluSearchParams sanitize(NluSearchParams params) {
+        if (params == null) {
+            return null;
+        }
+        String intent = normalizeBlank(params.getIntent());
+        if (intent != null) {
+            intent = intent.toUpperCase(Locale.ROOT);
+        }
+        params.setIntent(intent != null && ALLOWED_INTENTS.contains(intent) ? intent : null);
+        params.setGender(normalizeEnum(params.getGender(), Set.of("MALE", "FEMALE")));
+        params.setColorFamily(normalizeEnum(params.getColorFamily(), Set.of("neutral", "cool", "warm", "earth", "mixed")));
+        params.setCategoryKeywords(mergeKeywords(params.getCategoryKeywords(), params.getCategoryHint(), params.getProductType()));
+        params.setOccasionKeywords(mergeKeywords(params.getOccasionKeywords(), params.getOccasion()));
+        params.setStyleKeywords(mergeKeywords(params.getStyleKeywords(), params.getStyle()));
+        if (params.getPriceMax() == null && params.getBudget() != null && params.getBudget() > 0) {
+            params.setPriceMax(params.getBudget());
+        }
+        if (params.getPriceMax() != null && params.getPriceMax() <= 0) {
+            params.setPriceMax(null);
+        }
+        return params;
     }
 
     private NluSearchParams merge(NluSearchParams previous, NluSearchParams current) {
@@ -75,20 +121,66 @@ public class NluService {
             return current;
         }
         if (current.getIntent() == null) current.setIntent(previous.getIntent());
+        if (current.getProductType() == null) current.setProductType(previous.getProductType());
+        if (current.getCategoryHint() == null) current.setCategoryHint(previous.getCategoryHint());
         if (current.getGender() == null) current.setGender(previous.getGender());
         if (current.getColorFamily() == null) current.setColorFamily(previous.getColorFamily());
         if (current.getColorKeyword() == null) current.setColorKeyword(previous.getColorKeyword());
         if (isEmpty(current.getCategoryKeywords())) current.setCategoryKeywords(previous.getCategoryKeywords());
+        if (current.getOccasion() == null) current.setOccasion(previous.getOccasion());
         if (isEmpty(current.getOccasionKeywords())) current.setOccasionKeywords(previous.getOccasionKeywords());
+        if (current.getStyle() == null) current.setStyle(previous.getStyle());
         if (isEmpty(current.getStyleKeywords())) current.setStyleKeywords(previous.getStyleKeywords());
+        if (current.getSeason() == null) current.setSeason(previous.getSeason());
         if (current.getFitKeyword() == null) current.setFitKeyword(previous.getFitKeyword());
+        if (current.getBudget() == null) current.setBudget(previous.getBudget());
         if (current.getPriceMax() == null) current.setPriceMax(previous.getPriceMax());
+        if (current.getReferencedProductOrdinal() == null) {
+            current.setReferencedProductOrdinal(previous.getReferencedProductOrdinal());
+        }
         if (current.getIsSale() == null) current.setIsSale(previous.getIsSale());
         return current;
     }
 
+    private List<String> mergeKeywords(List<String> existing, String... extraValues) {
+        List<String> values = new ArrayList<>();
+        if (existing != null) {
+            existing.stream()
+                .map(this::normalizeBlank)
+                .filter(v -> v != null && !values.contains(v))
+                .forEach(values::add);
+        }
+        for (String extra : extraValues) {
+            String normalized = normalizeBlank(extra);
+            if (normalized != null && !values.contains(normalized)) {
+                values.add(normalized);
+            }
+        }
+        return values;
+    }
+
     private boolean isEmpty(List<String> values) {
         return values == null || values.isEmpty();
+    }
+
+    private String normalizeEnum(String value, Set<String> allowedValues) {
+        String normalized = normalizeBlank(value);
+        if (normalized == null) {
+            return null;
+        }
+        for (String allowed : allowedValues) {
+            if (allowed.equalsIgnoreCase(normalized)) {
+                return allowed;
+            }
+        }
+        return null;
+    }
+
+    private String normalizeBlank(String value) {
+        if (value == null || value.isBlank() || "null".equalsIgnoreCase(value)) {
+            return null;
+        }
+        return value.trim();
     }
 
     private String extractJson(String raw) throws Exception {

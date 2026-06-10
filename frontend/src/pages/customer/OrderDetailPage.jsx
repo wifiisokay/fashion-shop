@@ -11,7 +11,7 @@ import ReviewModal from '../../components/review/ReviewModal';
 import StarRating from '../../components/review/StarRating';
 import { formatPrice, formatDate } from '../../utils/format';
 import { ROUTES } from '../../constants/routes';
-import { ArrowLeft, Star, Pencil, Trash2, RotateCcw } from 'lucide-react';
+import { ArrowLeft, Star, Pencil, Trash2, RotateCcw, AlertTriangle } from 'lucide-react';
 import { toast } from 'sonner';
 import ReturnRequestModal from '../../components/return/ReturnRequestModal';
 
@@ -38,8 +38,9 @@ const OrderDetailPage = () => {
   if (isError || !order) return <div className="text-center py-20 text-red-500">Lỗi tải chi tiết đơn hàng</div>;
 
   const address = order.addressSnapshot || {};
-  const canCancel = order.status === 'PENDING';
-  const canShowReviews = order.status === 'COMPLETED';
+  const isWaitingStatus = order.status === 'AWAITING_PAYMENT' || order.status === 'PENDING';
+  const isPaidVnPay = order.paymentMethod === 'VNPAY' && order.paymentStatus === 'PAID';
+  const canCancel = isWaitingStatus && !isPaidVnPay;
 
   // Return window: 7 days from completedAt
   const canRequestReturn = (() => {
@@ -64,9 +65,9 @@ const OrderDetailPage = () => {
     try {
       await cancelOrder.mutateAsync({ orderId: id, reason: cancelReason || undefined });
       setShowCancelDialog(false);
-      window.location.reload();
+      toast.success('Hủy đơn hàng thành công');
     } catch (err) {
-      alert(err?.response?.data?.message || 'Hủy đơn thất bại');
+      toast.error(err?.response?.data?.message || 'Hủy đơn thất bại');
     }
   };
 
@@ -89,7 +90,7 @@ const OrderDetailPage = () => {
           </div>
           <div className="text-left sm:text-right">
             <p className="text-sm text-gray-500 mb-1">Ngày đặt: {formatDate(order.createdAt)}</p>
-            <OrderStatusBadge status={order.status} />
+             <OrderStatusBadge status={order.status} order={order} />
           </div>
         </div>
 
@@ -151,12 +152,12 @@ const OrderDetailPage = () => {
         {order.returnStatus && (
           <div className={`p-6 border-b border-gray-200 ${
             order.returnStatus === 'REJECTED' ? 'bg-red-50' :
-            order.returnStatus === 'COMPLETED' ? 'bg-green-50' :
+            (order.returnStatus === 'COMPLETED' || order.returnStatus === 'REFUNDED') ? 'bg-green-50' :
             'bg-blue-50'
           }`}>
             <h3 className={`text-sm font-bold uppercase tracking-wider mb-2 ${
               order.returnStatus === 'REJECTED' ? 'text-red-800' :
-              order.returnStatus === 'COMPLETED' ? 'text-green-800' :
+              (order.returnStatus === 'COMPLETED' || order.returnStatus === 'REFUNDED') ? 'text-green-800' :
               'text-blue-800'
             }`}>
               <RotateCcw className="w-4 h-4 inline mr-1.5" />
@@ -189,7 +190,7 @@ const OrderDetailPage = () => {
                     <span className="font-bold text-gray-900">{formatPrice(item.subtotal)}</span>
                   </div>
                   {/* Review button / badge */}
-                  {canShowReviews && (
+                  {(item.canReview || item.reviewId) && (
                     <div className="mt-3">
                       {item.canReview && (
                         <button onClick={() => setReviewTarget({ item })}
@@ -275,6 +276,15 @@ const OrderDetailPage = () => {
               </div>
             </div>
           )}
+        </div>
+      )}
+
+      {isWaitingStatus && isPaidVnPay && (
+        <div className="flex justify-end">
+          <div className="flex items-start gap-2 rounded-lg border border-amber-200 bg-amber-50 p-4 text-sm text-amber-800 w-full sm:w-96 shadow-sm">
+            <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0 text-amber-600" />
+            <span>Đơn hàng đã thanh toán qua VNPay. Vui lòng liên hệ cửa hàng để được hỗ trợ hủy/hoàn tiền.</span>
+          </div>
         </div>
       )}
 

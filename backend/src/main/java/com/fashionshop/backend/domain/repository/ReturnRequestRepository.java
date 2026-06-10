@@ -10,6 +10,7 @@ import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
 import org.springframework.data.jpa.repository.EntityGraph;
 import org.springframework.data.jpa.repository.JpaRepository;
+import org.springframework.data.jpa.repository.Lock;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
 import org.springframework.stereotype.Repository;
@@ -17,31 +18,30 @@ import org.springframework.stereotype.Repository;
 import com.fashionshop.backend.common.enums.ReturnStatus;
 import com.fashionshop.backend.domain.ReturnRequest;
 
+import jakarta.persistence.LockModeType;
+
 @Repository
 public interface ReturnRequestRepository extends JpaRepository<ReturnRequest, Long> {
 
-    /** Kiểm tra có return cho order này không. */
     boolean existsByOrderId(Long orderId);
 
-    /** Kiểm tra có return đang active (REQUESTED hoặc APPROVED) cho order này không. */
     boolean existsByOrderIdAndStatusIn(Long orderId, Collection<ReturnStatus> statuses);
 
-    /** Customer: xem return của order cụ thể. */
     Optional<ReturnRequest> findByIdAndUserId(Long id, Long userId);
 
-    /** Customer: danh sách return của mình. */
     Page<ReturnRequest> findByUserIdOrderByCreatedAtDesc(Long userId, Pageable pageable);
 
-    /** Staff/Admin: tất cả return. */
     @EntityGraph(attributePaths = {"order", "user", "items"})
     Page<ReturnRequest> findAllByOrderByCreatedAtDesc(Pageable pageable);
 
-    /** Staff/Admin: filter theo status. */
     @EntityGraph(attributePaths = {"order", "user", "items"})
     Page<ReturnRequest> findByStatusOrderByCreatedAtDesc(ReturnStatus status, Pageable pageable);
 
-    /** Tìm return active cho order (dùng để hiển thị trên OrderDetail). */
     Optional<ReturnRequest> findFirstByOrderIdOrderByCreatedAtDesc(Long orderId);
+
+    @Lock(LockModeType.PESSIMISTIC_WRITE)
+    @Query("SELECT r FROM ReturnRequest r WHERE r.id = :id")
+    Optional<ReturnRequest> findByIdForUpdate(@Param("id") Long id);
 
     long countByStatus(ReturnStatus status);
 
@@ -75,7 +75,7 @@ public interface ReturnRequestRepository extends JpaRepository<ReturnRequest, Lo
         """, nativeQuery = true)
     List<Object[]> getTypeDistribution();
 
-        @Query("SELECT COALESCE(SUM(r.refundAmount), 0) FROM ReturnRequest r " +
-            "WHERE r.status = 'COMPLETED' AND r.updatedAt >= :startDate")
+    @Query("SELECT COALESCE(SUM(r.refundAmount), 0) FROM ReturnRequest r " +
+        "WHERE r.status IN (com.fashionshop.backend.common.enums.ReturnStatus.COMPLETED, com.fashionshop.backend.common.enums.ReturnStatus.REFUNDED) AND r.updatedAt >= :startDate")
     BigDecimal sumCompletedRefundAmountSince(@Param("startDate") LocalDateTime startDate);
 }

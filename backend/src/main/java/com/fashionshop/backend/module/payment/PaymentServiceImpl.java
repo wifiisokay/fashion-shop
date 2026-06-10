@@ -44,7 +44,7 @@ public class PaymentServiceImpl implements PaymentService {
     @Override
     @Transactional
     public String createVnPayPaymentUrl(Long orderId, String ipAddress) {
-        Payment payment = paymentRepository.findByOrderId(orderId)
+        Payment payment = paymentRepository.findByOrderIdForUpdate(orderId)
             .orElseThrow(() -> new BusinessException(
                 ErrorCode.PAYMENT_NOT_FOUND, HttpStatus.NOT_FOUND));
 
@@ -77,32 +77,47 @@ public class PaymentServiceImpl implements PaymentService {
         String responseCode = params.get("vnp_ResponseCode");
         String vnpAmount = params.get("vnp_Amount");
 
-        log.info("IPN received — txnRef={}, responseCode={}", txnRef, responseCode);
+        log.info("[VNPAY_IPN_RECEIVED] txnRef={} responseCode={}", txnRef, responseCode);
 
         // Bước 1: Verify chữ ký
         if (!vnPayService.verifySignature(params, secureHash)) {
-            log.warn("IPN invalid signature — txnRef={}", txnRef);
+            log.warn("[VNPAY_IPN_REJECTED] reason=invalid_signature txnRef={}", txnRef);
             return ipnResponse("97", "Invalid Signature");
         }
 
         // Bước 2: Tìm Payment
-        Payment payment = paymentRepository.findByVnpayTxnRef(txnRef).orElse(null);
+        Payment payment = paymentRepository.findByVnpayTxnRefForUpdate(txnRef).orElse(null);
         if (payment == null) {
-            log.warn("IPN payment not found — txnRef={}", txnRef);
+            log.warn("[VNPAY_IPN_REJECTED] reason=payment_not_found txnRef={}", txnRef);
             return ipnResponse("01", "Order Not Found");
         }
+        PaymentStatus paymentStatusBefore = payment.getStatus();
 
-        // Bước 3: Kiểm tra số tiền
-        BigDecimal expectedAmount = payment.getAmount().multiply(BigDecimal.valueOf(100));
-        if (vnpAmount == null || expectedAmount.compareTo(new BigDecimal(vnpAmount)) != 0) {
-            log.warn("IPN invalid amount — expected={}, got={}", expectedAmount, vnpAmount);
-            return ipnResponse("04", "Invalid Amount");
+        // Bước 3: Idempotent check — chỉ xử lý giao dịch còn PENDING.
+        // IPN muộn cho giao dịch đã FAILED/REFUNDED không được phép đổi lại Order thành PAID.
+        if (payment.getStatus() != PaymentStatus.PENDING) {
+            log.info("[VNPAY_IPN_IDEMPOTENT] txnRef={} currentStatus={}", txnRef, paymentStatusBefore);
+            return ipnResponse("02", "Already Confirmed");
         }
 
-        // Bước 4: Idempotent check — đã xử lý rồi thì bỏ qua
-        if (payment.getStatus() == PaymentStatus.SUCCESS) {
-            log.info("IPN already confirmed — txnRef={}", txnRef);
+        Order order = payment.getOrder();
+        if (order.getStatus() == OrderStatus.CANCELLED) {
+            log.info("[VNPAY_IPN_IDEMPOTENT] txnRef={} currentStatus=CANCELLED action=order_already_cancelled orderId={}",
+                txnRef, order.getId());
+            payment.setStatus(PaymentStatus.FAILED);
+            payment.setVnpayResponseCode(responseCode);
+            payment.setVnpayTransactionNo(params.get("vnp_TransactionNo"));
+            payment.setVnpayBankCode(params.get("vnp_BankCode"));
+            paymentRepository.save(payment);
             return ipnResponse("02", "Already Confirmed");
+        }
+
+        // Bước 4: Kiểm tra số tiền
+        BigDecimal expectedAmount = payment.getAmount().multiply(BigDecimal.valueOf(100));
+        if (vnpAmount == null || expectedAmount.compareTo(new BigDecimal(vnpAmount)) != 0) {
+            log.warn("[VNPAY_IPN_REJECTED] reason=amount_mismatch txnRef={} expected={} actual={}",
+                txnRef, expectedAmount, vnpAmount);
+            return ipnResponse("04", "Invalid Amount");
         }
 
         // Bước 5: Cập nhật trạng thái
@@ -116,25 +131,21 @@ public class PaymentServiceImpl implements PaymentService {
             payment.setPaidAt(LocalDateTime.now());
 
             // Chuyển order từ AWAITING_PAYMENT → PENDING
-            Order order = payment.getOrder();
             order.setPaymentStatus(OrderPaymentStatus.PAID);
             if (order.getStatus() == OrderStatus.AWAITING_PAYMENT) {
                 order.setStatus(OrderStatus.PENDING);
-                orderRepository.save(order);
-                log.info("Order #{} → PENDING (VNPay payment success)", order.getId());
             }
             orderRepository.save(order);
+            log.info("[VNPAY_IPN_PROCESS_SUCCESS] orderId={} paymentStatusAfter=SUCCESS orderPaymentStatusAfter=PAID", order.getId());
         } else {
             // Thanh toán thất bại
             payment.setStatus(PaymentStatus.FAILED);
 
             // Hoàn stock + hủy đơn
-            Order order = payment.getOrder();
             if (order.getStatus() == OrderStatus.AWAITING_PAYMENT) {
                 restoreStockAndCancel(order);
-                log.info("Order #{} cancelled — VNPay payment failed (code={})",
-                    order.getId(), responseCode);
             }
+            log.info("[VNPAY_IPN_PROCESS_FAILED] orderId={} responseCode={}", order.getId(), responseCode);
         }
 
         paymentRepository.save(payment);
@@ -151,54 +162,92 @@ public class PaymentServiceImpl implements PaymentService {
         String secureHash = params.get("vnp_SecureHash");
         String responseCode = params.get("vnp_ResponseCode");
         String txnRef = params.get("vnp_TxnRef");
+        String vnpAmount = params.get("vnp_Amount");
+        String transactionNo = params.get("vnp_TransactionNo");
+        String bankCode = params.get("vnp_BankCode");
 
-        // Verify signature để chống tamper
-        boolean isValid = vnPayService.verifySignature(params, secureHash);
+        // 2. Log ngay:
+        log.info("[VNPAY_RETURN_RECEIVED] txnRef={} responseCode={} transactionNo={}", txnRef, responseCode, transactionNo);
 
-        if (!isValid) {
-            log.warn("Return URL invalid signature — txnRef={}", txnRef);
+        // 3. Verify secureHash
+        if (!vnPayService.verifySignature(params, secureHash)) {
+            log.warn("[VNPAY_RETURN_REJECTED] reason=invalid_signature txnRef={}", txnRef);
             return "/payment/result?status=failed&reason=invalid_signature";
         }
 
-        // Extract orderId từ txnRef (phần trước timestamp 14 chữ số)
-        String orderId = txnRef.length() > 14
-            ? txnRef.substring(0, txnRef.length() - 14)
-            : txnRef;
-
-        // Fallback: nếu IPN chưa kịp → cập nhật DB từ Return URL
-        Payment payment = paymentRepository.findByVnpayTxnRef(txnRef).orElse(null);
-        if (payment != null && payment.getStatus() == PaymentStatus.PENDING) {
-            payment.setVnpayResponseCode(responseCode);
-            payment.setVnpayTransactionNo(params.get("vnp_TransactionNo"));
-            payment.setVnpayBankCode(params.get("vnp_BankCode"));
-
-            if ("00".equals(responseCode)) {
-                payment.setStatus(PaymentStatus.SUCCESS);
-                payment.setPaidAt(LocalDateTime.now());
-
-                Order order = payment.getOrder();
-                order.setPaymentStatus(OrderPaymentStatus.PAID);
-                if (order.getStatus() == OrderStatus.AWAITING_PAYMENT) {
-                    order.setStatus(OrderStatus.PENDING);
-                    orderRepository.save(order);
-                    log.info("Return fallback: Order #{} → PENDING", order.getId());
-                }
-                orderRepository.save(order);
-            } else {
-                payment.setStatus(PaymentStatus.FAILED);
-
-                Order order = payment.getOrder();
-                if (order.getStatus() == OrderStatus.AWAITING_PAYMENT) {
-                    restoreStockAndCancel(order);
-                    log.info("Return fallback: Order #{} cancelled (code={})", order.getId(), responseCode);
-                }
-            }
-            paymentRepository.save(payment);
-            log.info("Return fallback: Payment updated — txnRef={}, code={}", txnRef, responseCode);
+        // 4. Nếu thiếu txnRef
+        if (txnRef == null || txnRef.isBlank()) {
+            log.warn("[VNPAY_RETURN_REJECTED] reason=missing_txn_ref");
+            return "/payment/result?status=failed&reason=missing_txn_ref";
         }
 
-        String status = "00".equals(responseCode) ? "success" : "failed";
-        return "/payment/result?orderId=" + orderId + "&status=" + status;
+        // 5. Tìm Payment theo vnpayTxnRef (hoặc findByVnpayTxnRefForUpdate)
+        Payment payment = paymentRepository.findByVnpayTxnRefForUpdate(txnRef).orElse(null);
+
+        // 6. Nếu không tìm thấy payment
+        if (payment == null) {
+            log.warn("[VNPAY_RETURN_REJECTED] reason=payment_not_found txnRef={}", txnRef);
+            String orderId = (txnRef.length() > 14 ? txnRef.substring(0, txnRef.length() - 14) : txnRef);
+            return "/payment/result?orderId=" + orderId + "&status=failed&reason=payment_not_found";
+        }
+
+        Order order = payment.getOrder();
+        String orderId = order.getId().toString();
+
+        // 7. Kiểm tra amount
+        BigDecimal expectedAmount = payment.getAmount().multiply(BigDecimal.valueOf(100));
+        if (vnpAmount == null || expectedAmount.compareTo(new BigDecimal(vnpAmount)) != 0) {
+            log.warn("[VNPAY_RETURN_REJECTED] reason=amount_mismatch txnRef={} expected={} actual={}", txnRef, expectedAmount, vnpAmount);
+            return "/payment/result?orderId=" + orderId + "&status=failed&reason=amount_mismatch";
+        }
+
+        // 8. Nếu payment.status == SUCCESS
+        if (payment.getStatus() == PaymentStatus.SUCCESS) {
+            log.info("[VNPAY_RETURN_IDEMPOTENT] txnRef={} currentStatus=SUCCESS (Processed via IPN)", txnRef);
+            return "/payment/result?orderId=" + orderId + "&status=success&via=ipn";
+        }
+
+        // 9. Nếu payment.status != PENDING và không phải SUCCESS
+        if (payment.getStatus() != PaymentStatus.PENDING) {
+            log.info("[VNPAY_RETURN_IDEMPOTENT] txnRef={} currentStatus={}", txnRef, payment.getStatus());
+            return "/payment/result?orderId=" + orderId + "&status=failed";
+        }
+
+        // 10. Nếu payment.status == PENDING và vnp_ResponseCode == "00"
+        if ("00".equals(responseCode)) {
+            payment.setStatus(PaymentStatus.SUCCESS);
+            payment.setPaidAt(LocalDateTime.now());
+            payment.setVnpayResponseCode("00");
+            payment.setVnpayTransactionNo(transactionNo);
+            payment.setVnpayBankCode(bankCode);
+
+            order.setPaymentStatus(OrderPaymentStatus.PAID);
+            if (order.getStatus() == OrderStatus.AWAITING_PAYMENT) {
+                order.setStatus(OrderStatus.PENDING);
+            }
+
+            orderRepository.save(order);
+            paymentRepository.save(payment);
+
+            log.info("[VNPAY_RETURN_PROCESS_SUCCESS] orderId={} paymentStatusAfter=SUCCESS orderPaymentStatusAfter=PAID (Processed via Return Fallback)", orderId);
+            return "/payment/result?orderId=" + orderId + "&status=success&via=return_fallback";
+        } else {
+            // 11. Nếu payment.status == PENDING và vnp_ResponseCode != "00"
+            payment.setStatus(PaymentStatus.FAILED);
+            payment.setVnpayResponseCode(responseCode);
+            payment.setVnpayTransactionNo(transactionNo);
+            payment.setVnpayBankCode(bankCode);
+
+            if (order.getStatus() == OrderStatus.AWAITING_PAYMENT) {
+                restoreStockAndCancel(order);
+            }
+
+            orderRepository.save(order);
+            paymentRepository.save(payment);
+
+            log.info("[VNPAY_RETURN_PROCESS_FAILED] orderId={} responseCode={}", orderId, responseCode);
+            return "/payment/result?orderId=" + orderId + "&status=failed";
+        }
     }
 
     // ================================================================
@@ -221,9 +270,12 @@ public class PaymentServiceImpl implements PaymentService {
     @Override
     @Transactional(readOnly = true)
     public String getPaymentStatusByOrderId(Long orderId) {
-        return paymentRepository.findByOrderId(orderId)
+        String status = paymentRepository.findByOrderId(orderId)
             .map(p -> p.getStatus().name())
             .orElse("NOT_FOUND");
+        log.info("[VNPAY_RETURN] txnRef=null orderId={} action=read_payment_status paymentStatus={}",
+            orderId, status);
+        return status;
     }
 
     // ================================================================
