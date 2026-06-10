@@ -75,13 +75,7 @@ const HomePage = () => {
                 Mua Sắm Ngay
               </Button>
             </Link>
-            <button 
-              onClick={handleOpenAIChat}
-              className="inline-flex items-center gap-2 bg-indigo-600/90 hover:bg-indigo-600 text-white font-bold px-6 py-3 rounded-xl transition-all duration-300 backdrop-blur-sm shadow-md"
-            >
-              <Bot className="w-5 h-5" />
-              <span>Tư Vấn Thấy Đồ AI</span>
-            </button>
+
           </div>
         </div>
       </section>

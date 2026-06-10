@@ -16,6 +16,8 @@ public interface ReturnItemRepository extends JpaRepository<ReturnItem, Long> {
 
     List<ReturnItem> findByReturnRequestId(Long returnId);
 
+    boolean existsByVariantId(Long variantId);
+
     @Query("""
         SELECT DISTINCT ri.orderItem.id
         FROM ReturnItem ri

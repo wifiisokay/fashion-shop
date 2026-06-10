@@ -6,9 +6,11 @@ import com.fashionshop.backend.domain.Product;
 import com.fashionshop.backend.domain.ProductColor;
 import com.fashionshop.backend.domain.ProductVariant;
 import com.fashionshop.backend.domain.repository.CartItemRepository;
+import com.fashionshop.backend.domain.repository.OrderItemRepository;
 import com.fashionshop.backend.domain.repository.ProductColorRepository;
 import com.fashionshop.backend.domain.repository.ProductRepository;
 import com.fashionshop.backend.domain.repository.ProductVariantRepository;
+import com.fashionshop.backend.domain.repository.ReturnItemRepository;
 import com.fashionshop.backend.exception.BusinessException;
 import com.fashionshop.backend.exception.ErrorCode;
 import com.fashionshop.backend.module.product.dto.request.ProductVariantRequest;
@@ -40,6 +42,8 @@ class ProductVariantServiceImplTest {
     @Mock private ProductRepository productRepository;
     @Mock private ProductColorRepository colorRepository;
     @Mock private CartItemRepository cartItemRepository;
+    @Mock private OrderItemRepository orderItemRepository;
+    @Mock private ReturnItemRepository returnItemRepository;
     @InjectMocks private ProductVariantServiceImpl variantService;
 
     private Product mockProduct;
@@ -200,6 +204,8 @@ class ProductVariantServiceImplTest {
     void delete_deletesVariant_whenValid() {
         when(variantRepository.findById(1L)).thenReturn(Optional.of(variant1));
         when(cartItemRepository.existsByVariantId(1L)).thenReturn(false);
+        when(orderItemRepository.existsByVariantId(1L)).thenReturn(false);
+        when(returnItemRepository.existsByVariantId(1L)).thenReturn(false);
 
         variantService.delete(1L, 1L);
 
@@ -210,6 +216,33 @@ class ProductVariantServiceImplTest {
     void delete_throwsConflict_whenVariantExistsInCart() {
         when(variantRepository.findById(1L)).thenReturn(Optional.of(variant1));
         when(cartItemRepository.existsByVariantId(1L)).thenReturn(true);
+
+        assertThatThrownBy(() -> variantService.delete(1L, 1L))
+            .isInstanceOf(BusinessException.class)
+            .hasFieldOrPropertyWithValue("errorCode", ErrorCode.VARIANT_IN_CART);
+
+        verify(variantRepository, never()).delete(any());
+    }
+
+    @Test
+    void delete_throwsConflict_whenVariantExistsInOrderItems() {
+        when(variantRepository.findById(1L)).thenReturn(Optional.of(variant1));
+        when(cartItemRepository.existsByVariantId(1L)).thenReturn(false);
+        when(orderItemRepository.existsByVariantId(1L)).thenReturn(true);
+
+        assertThatThrownBy(() -> variantService.delete(1L, 1L))
+            .isInstanceOf(BusinessException.class)
+            .hasFieldOrPropertyWithValue("errorCode", ErrorCode.VARIANT_IN_CART);
+
+        verify(variantRepository, never()).delete(any());
+    }
+
+    @Test
+    void delete_throwsConflict_whenVariantExistsInReturnItems() {
+        when(variantRepository.findById(1L)).thenReturn(Optional.of(variant1));
+        when(cartItemRepository.existsByVariantId(1L)).thenReturn(false);
+        when(orderItemRepository.existsByVariantId(1L)).thenReturn(false);
+        when(returnItemRepository.existsByVariantId(1L)).thenReturn(true);
 
         assertThatThrownBy(() -> variantService.delete(1L, 1L))
             .isInstanceOf(BusinessException.class)
@@ -292,4 +325,3 @@ class ProductVariantServiceImplTest {
         return r;
     }
 }
-

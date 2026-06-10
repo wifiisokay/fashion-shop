@@ -15,8 +15,9 @@ axiosInstance.interceptors.response.use(
 
     const isPublicAuthRequest = ['/auth/login', '/auth/register', '/auth/forgot-password', '/auth/reset-password']
       .some((path) => requestPath.includes(path));
+    const isSessionProbeRequest = requestPath.includes('/auth/me');
 
-    if (status === 401 && !isPublicAuthRequest) {
+    if (status === 401 && !isPublicAuthRequest && !isSessionProbeRequest) {
       const message = 'Phiên đăng nhập đã hết hạn, vui lòng đăng nhập lại';
       toast.error(message, { id: 'auth-session-expired' });
       window.dispatchEvent(new CustomEvent('auth:unauthorized', {

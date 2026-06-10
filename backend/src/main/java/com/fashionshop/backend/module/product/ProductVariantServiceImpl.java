@@ -4,9 +4,11 @@ import com.fashionshop.backend.domain.Product;
 import com.fashionshop.backend.domain.ProductColor;
 import com.fashionshop.backend.domain.ProductVariant;
 import com.fashionshop.backend.domain.repository.CartItemRepository;
+import com.fashionshop.backend.domain.repository.OrderItemRepository;
 import com.fashionshop.backend.domain.repository.ProductColorRepository;
 import com.fashionshop.backend.domain.repository.ProductRepository;
 import com.fashionshop.backend.domain.repository.ProductVariantRepository;
+import com.fashionshop.backend.domain.repository.ReturnItemRepository;
 import com.fashionshop.backend.exception.BusinessException;
 import com.fashionshop.backend.exception.ErrorCode;
 import com.fashionshop.backend.module.product.dto.request.ProductVariantRequest;
@@ -27,6 +29,8 @@ public class ProductVariantServiceImpl implements ProductVariantService {
     private final ProductRepository productRepository;
     private final ProductColorRepository colorRepository;
     private final CartItemRepository cartItemRepository;
+    private final OrderItemRepository orderItemRepository;
+    private final ReturnItemRepository returnItemRepository;
 
     @Override
     @Transactional(readOnly = true)
@@ -86,6 +90,14 @@ public class ProductVariantServiceImpl implements ProductVariantService {
         if (cartItemRepository.existsByVariantId(variantId)) {
             throw new BusinessException(ErrorCode.VARIANT_IN_CART, HttpStatus.CONFLICT,
                 "Biến thể đang có trong giỏ hàng, không thể xóa");
+        }
+        if (orderItemRepository.existsByVariantId(variantId)) {
+            throw new BusinessException(ErrorCode.VARIANT_IN_CART, HttpStatus.CONFLICT,
+                "Bien the da phat sinh don hang, khong the xoa. Vui long dat ton kho ve 0 hoac an san pham.");
+        }
+        if (returnItemRepository.existsByVariantId(variantId)) {
+            throw new BusinessException(ErrorCode.VARIANT_IN_CART, HttpStatus.CONFLICT,
+                "Bien the da phat sinh yeu cau doi/tra, khong the xoa. Vui long dat ton kho ve 0 hoac an san pham.");
         }
         variantRepository.delete(variant);
     }
