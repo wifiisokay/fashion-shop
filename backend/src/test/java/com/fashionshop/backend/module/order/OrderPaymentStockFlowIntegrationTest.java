@@ -171,15 +171,19 @@ class OrderPaymentStockFlowIntegrationTest {
     }
 
     @Test
-    @DisplayName("Staff cancel VNPay PAID refunds payment, cancels order and restores stock")
-    void staffCancelVnPayPaid_refundsCancelsAndRestoresStock() {
+    @DisplayName("Staff cancel VNPay PAID pending order is blocked and stock is unchanged")
+    void staffCancelVnPayPaidPending_blockedStockUnchanged() {
         Order order = seedPlacedOrder(customer, variant, PaymentMethod.VNPAY, OrderStatus.PENDING,
             OrderPaymentStatus.PAID, PaymentStatus.SUCCESS, 1);
 
-        orderService.staffCancelOrder(order.getId(), cancelRequest("staff approved refund"));
+        assertThatThrownBy(() -> orderService.staffCancelOrder(order.getId(), cancelRequest("staff rejects paid VNPay")))
+            .as("Staff must not reject a paid VNPay order at confirmation step")
+            .isInstanceOf(BusinessException.class)
+            .satisfies(ex -> assertThat(((BusinessException) ex).getErrorCode().getCode())
+                .isEqualTo("ORDER_002"));
 
-        assertState("staff cancel VNPay paid", order.getId(), PaymentStatus.REFUNDED,
-            OrderStatus.CANCELLED, OrderPaymentStatus.REFUNDED, 10);
+        assertState("staff cancel VNPay paid pending blocked", order.getId(), PaymentStatus.SUCCESS,
+            OrderStatus.PENDING, OrderPaymentStatus.PAID, 9);
     }
 
     @Test

@@ -419,9 +419,11 @@ const StaffOrderDetailPage = () => {
                     <Button onClick={() => handleUpdateStatus('CONFIRMED')} loading={isUpdating} className="bg-blue-600 hover:bg-blue-700">
                       Xác nhận đơn hàng
                     </Button>
-                    <Button variant="outline" onClick={() => handleUpdateStatus('CANCELLED')} className="text-red-600 border-red-200 hover:bg-red-50">
-                      Từ chối đơn
-                    </Button>
+                    {order.paymentMethod !== 'VNPAY' && (
+                      <Button variant="outline" onClick={() => handleUpdateStatus('CANCELLED')} className="text-red-600 border-red-200 hover:bg-red-50">
+                        Từ chối đơn
+                      </Button>
+                    )}
                   </>
                 )}
                 {order.status === 'CONFIRMED' && (
