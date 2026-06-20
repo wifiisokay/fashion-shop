@@ -25,15 +25,28 @@ public class GeminiApiClient implements AiClient {
     private final RestClient restClient;
     private final ObjectMapper objectMapper;
 
+    private final RestClient outfitRestClient;
+
     public GeminiApiClient(GeminiProperties props, ObjectMapper objectMapper) {
         this.props = props;
         this.objectMapper = objectMapper;
+
         SimpleClientHttpRequestFactory requestFactory = new SimpleClientHttpRequestFactory();
         requestFactory.setConnectTimeout(Duration.ofSeconds(props.getTimeoutSeconds()));
         requestFactory.setReadTimeout(Duration.ofSeconds(props.getTimeoutSeconds()));
         this.restClient = RestClient.builder()
             .baseUrl(BASE_URL)
             .requestFactory(requestFactory)
+            .build();
+
+        // Dedicated client for outfit rerank with higher read timeout
+        int outfitTimeoutSeconds = Math.max(props.getTimeoutSeconds(), 60);
+        SimpleClientHttpRequestFactory outfitRequestFactory = new SimpleClientHttpRequestFactory();
+        outfitRequestFactory.setConnectTimeout(Duration.ofSeconds(props.getTimeoutSeconds()));
+        outfitRequestFactory.setReadTimeout(Duration.ofSeconds(outfitTimeoutSeconds));
+        this.outfitRestClient = RestClient.builder()
+            .baseUrl(BASE_URL)
+            .requestFactory(outfitRequestFactory)
             .build();
     }
 
@@ -44,8 +57,20 @@ public class GeminiApiClient implements AiClient {
 
     @Override
     public String generateContent(String systemPrompt, List<AiMessage> history, String userMessage) {
+        return doGenerateContent(restClient, systemPrompt, history, userMessage);
+    }
+
+    /**
+     * Outfit rerank variant — uses a dedicated RestClient with higher read timeout (60s min)
+     * to handle larger prompts sent to Gemini during outfit candidate ranking.
+     */
+    public String generateContentForOutfit(String systemPrompt, List<AiMessage> history, String userMessage) {
+        return doGenerateContent(outfitRestClient, systemPrompt, history, userMessage);
+    }
+
+    private String doGenerateContent(RestClient client, String systemPrompt, List<AiMessage> history, String userMessage) {
         try {
-            String responseBody = restClient.post()
+            String responseBody = client.post()
                 .uri("/models/{model}:generateContent?key={key}", props.getModel(), props.getApiKey())
                 .contentType(MediaType.APPLICATION_JSON)
                 .accept(MediaType.APPLICATION_JSON)

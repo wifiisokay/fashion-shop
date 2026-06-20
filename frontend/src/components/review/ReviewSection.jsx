@@ -2,6 +2,8 @@ import { useState, useCallback } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { reviewApi } from '../../api/reviewApi';
 import StarRating from './StarRating';
+import { useAiInsight } from '../../hooks/useAiInsight';
+import { Sparkles, CheckCircle2, AlertTriangle, Info } from 'lucide-react';
 
 /**
  * ReviewSection — Hiển thị review trên ProductDetailPage.
@@ -13,6 +15,9 @@ export default function ReviewSection({ productId }) {
   const [page, setPage] = useState(0);
   const [accumulated, setAccumulated] = useState([]);
   const queryClient = useQueryClient();
+
+  // AI Insight Summary
+  const { data: aiInsight, isLoading: isAiLoading } = useAiInsight(productId);
 
   // Stats
   const { data: stats } = useQuery({
@@ -94,6 +99,100 @@ export default function ReviewSection({ productId }) {
           })}
         </div>
       </div>
+
+      {/* AI Review Summary */}
+      {isAiLoading && (
+        <div className="mb-6 rounded-2xl border border-indigo-100 bg-indigo-50/10 p-5 animate-pulse">
+          <div className="flex items-center gap-2 mb-4">
+            <div className="h-5 w-5 bg-indigo-200 rounded-full" />
+            <div className="h-5 w-48 bg-indigo-200 rounded" />
+          </div>
+          <div className="h-4 bg-indigo-150 rounded w-full mb-3" />
+          <div className="h-4 bg-indigo-150 rounded w-5/6 mb-4" />
+          <div className="grid md:grid-cols-2 gap-4">
+            <div className="space-y-2">
+              <div className="h-3 w-1/3 bg-green-200 rounded" />
+              <div className="h-3.5 w-3/4 bg-gray-200 rounded" />
+              <div className="h-3.5 w-2/3 bg-gray-200 rounded" />
+            </div>
+            <div className="space-y-2">
+              <div className="h-3 w-1/3 bg-amber-200 rounded" />
+              <div className="h-3.5 w-3/4 bg-gray-200 rounded" />
+              <div className="h-3.5 w-2/3 bg-gray-200 rounded" />
+            </div>
+          </div>
+        </div>
+      )}
+
+      {!isAiLoading && aiInsight?.hasReviewSummary && aiInsight?.reviewSummary && (
+        <div className="mb-6 rounded-2xl border border-indigo-100 bg-linear-to-r from-violet-50/30 to-indigo-50/30 p-5 sm:p-6 hover:shadow-xs transition-all duration-300">
+          <div className="flex items-center justify-between gap-2 mb-4 border-b border-indigo-100/50 pb-3">
+            <div className="flex items-center gap-2">
+              <Sparkles className="w-5 h-5 text-indigo-600 animate-pulse shrink-0" />
+              <span className="font-bold text-sm sm:text-base text-indigo-950">
+                Tóm tắt đánh giá bởi Gemini AI
+              </span>
+            </div>
+            <span className="text-[10px] bg-indigo-100/80 text-indigo-700 px-2 py-0.5 rounded-full font-bold uppercase tracking-wider shrink-0">
+              AI Generated
+            </span>
+          </div>
+
+          {aiInsight.reviewSummary.overall && (
+            <p className="text-sm text-gray-700 leading-relaxed mb-4 p-3 bg-white/60 border border-indigo-50/50 rounded-xl italic">
+              "{aiInsight.reviewSummary.overall}"
+            </p>
+          )}
+
+          <div className="grid md:grid-cols-2 gap-4 mb-4">
+            {/* Pros */}
+            {aiInsight.reviewSummary.pros && aiInsight.reviewSummary.pros.length > 0 && (
+              <div className="p-3.5 bg-green-50/30 border border-green-100/30 rounded-xl">
+                <h4 className="text-xs font-bold text-green-800 uppercase tracking-wider mb-2.5 flex items-center gap-1.5">
+                  <CheckCircle2 className="w-4 h-4 text-green-600 shrink-0" />
+                  Ưu điểm nổi bật
+                </h4>
+                <ul className="space-y-2">
+                  {aiInsight.reviewSummary.pros.map((pro, index) => (
+                    <li key={index} className="flex items-start gap-2 text-xs text-gray-700 leading-relaxed">
+                      <span className="text-green-500 shrink-0 mt-0.5">•</span>
+                      <span>{pro}</span>
+                    </li>
+                  ))}
+                </ul>
+              </div>
+            )}
+
+            {/* Cons */}
+            {aiInsight.reviewSummary.cons && aiInsight.reviewSummary.cons.length > 0 && (
+              <div className="p-3.5 bg-amber-50/30 border border-amber-100/30 rounded-xl">
+                <h4 className="text-xs font-bold text-amber-800 uppercase tracking-wider mb-2.5 flex items-center gap-1.5">
+                  <AlertTriangle className="w-4 h-4 text-amber-600 shrink-0" />
+                  Điểm cần lưu ý
+                </h4>
+                <ul className="space-y-2">
+                  {aiInsight.reviewSummary.cons.map((con, index) => (
+                    <li key={index} className="flex items-start gap-2 text-xs text-gray-700 leading-relaxed">
+                      <span className="text-amber-500 shrink-0 mt-0.5">•</span>
+                      <span>{con}</span>
+                    </li>
+                  ))}
+                </ul>
+              </div>
+            )}
+          </div>
+
+          {aiInsight.reviewSummary.fitNote && (
+            <div className="flex items-start gap-2 p-3 bg-indigo-50/30 border border-indigo-100/30 rounded-xl text-xs text-indigo-900 leading-relaxed">
+              <Info className="w-4 h-4 text-indigo-600 shrink-0 mt-0.5" />
+              <div>
+                <span className="font-bold">Độ chuẩn xác kích cỡ (Fit Guide): </span>
+                <span>{aiInsight.reviewSummary.fitNote}</span>
+              </div>
+            </div>
+          )}
+        </div>
+      )}
 
       {/* Filters */}
       <div className="flex flex-wrap gap-2 mb-4">

@@ -25,7 +25,8 @@ class OutfitSuggestionServiceTest {
         AiClientRouter ai = mock(AiClientRouter.class);
         GeminiOutfitProvider gemini = mock(GeminiOutfitProvider.class);
         OutfitScoringService scoring = mock(OutfitScoringService.class);
-        OutfitSuggestionService service = new OutfitSuggestionService(cache, products, candidates, tags, ai, gemini, scoring);
+        OutfitSuggestionService service = new OutfitSuggestionService(cache, products, candidates, tags, ai, gemini,
+                scoring);
 
         ChatProductCard top = card(1L, "top", "MALE");
         ChatProductCard bottom = card(2L, "bottom", "MALE");
@@ -45,12 +46,12 @@ class OutfitSuggestionServiceTest {
 
     private ChatProductCard card(Long id, String role, String gender) {
         return ChatProductCard.builder()
-            .id(id)
-            .colorId(id + 10)
-            .name(role)
-            .role(role)
-            .gender(gender)
-            .colorFamily("neutral")
-            .build();
+                .id(id)
+                .colorId(id + 10)
+                .name(role)
+                .role(role)
+                .gender(gender)
+                .colorFamily("neutral")
+                .build();
     }
 }

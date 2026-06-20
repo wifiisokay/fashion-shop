@@ -244,7 +244,7 @@ public class ProductRetrieverService {
         StringBuilder sql = baseSelect();
         appendFilters(sql, params);
         sql.append(groupByClause());
-        sql.append(" ORDER BY p.is_sale DESC, p.created_at DESC LIMIT ").append(limit);
+        sql.append(" ORDER BY ").append(buildRelevanceSort(params.textTerms)).append(" LIMIT ").append(limit);
         log.debug("[AI_SEARCH_SQL] type=query params={} sql={}", params, sql);
         Query query = entityManager.createNativeQuery(sql.toString());
         bindFilters(query, params);
@@ -918,6 +918,39 @@ public class ProductRetrieverService {
         };
     }
 
+    private String buildRelevanceSort(List<String> textTerms) {
+        if (textTerms == null || textTerms.isEmpty()) {
+            return "p.is_sale DESC, p.created_at DESC";
+        }
+        // Score = name/category match (2) + other field match (1)
+        // Ensures "áo polo" matched in product name ranks above "polo" found only in tags/description
+        StringBuilder sort = new StringBuilder("(");
+        for (int i = 0; i < textTerms.size(); i++) {
+            if (i > 0) {
+                sort.append(" + ");
+            }
+            String param = ":textTerm" + i;
+            // Name/category match → weight 2 (primary signal)
+            sort.append("CASE WHEN (LOWER(COALESCE(p.name, '')) LIKE ").append(param)
+                .append(" OR LOWER(COALESCE(c.name, '')) LIKE ").append(param)
+                .append(" OR LOWER(COALESCE(c.slug, '')) LIKE ").append(param)
+                .append(") THEN 2 ELSE 0 END")
+                // Other fields match → weight 1 (secondary signal)
+                .append(" + CASE WHEN (LOWER(COALESCE(p.description, '')) LIKE ").append(param)
+                .append(" OR LOWER(COALESCE(CAST(p.style_tags AS CHAR), '')) LIKE ").append(param)
+                .append(" OR LOWER(COALESCE(CAST(p.occasion_tags AS CHAR), '')) LIKE ").append(param)
+                .append(" OR LOWER(COALESCE(p.fit_type, '')) LIKE ").append(param)
+                .append(" OR LOWER(COALESCE(p.season, '')) LIKE ").append(param)
+                .append(" OR LOWER(COALESCE(p.material, '')) LIKE ").append(param)
+                .append(" OR LOWER(COALESCE(p.gender, '')) LIKE ").append(param)
+                .append(" OR LOWER(COALESCE(pc.color_name, '')) LIKE ").append(param)
+                .append(" OR LOWER(COALESCE(pc.color_family, '')) LIKE ").append(param)
+                .append(") THEN 1 ELSE 0 END");
+        }
+        sort.append(") DESC, p.is_sale DESC, p.created_at DESC");
+        return sort.toString();
+    }
+
     private String formatContext(long total, List<ChatProductCard> cards) {
         if (cards.isEmpty()) {
             return "Total matched: 0\nNo products found.";
@@ -983,8 +1016,10 @@ public class ProductRetrieverService {
         }
 
         SearchParams outfitBase(String categoryRole) {
-            return new SearchParams(gender, List.of(), null, colorKeyword, darkColor, false,
-                    List.of(), null, occasionTag, colorFamily, categoryRole, excludedProductIds);
+            // Giữ categoryIds + textTerms để SQL phân biệt "áo polo" vs "áo thun" vs "áo sơ mi"
+            // Chỉ xóa maxPrice, saleOnly, styleTag để tìm rộng hơn (base outfit không cần price filter)
+            return new SearchParams(gender, categoryIds, null, colorKeyword, darkColor, false,
+                    textTerms, null, occasionTag, colorFamily, categoryRole, excludedProductIds);
         }
 
         boolean hasColorConstraint() {

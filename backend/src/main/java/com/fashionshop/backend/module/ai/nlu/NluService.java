@@ -32,6 +32,12 @@ public class NluService {
         Return pure JSON only. Do not return markdown or explanations.
         Normalize vague user shopping requests into structured fields.
         Never invent product ids or product names.
+
+        Synonym and Semantic Mapping rules:
+        - Map descriptive words like "áo ấm" (warm coat), "áo phao", "áo gió" to categoryKeywords: ["ao khoac", "jacket"] and season: "winter".
+        - Map "đồ mát", "thông thoáng" (cool clothing) to season: "summer".
+        - Map "lịch sự", "trang trọng", "đi đám cưới", "đi tiệc" (formal, party) to occasionKeywords: ["formal", "event", "date"] and styleKeywords: ["smart-casual", "elegant"].
+        - Always preserve sleeve length descriptors like "tay dài" (long sleeve), "tay ngắn" (short sleeve), "sát nách" (sleeveless) in categoryKeywords so the search dictionary can capture them.
         """;
 
     private final AiClientRouter aiClientRouter;

@@ -25,6 +25,7 @@ import com.fashionshop.backend.domain.User;
 import com.fashionshop.backend.domain.repository.ChatMessageRepository;
 import com.fashionshop.backend.domain.repository.ChatSessionRepository;
 import com.fashionshop.backend.domain.repository.UserRepository;
+import com.fashionshop.backend.domain.repository.OrderRepository;
 import com.fashionshop.backend.module.ai.dto.ProductContextDto;
 import com.fashionshop.backend.module.ai.dto.ChatContext;
 import com.fashionshop.backend.module.ai.dto.StyleAnswerResult;
@@ -59,6 +60,7 @@ public class ChatServiceImpl implements ChatService {
     private final ChatSessionRepository sessionRepository;
     private final ChatMessageRepository messageRepository;
     private final UserRepository userRepository;
+    private final OrderRepository orderRepository;
     private final IntentClassifier intentClassifier;
     private final InternalIntentClassifier internalIntentClassifier;
     private final ChatContextBuilder chatContextBuilder;
@@ -256,8 +258,8 @@ public class ChatServiceImpl implements ChatService {
                         userId, session.getId(), nluParams, followUpMore, excludedProductIds);
 
                 productResult = nluParams != null
-                    ? productRetrieverService.search(nluParams, content, 20, excludedProductIds)
-                    : productRetrieverService.search(content, 20, excludedProductIds);
+                    ? productRetrieverService.search(nluParams, content, 15, excludedProductIds)
+                    : productRetrieverService.search(content, 15, excludedProductIds);
             } catch (Exception e) {
             log.error("[AI_CHAT_RETRIEVE_ERROR] userId={} sessionId={} intent={} reason={}",
                 userId, session.getId(), intent, e.getMessage());
@@ -326,7 +328,8 @@ public class ChatServiceImpl implements ChatService {
         }
 
         // 6. Build prompt + history (có userId → nhúng user preferences)
-        String systemPrompt = promptBuilder.buildSystemPrompt(intent, retrievedData, userId);
+        String userProfileContext = buildUserProfileContext(userId);
+        String systemPrompt = promptBuilder.buildSystemPrompt(intent, retrievedData, userId, userProfileContext);
         List<AiMessage> history = promptBuilder.buildHistory(recentMessages);
 
         // 7. Call Gemini. Failures fall back to deterministic backend responses.
@@ -685,7 +688,8 @@ public class ChatServiceImpl implements ChatService {
         if (("TYPE_MATCH".equals(searchStatus) || "EXACT_MATCH_FOUND".equals(searchStatus))
                 && !safeProducts(productResult).isEmpty()
                 && containsNegativeAvailabilityText(response.getContent())) {
-            response.setContent("Có bạn nhé. Shop hiện có một số sản phẩm phù hợp với yêu cầu của bạn, mình gửi bên dưới để bạn tham khảo.");
+            String categoryLabel = roleLabelFromProductRole(productResult.products().get(0).getRole());
+            response.setContent("Dạ có bạn nhé. Shop hiện có sẵn " + productResult.products().size() + " mẫu " + categoryLabel + " phù hợp với yêu cầu của bạn, mình gửi bên dưới để bạn tham khảo.");
             response.setIsFromFallback(true);
             return true;
         }
@@ -700,7 +704,9 @@ public class ChatServiceImpl implements ChatService {
             String content = response.getContent();
             if (content == null || content.equals("Mình đã tìm các sản phẩm phù hợp từ dữ liệu của shop cho bạn.")
                     || (!content.contains("chưa có") && !content.contains("không có") && !content.contains("không tìm thấy") && !content.contains("chưa tìm thấy"))) {
-                response.setContent("Hiện shop chưa có đúng màu sắc hoặc sản phẩm bạn tìm. Tuy nhiên, bạn có thể tham khảo một số sản phẩm tương tự dưới đây.");
+                String roleLabel = roleLabelFromProductRole(
+                        productResult.inferredRole() != null ? productResult.inferredRole() : productResult.products().get(0).getRole());
+                response.setContent("Hiện shop chưa có đúng sản phẩm hoặc màu sắc bạn tìm. Tuy nhiên, bạn có thể tham khảo một số mẫu " + roleLabel + " tương tự dưới đây nhé.");
                 response.setIsFromFallback(true);
                 return true;
             }
@@ -907,8 +913,9 @@ public class ChatServiceImpl implements ChatService {
 
     private ChatMessageResponse categoryAttributeOutfitResponse(String content, NluSearchParams nluParams, ChatContext context) {
         log.info("[AI_OUTFIT_TYPE_RESOLVE] content='{}' nluParams={}", content, nluParams);
+        // Fetch 5 candidates để selectBestBase() có đủ lựa chọn
         ProductRetrieverService.ProductSearchResult baseResult =
-                productRetrieverService.searchOutfitBaseCandidates(content, nluParams, 3);
+                productRetrieverService.searchOutfitBaseCandidates(content, nluParams, 5);
         List<ChatProductCard> baseProducts = baseResult.products();
         if (baseProducts.isEmpty()) {
             return ChatMessageResponse.builder()
@@ -929,27 +936,25 @@ public class ChatServiceImpl implements ChatService {
                     .build();
         }
 
+        // Task 3: Chọn 1 base product tốt nhất khớp từ khóa user
+        // → tiết kiệm CPU (1 getSuggestions thay vì 3), base product đúng hơn
+        ChatProductCard anchor = selectBestBase(baseProducts, content);
+        log.info("[OUTFIT_BASE_SELECTED] productId={} colorId={} name='{}' category='{}' role='{}' matchedFrom={}",
+                anchor.getId(), anchor.getColorId(), anchor.getName(),
+                anchor.getCategoryName(), anchor.getRole(), baseProducts.size());
+
         List<OutfitComboResponse> combos = new ArrayList<>();
-        for (ChatProductCard base : baseProducts) {
-            if (base.getId() == null) {
-                continue;
+        try {
+            OutfitSuggestionResponse suggestion =
+                    outfitSuggestionService.getSuggestions(anchor.getId(), anchor.getColorId(), context);
+            if (suggestion.getCombos() != null) {
+                combos.addAll(suggestion.getCombos());
             }
-            try {
-                OutfitSuggestionResponse suggestion =
-                        outfitSuggestionService.getSuggestions(base.getId(), base.getColorId(), context);
-                if (suggestion.getCombos() != null) {
-                    combos.addAll(suggestion.getCombos());
-                }
-            } catch (Exception e) {
-                log.warn("[AI_CHAT_OUTFIT_CATEGORY] baseProductId={} colorId={} failed={}",
-                        base.getId(), base.getColorId(), e.getMessage());
-            }
-            if (combos.size() >= 3) {
-                break;
-            }
+        } catch (Exception e) {
+            log.warn("[AI_CHAT_OUTFIT_CATEGORY] baseProductId={} colorId={} failed={}",
+                    anchor.getId(), anchor.getColorId(), e.getMessage());
         }
 
-        ChatProductCard anchor = baseProducts.get(0);
         StyleAnswerResult answer = styleAnswerComposer.compose(context, anchor, combos);
 
         log.info("[AI_CHAT_OUTFIT_CATEGORY] categoryRole={} baseCandidates={} finalCombos={}",
@@ -960,13 +965,40 @@ public class ChatServiceImpl implements ChatService {
                 .content(answer.getContent())
                 .intent(ChatIntent.OUTFIT_SUGGEST.name())
                 .internalIntent(InternalChatIntent.OUTFIT_BY_PRODUCT.name())
-                .products(baseProducts)
+                .products(List.of(anchor))
                 .outfitCombos(combos.stream().limit(3).toList())
                 .styleTips(answer.getStyleTips())
                 .suggestedQuestions(answer.getSuggestedQuestions())
                 .context(toContextDto(context))
                 .createdAt(LocalDateTime.now())
                 .build();
+    }
+
+    /**
+     * Task 3: Chọn base product tốt nhất từ danh sách candidates.
+     * Ưu tiên sản phẩm có tên hoặc category khớp với từ khóa user nhập (e.g. "áo polo").
+     * Fallback về candidate đầu tiên nếu không có match.
+     */
+    private ChatProductCard selectBestBase(List<ChatProductCard> candidates, String userMessage) {
+        if (candidates.isEmpty()) {
+            throw new IllegalStateException("candidates must not be empty");
+        }
+        List<String> terms = ProductSearchDictionary.productTerms(userMessage);
+        if (terms.isEmpty()) {
+            return candidates.get(0);
+        }
+        // Tìm candidate đầu tiên có name hoặc categoryName/categorySlug khớp term
+        for (ChatProductCard candidate : candidates) {
+            String name = candidate.getName() != null ? candidate.getName().toLowerCase(java.util.Locale.ROOT) : "";
+            String catName = candidate.getCategoryName() != null ? candidate.getCategoryName().toLowerCase(java.util.Locale.ROOT) : "";
+            String catSlug = candidate.getCategorySlug() != null ? candidate.getCategorySlug().toLowerCase(java.util.Locale.ROOT) : "";
+            boolean matched = terms.stream().anyMatch(t -> name.contains(t) || catName.contains(t) || catSlug.contains(t));
+            if (matched) {
+                return candidate;
+            }
+        }
+        // Fallback: trả về candidate đầu tiên (đã được sort theo relevance từ SQL)
+        return candidates.get(0);
     }
 
     private ChatMessageResponse occasionOutfitResponse(String content, NluSearchParams nluParams, ChatContext context) {
@@ -1103,6 +1135,50 @@ public class ChatServiceImpl implements ChatService {
                             .build();
                     return sessionRepository.save(newSession);
                 });
+    }
+
+    private String buildUserProfileContext(Long userId) {
+        if (userId == null) {
+            return "";
+        }
+        try {
+            Optional<User> userOpt = userRepository.findById(userId);
+            if (userOpt.isEmpty()) {
+                return "";
+            }
+            User user = userOpt.get();
+            StringBuilder context = new StringBuilder();
+            context.append("- Khách hàng: ").append(user.getFullName()).append("\n");
+            
+            // Lấy 3 đơn hàng completed gần nhất
+            org.springframework.data.domain.Page<com.fashionshop.backend.domain.Order> orders = orderRepository
+                .findByUserIdAndStatusOrderByCreatedAtDesc(
+                    userId, 
+                    com.fashionshop.backend.common.enums.OrderStatus.COMPLETED, 
+                    org.springframework.data.domain.PageRequest.of(0, 3)
+                );
+            
+            if (orders != null && !orders.isEmpty()) {
+                context.append("- Các sản phẩm đã mua gần đây:\n");
+                java.util.Set<String> purchasedNames = new java.util.HashSet<>();
+                for (com.fashionshop.backend.domain.Order order : orders.getContent()) {
+                    if (order.getItems() != null) {
+                        for (com.fashionshop.backend.domain.OrderItem item : order.getItems()) {
+                            if (item.getProductName() != null) {
+                                purchasedNames.add(item.getProductName() + " (màu " + (item.getColorName() != null ? item.getColorName() : "thường") + ")");
+                            }
+                        }
+                    }
+                }
+                for (String name : purchasedNames) {
+                    context.append("  + ").append(name).append("\n");
+                }
+            }
+            return context.toString();
+        } catch (Exception e) {
+            log.warn("[AI_CHAT_PERSONALIZATION] failed for userId={}: {}", userId, e.getMessage());
+            return "";
+        }
     }
 
     /**

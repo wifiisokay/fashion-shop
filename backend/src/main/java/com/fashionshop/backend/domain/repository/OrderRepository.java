@@ -22,15 +22,15 @@ public interface OrderRepository extends JpaRepository<Order, Long> {
     Page<Order> findByUserIdAndStatusOrderByCreatedAtDesc(Long userId, OrderStatus status, Pageable pageable);
 
     @Query("SELECT DISTINCT o FROM Order o LEFT JOIN o.items i " +
-           "WHERE o.user.id = :userId " +
-           "AND (:status IS NULL OR o.status = :status) " +
-           "AND (:keyword IS NULL OR CAST(o.id AS string) LIKE CONCAT('%', :keyword, '%') " +
-           "    OR LOWER(i.productName) LIKE LOWER(CONCAT('%', :keyword, '%'))) " +
-           "ORDER BY o.createdAt DESC")
+            "WHERE o.user.id = :userId " +
+            "AND (:status IS NULL OR o.status = :status) " +
+            "AND (:keyword IS NULL OR CAST(o.id AS string) LIKE CONCAT('%', :keyword, '%') " +
+            "    OR LOWER(i.productName) LIKE LOWER(CONCAT('%', :keyword, '%'))) " +
+            "ORDER BY o.createdAt DESC")
     Page<Order> findCustomerOrders(@Param("userId") Long userId,
-                                   @Param("status") OrderStatus status,
-                                   @Param("keyword") String keyword,
-                                   Pageable pageable);
+            @Param("status") OrderStatus status,
+            @Param("keyword") String keyword,
+            Pageable pageable);
 
     Optional<Order> findByIdAndUserId(Long id, Long userId);
 
@@ -48,23 +48,23 @@ public interface OrderRepository extends JpaRepository<Order, Long> {
     Page<Order> findByStatusOrderByCreatedAtDesc(OrderStatus status, Pageable pageable);
 
     @Query("SELECT DISTINCT o FROM Order o " +
-           "LEFT JOIN o.items i " +
-           "WHERE (:status IS NULL OR o.status = :status) " +
-           "AND (:categoryId IS NULL OR EXISTS (" +
-           "    SELECT 1 FROM OrderItem oi " +
-           "    JOIN oi.variant pv " +
-           "    JOIN pv.product p " +
-           "    WHERE oi.order = o AND (p.category.id = :categoryId OR p.category.parent.id = :categoryId)" +
-           ")) " +
-           "AND (:keyword IS NULL OR " +
-           "    CAST(o.id AS string) LIKE CONCAT('%', :keyword, '%') " +
-           "    OR LOWER(i.productName) LIKE LOWER(CONCAT('%', :keyword, '%')) " +
-           "    OR LOWER(o.user.fullName) LIKE LOWER(CONCAT('%', :keyword, '%'))) " +
-           "ORDER BY o.createdAt DESC")
+            "LEFT JOIN o.items i " +
+            "WHERE (:status IS NULL OR o.status = :status) " +
+            "AND (:categoryId IS NULL OR EXISTS (" +
+            "    SELECT 1 FROM OrderItem oi " +
+            "    JOIN oi.variant pv " +
+            "    JOIN pv.product p " +
+            "    WHERE oi.order = o AND (p.category.id = :categoryId OR p.category.parent.id = :categoryId)" +
+            ")) " +
+            "AND (:keyword IS NULL OR " +
+            "    CAST(o.id AS string) LIKE CONCAT('%', :keyword, '%') " +
+            "    OR LOWER(i.productName) LIKE LOWER(CONCAT('%', :keyword, '%')) " +
+            "    OR LOWER(o.user.fullName) LIKE LOWER(CONCAT('%', :keyword, '%'))) " +
+            "ORDER BY o.createdAt DESC")
     Page<Order> searchOrders(@Param("status") OrderStatus status,
-                             @Param("keyword") String keyword,
-                             @Param("categoryId") Long categoryId,
-                             Pageable pageable);
+            @Param("keyword") String keyword,
+            @Param("categoryId") Long categoryId,
+            Pageable pageable);
 
     long countByStatus(OrderStatus status);
 
@@ -77,41 +77,41 @@ public interface OrderRepository extends JpaRepository<Order, Long> {
 
     // Duplicate order guard
     Optional<Order> findFirstByUserIdAndCreatedAtAfterOrderByCreatedAtDesc(
-        Long userId, LocalDateTime after);
+            Long userId, LocalDateTime after);
 
     // Dashboard Stats
     @Query(value = """
-                SELECT COALESCE(SUM(o.total_amount), 0)
-                FROM orders o
-                WHERE o.status = 'COMPLETED'
-                    AND o.payment_status = 'PAID'
-        """, nativeQuery = true)
+                    SELECT COALESCE(SUM(o.total_amount), 0)
+                    FROM orders o
+                    WHERE o.status = 'COMPLETED'
+                        AND o.payment_status = 'PAID'
+            """, nativeQuery = true)
     java.math.BigDecimal getTotalRevenue();
 
     @Query(value = """
-                SELECT DATE(COALESCE(o.completed_at, o.updated_at, o.created_at)) AS date,
-                             COALESCE(SUM(o.total_amount), 0) AS revenue
-                FROM orders o
-                WHERE COALESCE(o.completed_at, o.updated_at, o.created_at) >= :startDate
-                    AND o.status = 'COMPLETED'
-                    AND o.payment_status = 'PAID'
-                GROUP BY DATE(COALESCE(o.completed_at, o.updated_at, o.created_at))
-                ORDER BY DATE(COALESCE(o.completed_at, o.updated_at, o.created_at)) ASC
-        """, nativeQuery = true)
+                    SELECT DATE(COALESCE(o.completed_at, o.updated_at, o.created_at)) AS date,
+                                 COALESCE(SUM(o.total_amount), 0) AS revenue
+                    FROM orders o
+                    WHERE COALESCE(o.completed_at, o.updated_at, o.created_at) >= :startDate
+                        AND o.status = 'COMPLETED'
+                        AND o.payment_status = 'PAID'
+                    GROUP BY DATE(COALESCE(o.completed_at, o.updated_at, o.created_at))
+                    ORDER BY DATE(COALESCE(o.completed_at, o.updated_at, o.created_at)) ASC
+            """, nativeQuery = true)
     List<Object[]> getRevenueTrend(@Param("startDate") LocalDateTime startDate);
 
     @Query("SELECT o.status, COUNT(o) FROM Order o GROUP BY o.status")
     List<Object[]> getOrderStatusDistribution();
 
     @Query("SELECT COALESCE(SUM(o.shippingFee), 0) FROM Order o " +
-           "WHERE o.createdAt >= :startDate AND o.status IN :statuses")
+            "WHERE o.createdAt >= :startDate AND o.status IN :statuses")
     java.math.BigDecimal sumShippingFeeByCreatedAtAfterAndStatusIn(
-        @Param("startDate") LocalDateTime startDate,
-        @Param("statuses") List<OrderStatus> statuses);
+            @Param("startDate") LocalDateTime startDate,
+            @Param("statuses") List<OrderStatus> statuses);
 
     @Query("SELECT COALESCE(AVG(o.shippingFee), 0) FROM Order o " +
-           "WHERE o.createdAt >= :startDate AND o.status IN :statuses")
+            "WHERE o.createdAt >= :startDate AND o.status IN :statuses")
     java.math.BigDecimal avgShippingFeeByCreatedAtAfterAndStatusIn(
-        @Param("startDate") LocalDateTime startDate,
-        @Param("statuses") List<OrderStatus> statuses);
+            @Param("startDate") LocalDateTime startDate,
+            @Param("statuses") List<OrderStatus> statuses);
 }

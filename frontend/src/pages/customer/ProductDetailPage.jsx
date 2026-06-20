@@ -1,14 +1,15 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useState, useCallback } from 'react';
 import { useParams } from 'react-router-dom';
 import dayjs from 'dayjs';
 import { useQueryClient } from '@tanstack/react-query';
 import { useProduct } from '../../hooks/useProduct';
 import { useCart } from '../../hooks/useCart';
 import { useOutfitSuggestions } from '../../hooks/useOutfitSuggestions';
+import { useAiInsight } from '../../hooks/useAiInsight';
 import Spinner from '../../components/ui/Spinner';
 import Button from '../../components/ui/Button';
 import { formatPrice, isSaleActive } from '../../utils/format';
-import { ShoppingCart, ChevronLeft, ChevronRight, Sparkles, Plus, RefreshCw, AlertCircle } from 'lucide-react';
+import { ShoppingCart, ChevronLeft, ChevronRight, Sparkles, Plus, RefreshCw, AlertCircle, Calendar, Compass, Users } from 'lucide-react';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 import ReviewSection from '../../components/review/ReviewSection';
@@ -70,6 +71,7 @@ const OutfitItemCard = ({
   isMain,
   lockedSelection,
   productOverride,
+  comboKey,
   onSelectionChange,
 }) => {
   const { data: productDetail, isLoading } = useProduct(item?.id);
@@ -124,13 +126,13 @@ const OutfitItemCard = ({
 
   useEffect(() => {
     if (!item?.id || !onSelectionChange) return;
-    onSelectionChange(item.id, {
+    onSelectionChange(comboKey, item.id, {
       variantId: selectedVariant?.variantId || null,
       colorId: selectedColor?.id || null,
       size: selectedSize || null,
       inStock: selectedVariant?.stockQuantity > 0,
     });
-  }, [item?.id, onSelectionChange, selectedVariant, selectedColor?.id, selectedSize]);
+  }, [item?.id, comboKey, onSelectionChange, selectedVariant, selectedColor?.id, selectedSize]);
 
   if (isLoading && !productOverride) {
     return (
@@ -254,6 +256,7 @@ const ProductDetailPage = () => {
   const { id } = useParams();
   const queryClient = useQueryClient();
   const { data, isLoading } = useProduct(id);
+  const { data: aiInsight, isLoading: isAiLoading } = useAiInsight(id);
   const { addToCart } = useCart();
 
   // Fallback mock data — sẽ xóa khi backend sẵn sàng
@@ -391,6 +394,34 @@ const ProductDetailPage = () => {
     return [];
   }, [selectedColor, product?.variants, effectiveSelectedColorId]);
 
+  // Reset outfit selections when product id changes
+  useEffect(() => {
+    setOutfitSelections({});
+  }, [id]);
+
+  const handleOutfitSelectionChange = useCallback((comboKey, itemId, selection) => {
+    setOutfitSelections((prev) => {
+      const currentCombo = prev[comboKey] || {};
+      const currentSelection = currentCombo[itemId];
+      if (
+        currentSelection &&
+        currentSelection.variantId === selection.variantId &&
+        currentSelection.colorId === selection.colorId &&
+        currentSelection.size === selection.size &&
+        currentSelection.inStock === selection.inStock
+      ) {
+        return prev;
+      }
+      return {
+        ...prev,
+        [comboKey]: {
+          ...currentCombo,
+          [itemId]: selection,
+        }
+      };
+    });
+  }, []);
+
   // Handle color change — reset gallery and size
   const handleColorSelect = (colorId) => {
     setSelectedColorId(colorId);
@@ -410,16 +441,6 @@ const ProductDetailPage = () => {
 
   const originalPrice = (product.basePrice || product.price) + adjustment;
   const displayPrice = hasActiveSale ? (product.salePrice + adjustment) : originalPrice;
-
-  const handleOutfitSelectionChange = (comboKey, itemId, selection) => {
-    setOutfitSelections((prev) => ({
-      ...prev,
-      [comboKey]: {
-        ...(prev[comboKey] || {}),
-        [itemId]: selection,
-      }
-    }));
-  };
 
   const handleAddCombo = async (comboKey, items) => {
     const selections = outfitSelections[comboKey] || {};
@@ -699,6 +720,104 @@ const ProductDetailPage = () => {
               </button>
             </div>
 
+            {/* AI Style Guide Card */}
+            {isAiLoading && (
+              <div className="mb-6 rounded-2xl border border-slate-100 bg-slate-50/10 p-5 animate-pulse">
+                <div className="flex items-center gap-2 mb-3">
+                  <div className="h-5 w-5 bg-slate-200 rounded-full" />
+                  <div className="h-5 w-48 bg-slate-200 rounded" />
+                </div>
+                <div className="grid sm:grid-cols-2 gap-4">
+                  <div className="space-y-2">
+                    <div className="h-3.5 w-1/3 bg-slate-200 rounded" />
+                    <div className="h-3 w-1/2 bg-slate-200 rounded" />
+                  </div>
+                  <div className="space-y-2">
+                    <div className="h-3.5 w-1/3 bg-slate-200 rounded" />
+                    <div className="h-3 w-3/4 bg-slate-200 rounded" />
+                  </div>
+                </div>
+              </div>
+            )}
+
+            {!isAiLoading && aiInsight?.styleGuide && (
+              <div className="mb-6 rounded-2xl border border-slate-200/80 bg-linear-to-r from-slate-50/50 to-indigo-50/30 p-5 sm:p-6 shadow-xs hover:border-slate-300 transition-all duration-300">
+                <div className="flex items-center gap-2 mb-4 pb-3 border-b border-slate-200/50">
+                  <Sparkles className="w-5 h-5 text-indigo-600 animate-pulse shrink-0" />
+                  <span className="font-bold text-sm sm:text-base text-slate-800">
+                    Cẩm nang phong cách & Phối đồ AI
+                  </span>
+                </div>
+
+                <div className="grid sm:grid-cols-2 gap-5">
+                  {/* Left Column: Occasions & Seasons */}
+                  <div className="space-y-4">
+                    {aiInsight.styleGuide.occasions && aiInsight.styleGuide.occasions.length > 0 && (
+                      <div>
+                        <span className="text-xs font-bold text-slate-400 uppercase tracking-wider mb-2 block">
+                          Dịp mặc phù hợp
+                        </span>
+                        <div className="flex flex-wrap gap-2">
+                          {aiInsight.styleGuide.occasions.map((occ, idx) => (
+                            <span
+                              key={idx}
+                              className="inline-flex items-center gap-1 px-3 py-1 bg-indigo-50/80 border border-indigo-100 rounded-full text-xs font-semibold text-indigo-700"
+                            >
+                              <Compass className="w-3.5 h-3.5 shrink-0" />
+                              {occ}
+                            </span>
+                          ))}
+                        </div>
+                      </div>
+                    )}
+
+                    {aiInsight.styleGuide.seasonTip && (
+                      <div>
+                        <span className="text-xs font-bold text-slate-400 uppercase tracking-wider mb-1.5 block">
+                          Mùa lý tưởng
+                        </span>
+                        <div className="inline-flex items-center gap-2 px-3 py-2 bg-sky-50/50 border border-sky-100/50 rounded-xl text-xs text-sky-900 font-medium">
+                          <Calendar className="w-4 h-4 text-sky-600 shrink-0" />
+                          {aiInsight.styleGuide.seasonTip}
+                        </div>
+                      </div>
+                    )}
+                  </div>
+
+                  {/* Right Column: Tips & Who Should Buy */}
+                  <div className="space-y-4">
+                    {aiInsight.styleGuide.outfitTips && aiInsight.styleGuide.outfitTips.length > 0 && (
+                      <div>
+                        <span className="text-xs font-bold text-slate-400 uppercase tracking-wider mb-2 block">
+                          Gợi ý phối đồ
+                        </span>
+                        <ul className="space-y-2">
+                          {aiInsight.styleGuide.outfitTips.map((tip, idx) => (
+                            <li key={idx} className="flex items-start gap-1.5 text-xs text-slate-700 leading-relaxed">
+                              <span className="text-indigo-500 font-bold shrink-0 mt-0.5">•</span>
+                              <span>{tip}</span>
+                            </li>
+                          ))}
+                        </ul>
+                      </div>
+                    )}
+
+                    {aiInsight.styleGuide.whoShouldBuy && (
+                      <div>
+                        <span className="text-xs font-bold text-slate-400 uppercase tracking-wider mb-1.5 block">
+                          Đối tượng & Phong cách
+                        </span>
+                        <div className="flex items-start gap-2 text-xs text-slate-700 leading-relaxed bg-white/70 border border-slate-100 rounded-xl p-3">
+                          <Users className="w-4 h-4 text-indigo-600 shrink-0 mt-0.5" />
+                          <span>{aiInsight.styleGuide.whoShouldBuy}</span>
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                </div>
+              </div>
+            )}
+
             {(outfitQuery.isLoading || outfitQuery.isFetching) && (
               <div className="space-y-4">
                 {[0, 1, 2].map((item) => (
@@ -876,7 +995,8 @@ const ProductDetailPage = () => {
                                   ? { colorId: effectiveSelectedColorId, size: selectedSize }
                                   : null
                               }
-                              onSelectionChange={(itemId, selection) => handleOutfitSelectionChange(comboKey, itemId, selection)}
+                              comboKey={comboKey}
+                              onSelectionChange={handleOutfitSelectionChange}
                             />
                           </div>
                         ))}

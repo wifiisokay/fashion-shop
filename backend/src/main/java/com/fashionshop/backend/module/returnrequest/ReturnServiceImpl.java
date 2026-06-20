@@ -245,6 +245,8 @@ public class ReturnServiceImpl implements ReturnService {
         Order order = r.getOrder();
         order.setStatus(OrderStatus.RETURNED);
         order.setPaymentStatus(OrderPaymentStatus.REFUNDED);
+        orderRepository.save(order);
+
         paymentRepository.findByOrderId(order.getId()).ifPresent(payment -> {
             payment.setStatus(PaymentStatus.REFUNDED);
             payment.setRefundedAt(r.getRefundedAt());

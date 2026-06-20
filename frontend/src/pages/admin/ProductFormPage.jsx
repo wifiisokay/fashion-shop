@@ -357,7 +357,7 @@ const ProductFormPage = () => {
         toast.error(`Tải ảnh ${file.name} thất bại`);
       }
     }
-    
+
     if (successCount > 0) {
       toast.success(`Tải thành công ${successCount}/${files.length} ảnh`);
     }
@@ -376,7 +376,7 @@ const ProductFormPage = () => {
 
     // Current sorted images
     const colorImages = images.slice();
-    
+
     // Reorder locally
     const [movedImage] = colorImages.splice(source.index, 1);
     colorImages.splice(destination.index, 0, movedImage);
@@ -393,7 +393,7 @@ const ProductFormPage = () => {
         }
         return Promise.resolve();
       });
-      
+
       await Promise.all(promises);
       toast.success('Đã cập nhật thứ tự ảnh');
     } catch {
@@ -425,7 +425,7 @@ const ProductFormPage = () => {
           <ArrowLeft className="w-5 h-5" />
         </Button>
         <h1 className="text-2xl font-bold text-gray-900">
-          {isEdit ? 'Chỉnh sửa sản phẩm' : 'Thêm sản phẩm mới'}
+          {isEdit ? 'Chỉnh sửa sản phẩm' : 'Thêm sản phẩm mới nhất'}
         </h1>
       </div>
 
@@ -512,7 +512,7 @@ const ProductFormPage = () => {
                   onCheckedChange={(checked) => setForm({ ...form, isSale: checked })} />
                 <Label className="font-bold text-gray-900">Áp dụng chương trình giảm giá</Label>
               </div>
-              
+
               {form.isSale && (
                 <div className="grid grid-cols-1 md:grid-cols-3 gap-4 pt-2">
                   <div className="space-y-2">
@@ -530,7 +530,7 @@ const ProductFormPage = () => {
                     <Input type="datetime-local" value={form.saleEndAt}
                       onChange={(e) => setForm({ ...form, saleEndAt: e.target.value })} />
                   </div>
-                  
+
                   {form.basePrice && form.salePrice && parseFloat(form.basePrice) > 0 && (
                     <div className="md:col-span-3 text-xs font-bold text-emerald-700 bg-emerald-50 px-3 py-2.5 rounded-lg border border-emerald-200/50 flex items-center justify-between">
                       <span>Tỷ lệ giảm giá dự kiến:</span>
@@ -611,7 +611,7 @@ const ProductFormPage = () => {
               <h3 className="font-semibold text-lg">Mô tả chi tiết sản phẩm</h3>
               <p className="text-sm text-gray-500">Hỗ trợ viết theo định dạng Markdown.</p>
             </div>
-            
+
             <MarkdownEditor
               value={form.description}
               onChange={(val) => setForm({ ...form, description: val })}
@@ -715,15 +715,15 @@ const ProductFormPage = () => {
                 ) : (
                   variants.map((v) => (
                     <TableRow key={v.id}>
-                    <TableCell>
-                      <div className="flex items-center gap-2">
-                        <span className="w-4 h-4 rounded-full border" style={{ backgroundColor: colors.find(c => c.id === v.colorId)?.colorCode || '#ccc' }} />
-                        <Badge variant="secondary">{v.colorName || 'N/A'}</Badge>
-                      </div>
-                    </TableCell>
+                      <TableCell>
+                        <div className="flex items-center gap-2">
+                          <span className="w-4 h-4 rounded-full border" style={{ backgroundColor: colors.find(c => c.id === v.colorId)?.colorCode || '#ccc' }} />
+                          <Badge variant="secondary">{v.colorName || 'N/A'}</Badge>
+                        </div>
+                      </TableCell>
                       <TableCell><Badge variant="outline">{v.size}</Badge></TableCell>
                       <TableCell>{v.stockQuantity}</TableCell>
-            <TableCell>{v.priceAdjustment ? `+${v.priceAdjustment.toLocaleString()}đ` : '—'}</TableCell>
+                      <TableCell>{v.priceAdjustment ? `+${v.priceAdjustment.toLocaleString()}đ` : '—'}</TableCell>
                       <TableCell className="text-right">
                         <div className="flex justify-end gap-1">
                           <Button variant="ghost" size="icon" className="h-8 w-8 text-blue-600"
@@ -737,7 +737,7 @@ const ProductFormPage = () => {
                         </div>
                       </TableCell>
                     </TableRow>
-                  ))                  
+                  ))
                 )}
               </TableBody>
             </Table>

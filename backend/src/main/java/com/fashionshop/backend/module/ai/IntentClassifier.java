@@ -40,7 +40,7 @@ public class IntentClassifier {
     private static final Set<String> OUT_OF_SCOPE_TOPICS = Set.of(
         "thoi tiet", "tin tuc", "bong da", "the thao", "chinh tri", "covid",
         "nau an", "cong thuc", "bai tap", "hoc tap", "tieng anh", "toan",
-        "lam the nao de", "lich su", "dia ly", "khoa hoc",
+        "lam the nao de", "dia ly", "khoa hoc",
         "phuong trinh", "giai phuong trinh", "bac 2", "can bac", "bai toan",
         "giai toan", "dao ham", "tich phan",
         "lap trinh", "viet code", "code", "thuat toan", "binary search",
@@ -52,7 +52,7 @@ public class IntentClassifier {
 
     private static final Map<ChatIntent, Set<String>> INTENT_KEYWORDS = Map.of(
         ChatIntent.PRODUCT_SEARCH, Set.of(
-            "áo", "quần", "váy", "giày", "dép", "túi", "mũ", "nón", "kính",
+            "đồ", "áo", "quần", "váy", "giày", "dép", "túi", "mũ", "nón", "kính",
             "tìm", "xem", "mua", "còn hàng", "giá", "sale", "giảm giá", "khuyến mãi",
             "nam", "nữ", "unisex", "trẻ em", "sản phẩm", "hàng mới",
             "chất liệu", "cotton", "polyester", "đen", "trắng", "xanh", "đỏ",
@@ -246,7 +246,8 @@ public class IntentClassifier {
             " shop ", " fashion shop ", " san pham ", " hang ", " don hang ", " thanh toan ",
             " doi tra ", " hoan tien ", " ship ", " giao hang ", " vnpay ", " cod ",
             " ao ", " quan ", " vay ", " dam ", " khoac ", " polo ", " so mi ", " thun ",
-            " size ", " mau ", " chat lieu ", " phoi ", " outfit ", " mac voi ");
+            " size ", " mau ", " chat lieu ", " phoi ", " outfit ", " mac voi ",
+            " mac ", " tu van ", " phong cach ", " giam gia ", " sale ", " khuyen mai ", " voucher ");
     }
 
     private boolean hasCommerceFollowUpSignal(String normalizedMsg) {
