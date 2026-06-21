@@ -21,6 +21,8 @@ export const productApi = {
   createVariant: (productId, data) => axiosInstance.post(`/api/admin/products/${productId}/variants`, data),
   updateVariant: (productId, variantId, data) =>
     axiosInstance.put(`/api/admin/products/${productId}/variants/${variantId}`, data),
+  updateVariantStock: (productId, variantId, data) =>
+    axiosInstance.patch(`/api/admin/products/${productId}/variants/${variantId}/stock`, data),
   deleteVariant: (productId, variantId) =>
     axiosInstance.delete(`/api/admin/products/${productId}/variants/${variantId}`),
 

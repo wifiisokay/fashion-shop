@@ -12,6 +12,10 @@ import {
   Table, TableBody, TableCell, TableHead, TableHeader, TableRow,
 } from '@/components/ui/table';
 import Spinner from '@/components/ui/Spinner';
+import { useUpdateVariantStock } from '@/hooks/useAdminVariants';
+import { toast } from 'sonner';
+import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog';
+import { Label } from '@/components/ui/label';
 
 const STOCK_STATUS_OPTIONS = [
   { value: '_all', label: 'Tất cả trạng thái kho' },
@@ -94,6 +98,34 @@ const StaffInventoryPage = () => {
   const items = data?.items ?? [];
   const totalElements = data?.totalElements ?? 0;
   const totalPages = data?.totalPages ?? 0;
+
+  const [stockModal, setStockModal] = useState({
+    open: false,
+    variant: null,
+    addedStock: '',
+  });
+
+  const updateStockMutation = useUpdateVariantStock();
+
+  const handleStockSubmit = async (e) => {
+    e.preventDefault();
+    const addedStockNum = parseInt(stockModal.addedStock);
+    if (isNaN(addedStockNum) || addedStockNum < 1) {
+      toast.error('Số lượng nhập thêm phải tối thiểu là 1');
+      return;
+    }
+    try {
+      await updateStockMutation.mutateAsync({
+        productId: stockModal.variant.productId,
+        variantId: stockModal.variant.variantId,
+        addedStock: addedStockNum,
+      });
+      toast.success('Nhập thêm tồn kho thành công');
+      setStockModal({ open: false, variant: null, addedStock: '' });
+    } catch (err) {
+      toast.error(err.response?.data?.message || 'Có lỗi xảy ra khi nhập kho');
+    }
+  };
 
   // Flatten categories for select dropdown
   const categoryOptions = [];
@@ -237,15 +269,16 @@ const StaffInventoryPage = () => {
                   {renderSortableHeader('categoryName', 'Danh mục')}
                   {renderSortableHeader('colorName', 'Màu sắc')}
                   {renderSortableHeader('size', 'Size')}
-                  {renderSortableHeader('stockQuantity', 'Số lượng tồn')}
+                   {renderSortableHeader('stockQuantity', 'Số lượng tồn')}
                   {renderSortableHeader('lowStockThreshold', 'Ngưỡng cảnh báo')}
                   {renderSortableHeader('status', 'Trạng thái kho')}
+                  <TableHead className="w-28 text-right font-bold text-gray-700">Hành động</TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
                 {items.length === 0 ? (
                   <TableRow>
-                    <TableCell colSpan={8} className="text-center py-12 text-gray-500">
+                    <TableCell colSpan={9} className="text-center py-12 text-gray-500">
                       Không có biến thể nào phù hợp
                     </TableCell>
                   </TableRow>
@@ -294,6 +327,16 @@ const StaffInventoryPage = () => {
                             {badgeProps.label}
                           </Badge>
                         </TableCell>
+                        <TableCell className="text-right">
+                          <Button
+                            size="sm"
+                            variant="outline"
+                            className="text-xs h-8 hover:bg-indigo-50 hover:text-indigo-600 hover:border-indigo-300 transition-all font-semibold"
+                            onClick={() => setStockModal({ open: true, variant: item, addedStock: '' })}
+                          >
+                            Nhập kho
+                          </Button>
+                        </TableCell>
                       </TableRow>
                     );
                   })
@@ -324,6 +367,52 @@ const StaffInventoryPage = () => {
           </div>
         )}
       </div>
+
+      {/* Dialog Nhập kho */}
+      <Dialog open={stockModal.open} onOpenChange={(open) => setStockModal(prev => ({ ...prev, open }))}>
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle>Nhập thêm tồn kho</DialogTitle>
+          </DialogHeader>
+          <form onSubmit={handleStockSubmit} className="space-y-4">
+            <div className="space-y-1.5 text-sm border-b pb-3 border-gray-100">
+              <p className="font-semibold text-gray-900">{stockModal.variant?.productName}</p>
+              <div className="flex flex-wrap items-center gap-1.5 text-xs">
+                <span className="text-gray-500">Màu sắc:</span>
+                <Badge variant="secondary" className="font-medium">{stockModal.variant?.colorName}</Badge>
+                <span className="text-gray-300">|</span>
+                <span className="text-gray-500">Size:</span>
+                <Badge variant="outline" className="font-bold px-1.5 py-0">{stockModal.variant?.size}</Badge>
+              </div>
+              <p className="text-gray-700 font-medium pt-1">
+                Tồn kho hiện tại: <span className="font-extrabold text-indigo-600 text-base">{stockModal.variant?.stockQuantity}</span>
+              </p>
+            </div>
+            <div className="space-y-2">
+              <Label>Số lượng nhập thêm *</Label>
+              <Input
+                type="number"
+                required
+                min="1"
+                value={stockModal.addedStock}
+                onChange={(e) => setStockModal({ ...stockModal, addedStock: e.target.value })}
+                placeholder="Nhập số lượng (tối thiểu 1)"
+              />
+              {stockModal.addedStock && parseInt(stockModal.addedStock) >= 1 && (
+                <p className="text-xs font-semibold text-emerald-700 bg-emerald-50 px-2.5 py-1.5 rounded-lg">
+                  Tồn kho dự kiến sau khi lưu: <span className="font-extrabold text-sm">{parseInt(stockModal.variant?.stockQuantity || 0) + parseInt(stockModal.addedStock)}</span>
+                </p>
+              )}
+            </div>
+            <DialogFooter>
+              <Button type="button" variant="outline" onClick={() => setStockModal({ open: false, variant: null, addedStock: '' })}>Hủy</Button>
+              <Button type="submit" disabled={updateStockMutation.isPending} className="bg-indigo-600 hover:bg-indigo-700 text-white">
+                {updateStockMutation.isPending ? 'Đang nhập...' : 'Xác nhận nhập'}
+              </Button>
+            </DialogFooter>
+          </form>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 };

@@ -25,6 +25,19 @@ export const useUpdateVariant = () => {
   });
 };
 
+/** Cập nhật tồn kho variant */
+export const useUpdateVariantStock = () => {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: ({ productId, variantId, ...payload }) =>
+      productApi.updateVariantStock(productId, variantId, payload),
+    onSuccess: (_, variables) => {
+      queryClient.invalidateQueries({ queryKey: QUERY_KEYS.adminProduct(variables.productId) });
+      queryClient.invalidateQueries({ queryKey: ['staff', 'inventory'] });
+    },
+  });
+};
+
 /** Xóa variant */
 export const useDeleteVariant = () => {
   const queryClient = useQueryClient();
