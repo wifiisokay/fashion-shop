@@ -37,6 +37,14 @@ export const AuthProvider = ({ children }) => {
     let isMounted = true;
 
     const bootstrapAuth = async () => {
+      // Sau khi VNPay redirect về, browser cần thêm thời gian để stabilize
+      // cookie cross-domain (SameSite=None) trước khi gọi /api/auth/me.
+      // Không delay → /auth/me có thể trả 401 → app hiểu nhầm là hết session.
+      const isPaymentResultPage = window.location.pathname.includes('/payment/result');
+      if (isPaymentResultPage) {
+        await new Promise((resolve) => setTimeout(resolve, 800));
+      }
+
       try {
         const response = await authApi.me();
         if (isMounted) {

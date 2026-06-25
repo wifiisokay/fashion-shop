@@ -159,7 +159,7 @@ class ProductVariantServiceImplTest {
     @Test
     void update_updatesFields_correctly() {
         ProductVariantRequest request = buildVariantRequest(10L, "L", 15, new BigDecimal("30000"));
-        when(variantRepository.findById(1L)).thenReturn(Optional.of(variant1));
+        when(variantRepository.findByIdForUpdate(1L)).thenReturn(Optional.of(variant1));
         when(colorRepository.findById(10L)).thenReturn(Optional.of(mockColor));
         when(variantRepository.existsByColorIdAndSizeAndIdNot(10L, "L", 1L))
             .thenReturn(false);
@@ -169,7 +169,7 @@ class ProductVariantServiceImplTest {
 
         assertThat(variant1.getColor().getColorName()).isEqualTo("Trắng");
         assertThat(variant1.getSize()).isEqualTo("L");
-        assertThat(variant1.getStockQuantity()).isEqualTo(15);
+        assertThat(variant1.getStockQuantity()).isEqualTo(10); // Stock remains unchanged (ignored in PUT /variants)
         assertThat(variant1.getPriceAdjustment()).isEqualByComparingTo("30000");
     }
 
@@ -178,7 +178,7 @@ class ProductVariantServiceImplTest {
         ProductVariantRequest request = buildVariantRequest(11L, "L", 10, null);
         ProductColor blackColor = ProductColor.builder()
             .id(11L).product(mockProduct).colorName("Đen").build();
-        when(variantRepository.findById(1L)).thenReturn(Optional.of(variant1));
+        when(variantRepository.findByIdForUpdate(1L)).thenReturn(Optional.of(variant1));
         when(colorRepository.findById(11L)).thenReturn(Optional.of(blackColor));
         when(variantRepository.existsByColorIdAndSizeAndIdNot(11L, "L", 1L))
             .thenReturn(true);
@@ -189,7 +189,7 @@ class ProductVariantServiceImplTest {
 
     @Test
     void update_throwsNotFound_whenVariantNotBelongToProduct() {
-        when(variantRepository.findById(1L)).thenReturn(Optional.of(variant1));
+        when(variantRepository.findByIdForUpdate(1L)).thenReturn(Optional.of(variant1));
 
         assertThatThrownBy(() -> variantService.update(99L, 1L, buildVariantRequest(10L, "S", 1, null)))
             .isInstanceOf(BusinessException.class)
@@ -268,20 +268,24 @@ class ProductVariantServiceImplTest {
     void updateStock_updatesOnlyStockQuantity() {
         // variant1: color=Trắng, size=M, stock=10, priceAdjustment=null
         when(variantRepository.findById(1L)).thenReturn(Optional.of(variant1));
-        when(variantRepository.save(any())).thenAnswer(inv -> inv.getArgument(0));
+        when(variantRepository.increaseStock(eq(1L), anyInt())).thenAnswer(inv -> {
+            int added = inv.getArgument(1);
+            variant1.setStockQuantity(variant1.getStockQuantity() + added);
+            return 1;
+        });
 
         StockUpdateRequest request = new StockUpdateRequest();
-        request.setStockQuantity(99);
+        request.setAddedStock(99);
 
         ProductVariantResponse result = variantService.updateStock(1L, 1L, request);
 
-        // Stock updated
-        assertThat(variant1.getStockQuantity()).isEqualTo(99);
+        // Stock updated (10 + 99 = 109)
+        assertThat(variant1.getStockQuantity()).isEqualTo(109);
         // Other fields unchanged
         assertThat(variant1.getColor().getColorName()).isEqualTo("Trắng");
         assertThat(variant1.getSize()).isEqualTo("M");
         assertThat(variant1.getPriceAdjustment()).isNull();
-        verify(variantRepository).save(variant1);
+        verify(variantRepository).increaseStock(1L, 99);
     }
 
     @Test
@@ -289,14 +293,14 @@ class ProductVariantServiceImplTest {
         when(variantRepository.findById(1L)).thenReturn(Optional.of(variant1));
 
         StockUpdateRequest request = new StockUpdateRequest();
-        request.setStockQuantity(50);
+        request.setAddedStock(50);
 
         // variant1 belongs to product 1, but we pass product 99
         assertThatThrownBy(() -> variantService.updateStock(99L, 1L, request))
             .isInstanceOf(BusinessException.class)
             .hasFieldOrPropertyWithValue("errorCode", ErrorCode.VARIANT_NOT_FOUND);
 
-        verify(variantRepository, never()).save(any());
+        verify(variantRepository, never()).increaseStock(anyLong(), anyInt());
     }
 
     @Test
@@ -304,7 +308,7 @@ class ProductVariantServiceImplTest {
         when(variantRepository.findById(999L)).thenReturn(Optional.empty());
 
         StockUpdateRequest request = new StockUpdateRequest();
-        request.setStockQuantity(10);
+        request.setAddedStock(10);
 
         assertThatThrownBy(() -> variantService.updateStock(1L, 999L, request))
             .isInstanceOf(BusinessException.class)

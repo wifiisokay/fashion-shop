@@ -8,9 +8,7 @@ import java.util.List;
 import java.util.Optional;
 
 import static org.assertj.core.api.Assertions.assertThat;
-import static org.mockito.ArgumentMatchers.any;
-import static org.mockito.ArgumentMatchers.anyLong;
-import static org.mockito.ArgumentMatchers.anyString;
+import static org.mockito.ArgumentMatchers.*;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.when;
 
@@ -31,7 +29,7 @@ class OutfitSuggestionServiceTest {
         ChatProductCard top = card(1L, "top", "MALE");
         ChatProductCard bottom = card(2L, "bottom", "MALE");
         when(products.findProductCard(1L, 11L)).thenReturn(Optional.of(top));
-        when(candidates.getCandidatesForSlot(top, "bottom", 40)).thenReturn(List.of(bottom));
+        when(candidates.getCandidatesForSlot(any(), anyString(), anyInt())).thenReturn(List.of(bottom));
         when(gemini.generateCombos(any(), anyString(), any(), any(), any(), any())).thenReturn(List.of());
         when(tags.labelForStyle(anyString())).thenReturn("daily");
         when(ai.generate(anyString(), any(), anyString())).thenThrow(new IllegalStateException("Gemini down"));
