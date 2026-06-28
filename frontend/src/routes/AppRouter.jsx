@@ -4,6 +4,8 @@ import PrivateRoute from './PrivateRoute';
 import RoleRoute from './RoleRoute';
 import MainLayout from '../components/common/MainLayout';
 
+import GuestRoute from './GuestRoute';
+
 import StaffReturnManagePage from '../pages/staff/StaffReturnManagePage';
 import StaffOrderListPage from '../pages/staff/StaffOrderListPage';
 import StaffOrderDetailPage from '../pages/staff/StaffOrderDetailPage';
@@ -31,6 +33,8 @@ import UserManagePage from '../pages/admin/UserManagePage';
 import ShopSettingsPage from '../pages/admin/ShopSettingsPage';
 import AdminReviewPage from '../pages/admin/AdminReviewPage';
 
+import NotFoundPage from '../pages/common/NotFoundPage';
+
 const AppRouter = () => {
   return (
     <Routes>
@@ -39,10 +43,12 @@ const AppRouter = () => {
         <Route path={ROUTES.HOME} element={<HomePage />} />
         <Route path={ROUTES.PRODUCTS} element={<ProductListPage />} />
         <Route path={ROUTES.PRODUCT_DETAIL} element={<ProductDetailPage />} />
-        <Route path={ROUTES.LOGIN} element={<LoginPage />} />
-        <Route path={ROUTES.REGISTER} element={<RegisterPage />} />
-        <Route path={ROUTES.FORGOT_PASSWORD} element={<ForgotPasswordPage />} />
-        <Route path={ROUTES.RESET_PASSWORD} element={<ResetPasswordPage />} />
+        
+        {/* Auth only for guests (unauthenticated) */}
+        <Route path={ROUTES.LOGIN} element={<GuestRoute><LoginPage /></GuestRoute>} />
+        <Route path={ROUTES.REGISTER} element={<GuestRoute><RegisterPage /></GuestRoute>} />
+        <Route path={ROUTES.FORGOT_PASSWORD} element={<GuestRoute><ForgotPasswordPage /></GuestRoute>} />
+        <Route path={ROUTES.RESET_PASSWORD} element={<GuestRoute><ResetPasswordPage /></GuestRoute>} />
 
         {/* Customer only */}
         <Route path={ROUTES.CART} element={
@@ -90,6 +96,9 @@ const AppRouter = () => {
           <Route path="reviews" element={<AdminReviewPage />} />
           <Route path="settings" element={<ShopSettingsPage />} />
         </Route>
+
+        {/* Catch-all 404 for non-existent routes */}
+        <Route path="*" element={<NotFoundPage />} />
       </Route>
     </Routes>
   );

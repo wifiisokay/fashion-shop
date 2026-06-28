@@ -57,7 +57,7 @@ public class GeminiApiClient implements AiClient {
 
     @Override
     public String generateContent(String systemPrompt, List<AiMessage> history, String userMessage) {
-        return doGenerateContent(restClient, systemPrompt, history, userMessage);
+        return executeWithFallback(restClient, systemPrompt, history, userMessage);
     }
 
     /**
@@ -65,13 +65,34 @@ public class GeminiApiClient implements AiClient {
      * to handle larger prompts sent to Gemini during outfit candidate ranking.
      */
     public String generateContentForOutfit(String systemPrompt, List<AiMessage> history, String userMessage) {
-        return doGenerateContent(outfitRestClient, systemPrompt, history, userMessage);
+        return executeWithFallback(outfitRestClient, systemPrompt, history, userMessage);
     }
 
-    private String doGenerateContent(RestClient client, String systemPrompt, List<AiMessage> history, String userMessage) {
+    private String executeWithFallback(RestClient client, String systemPrompt, List<AiMessage> history, String userMessage) {
+        String primaryModel = props.getPrimaryModel();
+        try {
+            return doGenerateContentWithModel(client, primaryModel, systemPrompt, history, userMessage);
+        } catch (Exception e) {
+            String fallbackModel = props.getFallbackModel();
+            if (fallbackModel != null && fallbackModel.equalsIgnoreCase(primaryModel)) {
+                throw e;
+            }
+            log.warn("[GEMINI_FAILOVER] primary_model={} failed ({}) -> failing over to fallback_model={}",
+                    primaryModel, e.getMessage(), fallbackModel);
+            try {
+                return doGenerateContentWithModel(client, fallbackModel, systemPrompt, history, userMessage);
+            } catch (Exception fallbackEx) {
+                log.error("[GEMINI_FAILOVER] both primary ({}) and fallback ({}) models failed",
+                        primaryModel, fallbackModel);
+                throw fallbackEx;
+            }
+        }
+    }
+
+    private String doGenerateContentWithModel(RestClient client, String modelName, String systemPrompt, List<AiMessage> history, String userMessage) {
         try {
             String responseBody = client.post()
-                .uri("/models/{model}:generateContent?key={key}", props.getModel(), props.getApiKey())
+                .uri("/models/{model}:generateContent?key={key}", modelName, props.getApiKey())
                 .contentType(MediaType.APPLICATION_JSON)
                 .accept(MediaType.APPLICATION_JSON)
                 .body(buildRequestBody(systemPrompt, history, userMessage))
@@ -79,12 +100,12 @@ public class GeminiApiClient implements AiClient {
                     MediaType contentType = response.getHeaders().getContentType();
                     String body = StreamUtils.copyToString(response.getBody(), StandardCharsets.UTF_8);
                     if (!response.getStatusCode().is2xxSuccessful()) {
-                        log.warn("[GEMINI] status={} contentType={} bodyPreview={}",
-                            response.getStatusCode(), contentType, preview(body));
+                        log.warn("[GEMINI] model={} status={} contentType={} bodyPreview={}",
+                            modelName, response.getStatusCode(), contentType, preview(body));
                         throw new AiServiceException("GEMINI_HTTP_ERROR");
                     }
                     if (contentType != null && !MediaType.APPLICATION_JSON.isCompatibleWith(contentType)) {
-                        log.warn("[GEMINI] unexpected_content_type={} bodyPreview={}", contentType, preview(body));
+                        log.warn("[GEMINI] model={} unexpected_content_type={} bodyPreview={}", modelName, contentType, preview(body));
                         throw new AiServiceException("GEMINI_UNEXPECTED_CONTENT_TYPE");
                     }
                     return body;
@@ -93,7 +114,7 @@ public class GeminiApiClient implements AiClient {
         } catch (AiServiceException e) {
             throw e;
         } catch (Exception e) {
-            log.warn("[GEMINI] call_failed reason={}", e.getMessage());
+            log.warn("[GEMINI] model={} call_failed reason={}", modelName, e.getMessage());
             throw new AiServiceException("AI_SERVICE_UNAVAILABLE", e);
         }
     }

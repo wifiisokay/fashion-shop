@@ -1002,22 +1002,79 @@ public class ChatServiceImpl implements ChatService {
     }
 
     private ChatMessageResponse occasionOutfitResponse(String content, NluSearchParams nluParams, ChatContext context) {
-        ProductRetrieverService.ProductSearchResult result = nluParams != null
-                ? productRetrieverService.search(nluParams, content, 6)
-                : productRetrieverService.search(content, 6);
+        // === TIER 1: searchOutfitBaseCandidates — dùng khi user đề cập loại trang phục (áo, quần, váy...) ===
+        ProductRetrieverService.ProductSearchResult baseResult =
+                productRetrieverService.searchOutfitBaseCandidates(content, nluParams, 5);
+        List<ChatProductCard> baseProducts = baseResult.products();
+
+        // === TIER 2: regular search — dùng khi câu hỏi dịp thuần túy ("đi làm", "hẹn hò"...) ===
+        if (baseProducts.isEmpty()) {
+            log.info("[AI_OCCASION_OUTFIT] tier1_empty -> tier2_search content='{}'", shorten(content));
+            ProductRetrieverService.ProductSearchResult tier2Result = nluParams != null
+                    ? productRetrieverService.search(nluParams, content, 6)
+                    : productRetrieverService.search(content, 6);
+            baseProducts = tier2Result.products();
+        }
+
+        // === Không tìm được gì → hỏi lại ===
+        if (baseProducts.isEmpty()) {
+            return occasionOutfitFallbackResponse(context);
+        }
+
+        // === Chọn anchor tốt nhất ===
+        ChatProductCard anchor = selectBestBase(baseProducts, content);
+        log.info("[AI_OCCASION_OUTFIT] anchor={} name='{}' role='{}' gender='{}'",
+                anchor.getId(), anchor.getName(), anchor.getRole(), anchor.getGender());
+
+        // === Gọi OutfitSuggestionService với context (occasion + style tag cho scoring) ===
+        List<OutfitComboResponse> combos = new ArrayList<>();
+        try {
+            OutfitSuggestionResponse suggestion =
+                    outfitSuggestionService.getSuggestions(anchor.getId(), anchor.getColorId(), context);
+            if (suggestion.getCombos() != null) {
+                combos.addAll(suggestion.getCombos());
+            }
+        } catch (Exception e) {
+            log.warn("[AI_OCCASION_OUTFIT] getSuggestions failed anchor={} reason={}",
+                    anchor.getId(), e.getMessage());
+        }
+
+        // === StyleAnswerComposer tạo lời thoại tự nhiên ===
+        StyleAnswerResult answer = styleAnswerComposer.compose(context, anchor, combos);
+
+        return ChatMessageResponse.builder()
+                .role("assistant")
+                .content(answer.getContent())
+                .intent(ChatIntent.OUTFIT_SUGGEST.name())
+                .internalIntent(InternalChatIntent.OUTFIT_BY_OCCASION.name())
+                .products(List.of(anchor))
+                .outfitCombos(combos.stream().limit(3).toList())
+                .styleTips(answer.getStyleTips())
+                .suggestedQuestions(answer.getSuggestedQuestions())
+                .context(toContextDto(context))
+                .createdAt(LocalDateTime.now())
+                .build();
+    }
+
+    private ChatMessageResponse occasionOutfitFallbackResponse(ChatContext context) {
         String occasion = context.getOccasionLabel() != null ? context.getOccasionLabel() : "dịp này";
         return ChatMessageResponse.builder()
                 .role("assistant")
-                .content("Mình gợi ý một vài sản phẩm đang còn hàng trong shop để bạn phối đồ cho " + occasion + ".")
-                .products(result.products())
-                .totalCount((int) result.total())
+                .content("Mình chưa tìm được sản phẩm phù hợp để ghép outfit cho " + occasion
+                        + ". Bạn mô tả cụ thể hơn được không? Ví dụ: áo thun, quần kaki, hay đầm?")
                 .intent(ChatIntent.OUTFIT_SUGGEST.name())
+                .internalIntent(InternalChatIntent.OUTFIT_BY_OCCASION.name())
+                .products(List.of())
+                .outfitCombos(List.of())
                 .styleTips(List.of(
-                        "Ưu tiên màu trung tính để dễ phối nhiều item.",
-                        "Chọn form vừa vặn để outfit trông gọn và dễ mặc.",
-                        "Có thể thêm áo khoác hoặc phụ kiện nếu cần điểm nhấn."
+                        "Thử hỏi: 'Gợi ý outfit đi làm với áo sơ mi'",
+                        "Hoặc: 'Phối đồ nữ đi hẹn hò với váy'"
                 ))
-                .suggestedQuestions(List.of("Gợi ý phối đồ với sản phẩm này", "Tìm sản phẩm theo màu", "Tư vấn theo dáng người"))
+                .suggestedQuestions(List.of(
+                        "Gợi ý outfit nam đi làm với áo sơ mi",
+                        "Phối đồ nữ đi hẹn hò với váy",
+                        "Set đồ đi dạo phố cuối tuần"
+                ))
                 .context(toContextDto(context))
                 .createdAt(LocalDateTime.now())
                 .build();
