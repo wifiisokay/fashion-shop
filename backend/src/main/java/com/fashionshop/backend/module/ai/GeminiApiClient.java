@@ -35,9 +35,9 @@ public class GeminiApiClient implements AiClient {
         requestFactory.setConnectTimeout(Duration.ofSeconds(props.getTimeoutSeconds()));
         requestFactory.setReadTimeout(Duration.ofSeconds(props.getTimeoutSeconds()));
         this.restClient = RestClient.builder()
-            .baseUrl(BASE_URL)
-            .requestFactory(requestFactory)
-            .build();
+                .baseUrl(BASE_URL)
+                .requestFactory(requestFactory)
+                .build();
 
         // Dedicated client for outfit rerank with higher read timeout
         int outfitTimeoutSeconds = Math.max(props.getTimeoutSeconds(), 60);
@@ -45,9 +45,9 @@ public class GeminiApiClient implements AiClient {
         outfitRequestFactory.setConnectTimeout(Duration.ofSeconds(props.getTimeoutSeconds()));
         outfitRequestFactory.setReadTimeout(Duration.ofSeconds(outfitTimeoutSeconds));
         this.outfitRestClient = RestClient.builder()
-            .baseUrl(BASE_URL)
-            .requestFactory(outfitRequestFactory)
-            .build();
+                .baseUrl(BASE_URL)
+                .requestFactory(outfitRequestFactory)
+                .build();
     }
 
     @Override
@@ -61,7 +61,8 @@ public class GeminiApiClient implements AiClient {
     }
 
     /**
-     * Outfit rerank variant — uses a dedicated RestClient with higher read timeout (60s min)
+     * Outfit rerank variant — uses a dedicated RestClient with higher read timeout
+     * (60s min)
      * to handle larger prompts sent to Gemini during outfit candidate ranking.
      */
     public String generateContentForOutfit(String systemPrompt, List<AiMessage> history, String userMessage) {
@@ -69,8 +70,10 @@ public class GeminiApiClient implements AiClient {
     }
 
     /**
-     * Light model variant — gọi thẳng lightModel (3.1 Flash Lite), không qua primary/fallback routing.
-     * Dùng cho các tác vụ nhẹ (AI Insight, NLU) để bảo tồn quota 20 RPD của Gemini 2.5 Flash
+     * Light model variant — gọi thẳng lightModel (3.1 Flash Lite), không qua
+     * primary/fallback routing.
+     * Dùng cho các tác vụ nhẹ (AI Insight, NLU) để bảo tồn quota 20 RPD của Gemini
+     * 2.5 Flash
      * chỉ cho Outfit Rerank.
      */
     public String generateContentLight(String systemPrompt, List<AiMessage> history, String userMessage) {
@@ -79,7 +82,8 @@ public class GeminiApiClient implements AiClient {
         return doGenerateContentWithModel(restClient, lightModelName, systemPrompt, history, userMessage);
     }
 
-    private String executeWithFallback(RestClient client, String systemPrompt, List<AiMessage> history, String userMessage) {
+    private String executeWithFallback(RestClient client, String systemPrompt, List<AiMessage> history,
+            String userMessage) {
         String primaryModel = props.getPrimaryModel();
         try {
             return doGenerateContentWithModel(client, primaryModel, systemPrompt, history, userMessage);
@@ -100,27 +104,29 @@ public class GeminiApiClient implements AiClient {
         }
     }
 
-    private String doGenerateContentWithModel(RestClient client, String modelName, String systemPrompt, List<AiMessage> history, String userMessage) {
+    private String doGenerateContentWithModel(RestClient client, String modelName, String systemPrompt,
+            List<AiMessage> history, String userMessage) {
         try {
             String responseBody = client.post()
-                .uri("/models/{model}:generateContent?key={key}", modelName, props.getApiKey())
-                .contentType(MediaType.APPLICATION_JSON)
-                .accept(MediaType.APPLICATION_JSON)
-                .body(buildRequestBody(systemPrompt, history, userMessage))
-                .exchange((request, response) -> {
-                    MediaType contentType = response.getHeaders().getContentType();
-                    String body = StreamUtils.copyToString(response.getBody(), StandardCharsets.UTF_8);
-                    if (!response.getStatusCode().is2xxSuccessful()) {
-                        log.warn("[GEMINI] model={} status={} contentType={} bodyPreview={}",
-                            modelName, response.getStatusCode(), contentType, preview(body));
-                        throw new AiServiceException("GEMINI_HTTP_ERROR");
-                    }
-                    if (contentType != null && !MediaType.APPLICATION_JSON.isCompatibleWith(contentType)) {
-                        log.warn("[GEMINI] model={} unexpected_content_type={} bodyPreview={}", modelName, contentType, preview(body));
-                        throw new AiServiceException("GEMINI_UNEXPECTED_CONTENT_TYPE");
-                    }
-                    return body;
-                });
+                    .uri("/models/{model}:generateContent?key={key}", modelName, props.getApiKey())
+                    .contentType(MediaType.APPLICATION_JSON)
+                    .accept(MediaType.APPLICATION_JSON)
+                    .body(buildRequestBody(systemPrompt, history, userMessage))
+                    .exchange((request, response) -> {
+                        MediaType contentType = response.getHeaders().getContentType();
+                        String body = StreamUtils.copyToString(response.getBody(), StandardCharsets.UTF_8);
+                        if (!response.getStatusCode().is2xxSuccessful()) {
+                            log.warn("[GEMINI] model={} status={} contentType={} bodyPreview={}",
+                                    modelName, response.getStatusCode(), contentType, preview(body));
+                            throw new AiServiceException("GEMINI_HTTP_ERROR");
+                        }
+                        if (contentType != null && !MediaType.APPLICATION_JSON.isCompatibleWith(contentType)) {
+                            log.warn("[GEMINI] model={} unexpected_content_type={} bodyPreview={}", modelName,
+                                    contentType, preview(body));
+                            throw new AiServiceException("GEMINI_UNEXPECTED_CONTENT_TYPE");
+                        }
+                        return body;
+                    });
             return extractText(responseBody);
         } catch (AiServiceException e) {
             throw e;
@@ -172,7 +178,7 @@ public class GeminiApiClient implements AiClient {
     private String extractText(String responseBody) {
         try {
             JsonNode parts = objectMapper.readTree(responseBody)
-                .path("candidates").path(0).path("content").path("parts");
+                    .path("candidates").path(0).path("content").path("parts");
             String text = parts.isArray() && !parts.isEmpty() ? parts.get(0).path("text").asText("") : "";
             if (text.isBlank()) {
                 throw new AiServiceException("GEMINI_EMPTY_CONTENT");

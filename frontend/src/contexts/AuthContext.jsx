@@ -3,6 +3,7 @@ import { createContext, useContext, useState, useEffect } from 'react';
 import { authApi } from '../api/authApi';
 
 const AuthContext = createContext(null);
+const USER_CACHE_KEY = 'auth_user_cache';
 
 /**
  * Normalize user object từ backend response.
@@ -23,28 +24,38 @@ const normalizeUser = (rawUser) => {
   };
 };
 
+const readUserCache = () => {
+  try {
+    const raw = sessionStorage.getItem(USER_CACHE_KEY);
+    return raw ? JSON.parse(raw) : null;
+  } catch {
+    return null;
+  }
+};
+
+const writeUserCache = (user) => {
+  try {
+    if (user) sessionStorage.setItem(USER_CACHE_KEY, JSON.stringify(user));
+    else sessionStorage.removeItem(USER_CACHE_KEY);
+  } catch { /* ignore quota errors */ }
+};
+
 export const AuthProvider = ({ children }) => {
-  const [user, setUser] = useState(null);
+  // Khởi tạo ngay từ cache — tránh "nháy" UI trạng thái chưa đăng nhập
+  // sau khi trang load lại (VNPay redirect, F5, v.v.)
+  const [user, setUser] = useState(() => readUserCache());
   const [isLoading, setIsLoading] = useState(true);
 
   const setAuthUser = (rawUser) => {
     const nextUser = normalizeUser(rawUser);
     setUser(nextUser);
-
+    writeUserCache(nextUser);
   };
 
   useEffect(() => {
     let isMounted = true;
 
     const bootstrapAuth = async () => {
-      // Sau khi VNPay redirect về, browser cần thêm thời gian để stabilize
-      // cookie cross-domain (SameSite=None) trước khi gọi /api/auth/me.
-      // Không delay → /auth/me có thể trả 401 → app hiểu nhầm là hết session.
-      const isPaymentResultPage = window.location.pathname.includes('/payment/result');
-      if (isPaymentResultPage) {
-        await new Promise((resolve) => setTimeout(resolve, 800));
-      }
-
       try {
         const response = await authApi.me();
         if (isMounted) {
@@ -52,12 +63,8 @@ export const AuthProvider = ({ children }) => {
         }
       } catch {
         if (isMounted) {
-          // Không reset user về null khi đang ở trang kết quả thanh toán —
-          // trình duyệt vừa từ VNPay redirect về có thể khiến probe /auth/me bị 401 tạm thời.
-          // Reset ở đây sẽ làm văng phiên đăng nhập của khách hàng.
-          if (!isPaymentResultPage) {
-            setAuthUser(null);
-          }
+          // /auth/me fail → xóa cache và reset state (session thực sự hết hạn)
+          setAuthUser(null);
         }
       } finally {
         if (isMounted) {
@@ -115,4 +122,4 @@ export const useAuth = () => {
     throw new Error('useAuth must be used within an AuthProvider');
   }
   return context;
-};
+};
