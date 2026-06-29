@@ -52,7 +52,12 @@ export const AuthProvider = ({ children }) => {
         }
       } catch {
         if (isMounted) {
-          setAuthUser(null);
+          // Không reset user về null khi đang ở trang kết quả thanh toán —
+          // trình duyệt vừa từ VNPay redirect về có thể khiến probe /auth/me bị 401 tạm thời.
+          // Reset ở đây sẽ làm văng phiên đăng nhập của khách hàng.
+          if (!isPaymentResultPage) {
+            setAuthUser(null);
+          }
         }
       } finally {
         if (isMounted) {
