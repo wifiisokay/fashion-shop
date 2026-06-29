@@ -68,6 +68,17 @@ public class GeminiApiClient implements AiClient {
         return executeWithFallback(outfitRestClient, systemPrompt, history, userMessage);
     }
 
+    /**
+     * Light model variant — gọi thẳng lightModel (3.1 Flash Lite), không qua primary/fallback routing.
+     * Dùng cho các tác vụ nhẹ (AI Insight, NLU) để bảo tồn quota 20 RPD của Gemini 2.5 Flash
+     * chỉ cho Outfit Rerank.
+     */
+    public String generateContentLight(String systemPrompt, List<AiMessage> history, String userMessage) {
+        String lightModelName = props.getLightModel();
+        log.debug("[GEMINI_LIGHT] model={}", lightModelName);
+        return doGenerateContentWithModel(restClient, lightModelName, systemPrompt, history, userMessage);
+    }
+
     private String executeWithFallback(RestClient client, String systemPrompt, List<AiMessage> history, String userMessage) {
         String primaryModel = props.getPrimaryModel();
         try {

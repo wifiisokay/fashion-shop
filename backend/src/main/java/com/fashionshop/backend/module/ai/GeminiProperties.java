@@ -18,6 +18,8 @@ public class GeminiProperties {
     private String model = "gemini-3.1-flash-lite";
     private String primaryModel = "gemini-2.5-flash";
     private String fallbackModel = "gemini-3.1-flash-lite";
+    /** Model nhẹ dành cho các tác vụ không cần AI phức tạp (AI Insight, NLU). */
+    private String lightModel = "gemini-3.1-flash-lite";
     private int maxOutputTokens = 800;
     private double temperature = 0.7;
     private int timeoutSeconds = 10;
@@ -28,5 +30,9 @@ public class GeminiProperties {
 
     public String getFallbackModel() {
         return (fallbackModel != null && !fallbackModel.isBlank()) ? fallbackModel : model;
+    }
+
+    public String getLightModel() {
+        return (lightModel != null && !lightModel.isBlank()) ? lightModel : fallbackModel;
     }
 }

@@ -85,10 +85,9 @@ public class AiInsightServiceImpl implements AiInsightService {
         AiInsightResponse response;
         try {
             String prompt = promptBuilder.build(product, reviews, avgRating);
-            // AiClientRouter.generate(systemPrompt, history, userMessage)
-            // Dùng prompt làm systemPrompt, history rỗng, userMessage rỗng
-            // — cùng pattern với ChatServiceImpl
-            String rawJson = aiClientRouter.generate(prompt, List.of(), "");
+            // Dùng lightModel (3.1 Flash Lite) để bảo tồn quota 20 RPD của Gemini 2.5 Flash
+            // chỉ cho Outfit Rerank — tác vụ AI quan trọng nhất.
+            String rawJson = aiClientRouter.generateLight(prompt, List.of(), "");
             response = parseResponse(rawJson, hasEnoughReviews);
             log.info("[AI_INSIGHT] gemini_success productId={} hasReviewSummary={}", productId, hasEnoughReviews);
         } catch (Exception e) {
