@@ -101,6 +101,7 @@ const StaffOrderDetailPage = () => {
       toast.success('Cập nhật trạng thái thành công');
     } catch (error) {
       toast.error(error?.response?.data?.message || 'Lỗi khi cập nhật trạng thái');
+      refetch?.(); // Tải lại thông tin mới nhất từ database ngay lập tức
     }
   };
 
@@ -116,6 +117,7 @@ const StaffOrderDetailPage = () => {
       toast.success('Hủy đơn hàng thành công');
     } catch (error) {
       toast.error(error?.response?.data?.message || 'Lỗi khi hủy đơn');
+      refetch?.(); // Tải lại thông tin mới nhất từ database ngay lập tức
     }
   };
 
@@ -179,6 +181,7 @@ const StaffOrderDetailPage = () => {
       refetch?.();
     } catch (error) {
       alert(error?.response?.data?.message || 'Lỗi khi xác nhận đóng gói');
+      refetch?.(); // Tải lại thông tin mới nhất từ database ngay lập tức
     }
   };
 
