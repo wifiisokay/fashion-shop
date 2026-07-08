@@ -31,10 +31,10 @@ public interface ReturnRequestRepository extends JpaRepository<ReturnRequest, Lo
 
     Page<ReturnRequest> findByUserIdOrderByCreatedAtDesc(Long userId, Pageable pageable);
 
-    @EntityGraph(attributePaths = {"order", "user", "items"})
+    @EntityGraph(attributePaths = {"order", "user"})
     Page<ReturnRequest> findAllByOrderByCreatedAtDesc(Pageable pageable);
 
-    @EntityGraph(attributePaths = {"order", "user", "items"})
+    @EntityGraph(attributePaths = {"order", "user"})
     Page<ReturnRequest> findByStatusOrderByCreatedAtDesc(ReturnStatus status, Pageable pageable);
 
     Optional<ReturnRequest> findFirstByOrderIdOrderByCreatedAtDesc(Long orderId);

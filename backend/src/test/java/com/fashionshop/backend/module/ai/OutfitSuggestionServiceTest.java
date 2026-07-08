@@ -8,9 +8,7 @@ import java.util.List;
 import java.util.Optional;
 
 import static org.assertj.core.api.Assertions.assertThat;
-import static org.mockito.ArgumentMatchers.any;
-import static org.mockito.ArgumentMatchers.anyLong;
-import static org.mockito.ArgumentMatchers.anyString;
+import static org.mockito.ArgumentMatchers.*;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.when;
 
@@ -25,12 +23,13 @@ class OutfitSuggestionServiceTest {
         AiClientRouter ai = mock(AiClientRouter.class);
         GeminiOutfitProvider gemini = mock(GeminiOutfitProvider.class);
         OutfitScoringService scoring = mock(OutfitScoringService.class);
-        OutfitSuggestionService service = new OutfitSuggestionService(cache, products, candidates, tags, ai, gemini, scoring);
+        OutfitSuggestionService service = new OutfitSuggestionService(cache, products, candidates, tags, ai, gemini,
+                scoring);
 
         ChatProductCard top = card(1L, "top", "MALE");
         ChatProductCard bottom = card(2L, "bottom", "MALE");
         when(products.findProductCard(1L, 11L)).thenReturn(Optional.of(top));
-        when(candidates.getCandidatesForSlot(top, "bottom", 40)).thenReturn(List.of(bottom));
+        when(candidates.getCandidatesForSlot(any(), anyString(), anyInt())).thenReturn(List.of(bottom));
         when(gemini.generateCombos(any(), anyString(), any(), any(), any(), any())).thenReturn(List.of());
         when(tags.labelForStyle(anyString())).thenReturn("daily");
         when(ai.generate(anyString(), any(), anyString())).thenThrow(new IllegalStateException("Gemini down"));
@@ -45,12 +44,12 @@ class OutfitSuggestionServiceTest {
 
     private ChatProductCard card(Long id, String role, String gender) {
         return ChatProductCard.builder()
-            .id(id)
-            .colorId(id + 10)
-            .name(role)
-            .role(role)
-            .gender(gender)
-            .colorFamily("neutral")
-            .build();
+                .id(id)
+                .colorId(id + 10)
+                .name(role)
+                .role(role)
+                .gender(gender)
+                .colorFamily("neutral")
+                .build();
     }
 }

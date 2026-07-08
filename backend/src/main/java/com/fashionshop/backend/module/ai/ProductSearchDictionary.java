@@ -14,7 +14,8 @@ public final class ProductSearchDictionary {
     private static final List<String> ATTRIBUTE_TERMS = List.of(
         "cotton", "linen", "kaki", "len", "nỉ", "ni", "cardigan", "blazer", "jacket",
         "oversized", "oversize", "slim", "regular", "relaxed", "fitted", "loose",
-        "mùa hè", "mua he", "mùa đông", "mua dong", "xuân hè", "xuan he", "thu đông", "thu dong"
+        "mùa hè", "mua he", "mùa đông", "mua dong", "xuân hè", "xuan he", "thu đông", "thu dong",
+        "tay dài", "tay dai", "dài tay", "dai tay", "tay ngắn", "tay ngan", "ngắn tay", "ngan tay"
     );
 
     static {

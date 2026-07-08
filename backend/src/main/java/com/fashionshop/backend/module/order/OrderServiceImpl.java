@@ -414,6 +414,10 @@ public class OrderServiceImpl implements OrderService {
         }
 
         boolean paidVnPay = isPaidVnPay(order, payment);
+        if (paidVnPay && order.getStatus() == OrderStatus.PENDING) {
+            throw new BusinessException(ErrorCode.ORDER_CANNOT_CANCEL, HttpStatus.BAD_REQUEST,
+                    "Don VNPay da thanh toan khong the tu choi o buoc xac nhan");
+        }
 
         if (paidVnPay) {
             refundPaidVnPayOrder(orderId, payment, request.getReason());

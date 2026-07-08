@@ -24,7 +24,11 @@ axiosInstance.interceptors.response.use(
         detail: { message },
       }));
       const protectedPrefixes = ['/cart', '/checkout', '/orders', '/profile', '/returns', '/admin', '/staff'];
-      if (protectedPrefixes.some((prefix) => window.location.pathname.startsWith(prefix))) {
+      // Không redirect về /login khi đang ở trang kết quả thanh toán —
+      // trang này dùng public endpoint để kiểm tra trạng thái, không cần auth.
+      // Redirect nhầm ở đây sẽ làm mất kết quả thanh toán vừa hiển thị.
+      const isPaymentResult = window.location.pathname.includes('/payment/result');
+      if (!isPaymentResult && protectedPrefixes.some((prefix) => window.location.pathname.startsWith(prefix))) {
         window.location.assign('/login');
       }
     }

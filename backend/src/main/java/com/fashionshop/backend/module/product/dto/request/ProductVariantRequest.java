@@ -17,7 +17,13 @@ public class ProductVariantRequest {
     @Size(max = 20, message = "Size tối đa 20 ký tự")
     private String size;
 
-    @NotNull(message = "Số lượng tồn kho không được để trống")
+    /**
+     * Số lượng tồn kho BAN ĐẦU — chỉ bắt buộc khi CREATE (POST).
+     * Khi UPDATE (PUT), trường này bị bỏ qua hoàn toàn — service KHÔNG đọc giá trị
+     * này để set lại stockQuantity. Validate "bắt buộc khi create" được thực hiện
+     * thủ công trong ProductVariantServiceImpl.create(), không dùng @NotNull ở đây
+     * vì cùng DTO được tái sử dụng cho cả 2 thao tác.
+     */
     @Min(value = 0, message = "Số lượng tồn kho không được âm")
     private Integer stockQuantity;
 

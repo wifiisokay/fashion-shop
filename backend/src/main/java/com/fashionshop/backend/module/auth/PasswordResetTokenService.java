@@ -38,6 +38,18 @@ public class PasswordResetTokenService {
         return rawToken;
     }
 
+    public String validateToken(String rawToken) {
+        if (rawToken == null || rawToken.isBlank()) {
+            return null;
+        }
+        String key = hash(rawToken);
+        TokenEntry entry = tokenStore.get(key);
+        if (entry == null || entry.expiresAt().isBefore(Instant.now())) {
+            return null;
+        }
+        return entry.email();
+    }
+
     public String consumeToken(String rawToken) {
         if (rawToken == null || rawToken.isBlank()) {
             return null;

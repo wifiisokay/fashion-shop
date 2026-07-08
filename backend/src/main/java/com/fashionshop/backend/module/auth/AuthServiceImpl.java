@@ -114,15 +114,12 @@ public class AuthServiceImpl implements AuthService {
         }
 
         String resetToken = passwordResetTokenService.createToken(request.getEmail());
-        boolean sent = passwordResetMailService.sendResetPasswordEmail(request.getEmail(), resetToken);
-        if (!sent) {
-            log.warn("Reset password email was not sent for {}. Verify SMTP credentials/config.", request.getEmail());
-        }
+        passwordResetMailService.sendResetPasswordEmail(request.getEmail(), resetToken);
     }
 
     @Override
     public void resetPassword(ResetPasswordRequest request) {
-        String email = passwordResetTokenService.consumeToken(request.getToken());
+        String email = passwordResetTokenService.validateToken(request.getToken());
         if (email == null) {
             throw new BusinessException(
                     ErrorCode.RESET_TOKEN_INVALID,
@@ -140,6 +137,7 @@ public class AuthServiceImpl implements AuthService {
                     "Mật khẩu mới không được trùng với mật khẩu hiện tại");
         }
 
+        passwordResetTokenService.consumeToken(request.getToken());
         user.setPassword(passwordEncoder.encode(request.getNewPassword()));
         user.setTokenVersion(user.getTokenVersion() + 1);
         userRepository.save(user);

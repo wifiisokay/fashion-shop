@@ -7,14 +7,19 @@ import lombok.Setter;
 
 /**
  * Request body cho PATCH /api/admin/products/{productId}/variants/{variantId}/stock
- * Chỉ cho phép cập nhật số lượng tồn kho — tách biệt với ProductVariantRequest
- * để EMPLOYEE không thể thay đổi giá/màu/size.
+ *
+ * Chỉ nhận số lượng TĂNG THÊM (addedStock), không cho phép ghi đè trực tiếp
+ * stockQuantity — tránh admin vô tình đặt sai số làm mất dữ liệu tồn kho thực tế
+ * (ví dụ: đơn hàng vừa trừ kho song song với lúc admin sửa).
+ *
+ * Để giảm tồn kho (hàng lỗi, thất lạc...), cần một luồng riêng có audit log,
+ * không nằm trong phạm vi endpoint này.
  */
 @Getter
 @Setter
 public class StockUpdateRequest {
 
-    @NotNull(message = "Số lượng tồn kho không được để trống")
-    @Min(value = 0, message = "Số lượng tồn kho không được âm")
-    private Integer stockQuantity;
+    @NotNull(message = "Số lượng nhập thêm không được để trống")
+    @Min(value = 1, message = "Số lượng nhập thêm phải lớn hơn 0")
+    private Integer addedStock;
 }

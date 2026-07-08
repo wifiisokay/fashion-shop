@@ -23,7 +23,7 @@ public class GeminiOutfitProvider {
 
     private static final int MAX_COMBOS = 3;
 
-    private final AiClientRouter aiClientRouter;
+    private final GeminiApiClient geminiApiClient;
     private final ObjectMapper objectMapper;
 
     public List<OutfitComboResponse> generateCombos(
@@ -36,7 +36,7 @@ public class GeminiOutfitProvider {
         Map<String, ChatProductCard> pool = buildPool(base, topCandidates, bottomCandidates, outerCandidates);
         String prompt = buildPrompt(base, anchorRole, topCandidates, bottomCandidates, outerCandidates);
         try {
-            String raw = aiClientRouter.generate(prompt, List.of(), "Chon toi da 3 combo va tra JSON.");
+            String raw = geminiApiClient.generateContentForOutfit(prompt, List.of(), "Chon toi da 3 combo va tra JSON.");
             return parseAndValidate(raw, base, anchorRole, pool);
         } catch (Exception e) {
             log.warn("[OUTFIT_AI] provider=GEMINI failed fallback=RULE reason={}", e.getMessage());
@@ -52,14 +52,14 @@ public class GeminiOutfitProvider {
             List<ChatProductCard> outers) {
         return """
             Ban la stylist cho shop thoi trang Viet Nam.
-            Chi chon productId/colorId trong candidate pool. Khong tu tao san pham.
+            Chi chon id/c trong candidate pool. Khong tu tao san pham.
             Moi combo phai dung slot rules: %s
             Outer la optional tru khi san pham goc la OUTER.
             Tra JSON thuan: {"combos":[{"label":"...","score":0.9,"reason":"...","colorStory":"...","occasion":["daily"],"top":{"productId":1,"colorId":2},"bottom":{"productId":3,"colorId":4},"outer":null}]}
             BASE role=%s: %s
-            TOP: %s
-            BOTTOM: %s
-            OUTER: %s
+            TOP pool (id,colorId,role): %s
+            BOTTOM pool: %s
+            OUTER pool: %s
             """.formatted(slotRules(anchorRole), anchorRole, serialize(base), serialize(tops), serialize(bottoms), serialize(outers));
     }
 
@@ -79,8 +79,8 @@ public class GeminiOutfitProvider {
 
     private String serialize(ChatProductCard card) {
         if (card == null) return "null";
-        return "{productId:%s,colorId:%s,name:\"%s\",role:%s,gender:%s}".formatted(
-            card.getId(), card.getColorId(), safe(card.getName()), card.getRole(), card.getGender());
+        return "{id:%s,c:%s,r:%s}".formatted(
+            card.getId(), card.getColorId(), card.getRole());
     }
 
     private List<OutfitComboResponse> parseAndValidate(

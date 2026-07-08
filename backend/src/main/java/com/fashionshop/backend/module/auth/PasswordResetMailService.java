@@ -7,6 +7,7 @@ import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.mail.javamail.JavaMailSender;
 import org.springframework.mail.javamail.MimeMessageHelper;
+import org.springframework.scheduling.annotation.Async;
 import org.springframework.stereotype.Service;
 import org.springframework.web.util.UriComponentsBuilder;
 
@@ -32,10 +33,11 @@ public class PasswordResetMailService {
     @Value("${spring.mail.username:}")
     private String mailUsername;
 
-    @Value("${auth.reset-password-url-base:http://localhost:5173/reset-password}")
+    @Value("${auth.reset-password-url-base:https://localhost:5173/reset-password}")
     private String resetPasswordUrlBase;
 
-    public boolean sendResetPasswordEmail(String toEmail, String resetToken) {
+    @Async
+    public void sendResetPasswordEmail(String toEmail, String resetToken) {
         String resetLink = UriComponentsBuilder
             .fromUriString(resetPasswordUrlBase)
             .queryParam("token", resetToken)
@@ -44,7 +46,7 @@ public class PasswordResetMailService {
 
         if (!mailEnabled) {
             log.warn("[DEV] Password reset link for {}: {}", toEmail, resetLink);
-            return false;
+            return;
         }
 
         String effectiveFrom = (fromEmail == null || fromEmail.isBlank()) ? mailUsername : fromEmail;
@@ -60,11 +62,9 @@ public class PasswordResetMailService {
 
             mailSender.send(message);
             log.info("Password reset email sent to: {}", toEmail);
-            return true;
         } catch (MessagingException ex) {
             log.error("Failed to send password reset email to: {}", toEmail, ex);
             log.warn("[DEV] Password reset link for {}: {}", toEmail, resetLink);
-            return false;
         }
     }
 

@@ -31,14 +31,12 @@ public class OutfitSuggestionService {
     private static final Duration REDIS_LOCK_POLL_INTERVAL = Duration.ofMillis(250);
 
     private static final List<StyleProfile> STYLE_PROFILES = List.of(
-        new StyleProfile("daily", "Dao pho de mac", "hang ngay, dao pho hoac cuoi tuan"),
-        new StyleProfile("work-ready", "Cong so linh hoat", "di lam, gap go hoac dao pho lich su"),
-        new StyleProfile("weekend", "Chill cuoi tuan", "di choi, cafe hoac gap ban be"),
-        new StyleProfile("clean", "Toi gian hien dai", "di hang ngay hoac hen gap nhe nhang")
-    );
+            new StyleProfile("daily", "Dao pho de mac", "hang ngay, dao pho hoac cuoi tuan"),
+            new StyleProfile("work-ready", "Cong so linh hoat", "di lam, gap go hoac dao pho lich su"),
+            new StyleProfile("weekend", "Chill cuoi tuan", "di choi, cafe hoac gap ban be"),
+            new StyleProfile("clean", "Toi gian hien dai", "di hang ngay hoac hen gap nhe nhang"));
 
-    private final ConcurrentHashMap<String, CompletableFuture<List<OutfitComboResponse>>> buildingMap =
-        new ConcurrentHashMap<>();
+    private final ConcurrentHashMap<String, CompletableFuture<List<OutfitComboResponse>>> buildingMap = new ConcurrentHashMap<>();
 
     private final OutfitCacheManager outfitCacheManager;
     private final ProductRetrieverService productRetrieverService;
@@ -47,6 +45,12 @@ public class OutfitSuggestionService {
     private final AiClientRouter aiClientRouter;
     private final GeminiOutfitProvider geminiOutfitProvider;
     private final OutfitScoringService outfitScoringService;
+
+    /**
+     * Per-request flag: skip generateReason AI call if Gemini already failed in
+     * this request.
+     */
+    private volatile boolean geminiAvailable = true;
 
     public OutfitSuggestionResponse getSuggestions(Long productId, Long colorId) {
         return getSuggestions(productId, colorId, false);
@@ -65,25 +69,25 @@ public class OutfitSuggestionService {
     }
 
     private OutfitSuggestionResponse getSuggestions(Long productId, Long colorId, boolean refresh, Long userId,
-                                                    ChatContext context) {
+            ChatContext context) {
         log.info("[OUTFIT] request productId={}, colorId={}", productId, colorId);
         boolean contextual = context != null && (context.getStyleTag() != null || context.getOccasionTag() != null);
         if (!refresh && !contextual) {
             var cached = outfitCacheManager.tryLoadValidCache(productId, colorId);
             if (cached.isPresent() && isValidCachedOutfit(productId, colorId, cached.get().combos())) {
                 log.info("[OUTFIT] cache_hit productId={}, colorId={}, combos={}",
-                    productId, colorId, cached.get().combos().size());
+                        productId, colorId, cached.get().combos().size());
                 return OutfitSuggestionResponse.builder()
-                    .productId(productId)
-                    .colorId(colorId)
-                    .text("Minh goi y cac bo outfit phu hop voi san pham va mau ban dang chon:")
-                    .cached(true)
-                    .createdAt(cached.get().createdAt())
-                    .combos(cached.get().combos())
-                    .build();
+                        .productId(productId)
+                        .colorId(colorId)
+                        .text("Minh goi y cac bo outfit phu hop voi san pham va mau ban dang chon:")
+                        .cached(true)
+                        .createdAt(cached.get().createdAt())
+                        .combos(cached.get().combos())
+                        .build();
             }
             cached.ifPresent(value -> log.info("[OUTFIT] cache_invalid productId={}, colorId={} -> rebuild",
-                productId, colorId));
+                    productId, colorId));
             if (cached.isEmpty()) {
                 log.info("[OUTFIT] cache_miss_or_expired productId={}, colorId={}", productId, colorId);
             }
@@ -91,9 +95,12 @@ public class OutfitSuggestionService {
             log.info("[OUTFIT] cache_refresh productId={}, colorId={}", productId, colorId);
         }
 
+        // Reset availability flag for this request
+        geminiAvailable = true;
+
         List<OutfitComboResponse> combos = contextual
-            ? buildCombos(productId, colorId, context.getStyleTag(), context.getOccasionTag(), userId)
-            : getOrBuildCombos(productId, colorId, userId);
+                ? buildCombos(productId, colorId, context.getStyleTag(), context.getOccasionTag(), userId)
+                : getOrBuildCombos(productId, colorId, userId);
         log.info("[OUTFIT] build_result productId={}, colorId={}, combos={}", productId, colorId, combos.size());
         LocalDateTime createdAt = LocalDateTime.now();
         if (combos.isEmpty()) {
@@ -101,22 +108,22 @@ public class OutfitSuggestionService {
         }
 
         String provider = combos.stream()
-            .map(OutfitComboResponse::getProvider)
-            .filter(p -> p != null && !p.isBlank())
-            .findFirst()
-            .orElse("RULE");
+                .map(OutfitComboResponse::getProvider)
+                .filter(p -> p != null && !p.isBlank())
+                .findFirst()
+                .orElse("RULE");
 
         return OutfitSuggestionResponse.builder()
-            .productId(productId)
-            .colorId(colorId)
-            .text(combos.isEmpty()
-                ? "Hien shop chua co du san pham khac vai tro de phoi thanh outfit hoan chinh cho item nay."
-                : "Minh goi y cac bo outfit phu hop voi san pham va mau ban dang chon:")
-            .cached(false)
-            .provider(provider)
-            .createdAt(createdAt)
-            .combos(combos)
-            .build();
+                .productId(productId)
+                .colorId(colorId)
+                .text(combos.isEmpty()
+                        ? "Hien shop chua co du san pham khac vai tro de phoi thanh outfit hoan chinh cho item nay."
+                        : "Minh goi y cac bo outfit phu hop voi san pham va mau ban dang chon:")
+                .cached(false)
+                .provider(provider)
+                .createdAt(createdAt)
+                .combos(combos)
+                .build();
     }
 
     private List<OutfitComboResponse> getOrBuildCombos(Long productId, Long colorId, Long userId) {
@@ -142,10 +149,10 @@ public class OutfitSuggestionService {
 
         Optional<String> lockToken = outfitCacheManager.tryAcquireBuildLock(productId, colorId);
         if (lockToken.isEmpty()) {
-            Optional<OutfitCacheManager.CachedOutfit> cacheAfterWait =
-                waitForRedisCache(productId, colorId, REDIS_LOCK_WAIT_TIMEOUT);
+            Optional<OutfitCacheManager.CachedOutfit> cacheAfterWait = waitForRedisCache(productId, colorId,
+                    REDIS_LOCK_WAIT_TIMEOUT);
             if (cacheAfterWait.isPresent()
-                && isValidCachedOutfit(productId, colorId, cacheAfterWait.get().combos())) {
+                    && isValidCachedOutfit(productId, colorId, cacheAfterWait.get().combos())) {
                 future.complete(cacheAfterWait.get().combos());
                 buildingMap.remove(key, future);
                 return cacheAfterWait.get().combos();
@@ -159,11 +166,11 @@ public class OutfitSuggestionService {
                 try {
                     outfitCacheManager.safeUpsert(productId, colorId, combos);
                     String provider = combos.stream()
-                        .map(OutfitComboResponse::getProvider)
-                        .filter(p -> p != null)
-                        .findFirst().orElse("RULE");
+                            .map(OutfitComboResponse::getProvider)
+                            .filter(p -> p != null)
+                            .findFirst().orElse("RULE");
                     log.info("[OUTFIT] cache_upserted productId={}, colorId={}, combos={} provider={}",
-                        productId, colorId, combos.size(), provider);
+                            productId, colorId, combos.size(), provider);
                 } catch (Exception e) {
                     log.warn("[OUTFIT] cache_upsert_skipped key={}, error={}", key, e.getMessage());
                 }
@@ -209,32 +216,44 @@ public class OutfitSuggestionService {
         return buildCombos(productId, colorId, null, null, userId);
     }
 
-    public List<OutfitComboResponse> buildCombos(Long productId, Long colorId, String styleTag, String occasionTag, Long userId) {
+    public List<OutfitComboResponse> buildCombos(Long productId, Long colorId, String styleTag, String occasionTag,
+            Long userId) {
         ChatProductCard base = productRetrieverService.findProductCard(productId, colorId)
-            .orElseThrow(() -> new IllegalArgumentException("Product is not available"));
+                .orElseThrow(() -> new IllegalArgumentException("Product is not available"));
         String anchorRole = normalizeRole(base.getRole());
         log.info("[OUTFIT] base productId={}, colorId={}, role={}, gender={}, colorName={}, colorFamily={}",
-            base.getId(), base.getColorId(), anchorRole, base.getGender(), base.getColorName(), base.getColorFamily());
+                base.getId(), base.getColorId(), anchorRole, base.getGender(), base.getColorName(),
+                base.getColorFamily());
 
         // Phase A: Mở rộng pool candidates (40 bottom, 25 outer)
         List<ChatProductCard> rawTopCandidates = needsSlot(anchorRole, "top")
-            ? outfitCandidateRetriever.getCandidatesForSlot(base, "top", 30)
-            : List.of();
+                ? outfitCandidateRetriever.getCandidatesForSlot(base, "top", 20)
+                : List.of();
         List<ChatProductCard> rawBottomCandidates = needsSlot(anchorRole, "bottom")
-            ? outfitCandidateRetriever.getCandidatesForSlot(base, "bottom", 40)
-            : List.of();
+                ? outfitCandidateRetriever.getCandidatesForSlot(base, "bottom", 15)
+                : List.of();
         List<ChatProductCard> rawOuterCandidates = needsSlot(anchorRole, "outer")
-            ? outfitCandidateRetriever.getCandidatesForSlot(base, "outer", 25)
-            : List.of();
-        log.info("[OUTFIT] raw_candidates productId={} top={} bottom={} outer={}",
-            productId, rawTopCandidates.size(), rawBottomCandidates.size(), rawOuterCandidates.size());
+                ? outfitCandidateRetriever.getCandidatesForSlot(base, "outer", 10)
+                : List.of();
 
-        // Phase B: shuffle → local score → shortlist top 20
-        List<ChatProductCard> topCandidates = scoreAndShortlist(base, rawTopCandidates, productId, colorId, "top", 20, styleTag, occasionTag);
-        List<ChatProductCard> bottomCandidates = scoreAndShortlist(base, rawBottomCandidates, productId, colorId, "bottom", 20, styleTag, occasionTag);
-        List<ChatProductCard> outerCandidates = scoreAndShortlist(base, rawOuterCandidates, productId, colorId, "outer", 15, styleTag, occasionTag);
+        List<ChatProductCard> balancedTop = balanceCandidatesByCategory(rawTopCandidates, 6);
+        List<ChatProductCard> balancedBottom = balanceCandidatesByCategory(rawBottomCandidates, 6);
+        List<ChatProductCard> balancedOuter = balanceCandidatesByCategory(rawOuterCandidates, 5);
+
+        log.info(
+                "[OUTFIT] raw_candidates productId={} top={} bottom={} outer={} (after balancing top={} bottom={} outer={})",
+                productId, rawTopCandidates.size(), rawBottomCandidates.size(), rawOuterCandidates.size(),
+                balancedTop.size(), balancedBottom.size(), balancedOuter.size());
+
+        // Phase B: shuffle → local score → shortlist top 8 (tops/bottoms), 5 (outers)
+        List<ChatProductCard> topCandidates = scoreAndShortlist(base, balancedTop, productId, colorId, "top", 8,
+                styleTag, occasionTag);
+        List<ChatProductCard> bottomCandidates = scoreAndShortlist(base, balancedBottom, productId, colorId,
+                "bottom", 8, styleTag, occasionTag);
+        List<ChatProductCard> outerCandidates = scoreAndShortlist(base, balancedOuter, productId, colorId, "outer",
+                5, styleTag, occasionTag);
         log.info("[OUTFIT] shortlisted_candidates productId={} top={} bottom={} outer={}",
-            productId, topCandidates.size(), bottomCandidates.size(), outerCandidates.size());
+                productId, topCandidates.size(), bottomCandidates.size(), outerCandidates.size());
 
         base.setRole("main");
         base.setReason("San pham chinh ban dang xem");
@@ -243,11 +262,12 @@ public class OutfitSuggestionService {
         List<OutfitComboResponse> combos = List.of();
         if (!topCandidates.isEmpty() || !bottomCandidates.isEmpty()) {
             log.info("[OUTFIT_AI] provider=GEMINI phase=rerank candidates=top:{}/bottom:{}/outer:{}",
-                topCandidates.size(), bottomCandidates.size(), outerCandidates.size());
+                    topCandidates.size(), bottomCandidates.size(), outerCandidates.size());
             try {
                 combos = geminiOutfitProvider.generateCombos(
-                    base, anchorRole, topCandidates, bottomCandidates, outerCandidates, userId);
+                        base, anchorRole, topCandidates, bottomCandidates, outerCandidates, userId);
             } catch (Exception e) {
+                geminiAvailable = false;
                 log.warn("[OUTFIT_AI] provider=GEMINI failed fallback=RULE reason={}", e.getMessage());
             }
         }
@@ -255,7 +275,8 @@ public class OutfitSuggestionService {
         // Phase E: Rule-based fallback nếu Gemini không trả combo
         if (combos.isEmpty()) {
             log.info("[OUTFIT_AI] provider=RULE fallback=true");
-            combos = buildRuleBasedCombos(base, anchorRole, topCandidates, bottomCandidates, outerCandidates, productId, colorId);
+            combos = buildRuleBasedCombos(base, anchorRole, topCandidates, bottomCandidates, outerCandidates, productId,
+                    colorId);
             log.info("[OUTFIT_AI] provider=RULE success combos={}", combos.size());
         } else {
             log.info("[OUTFIT_AI] provider=GEMINI success combos={}", combos.size());
@@ -266,38 +287,43 @@ public class OutfitSuggestionService {
 
     /**
      * Phase B: Shuffle pool trước, sort theo score, lấy shortlist.
-     * shuffle() TRƯỚC sort → đảm bảo khi score bằng nhau thì thứ tự khác nhau mỗi lần gọi.
+     * shuffle() TRƯỚC sort → đảm bảo khi score bằng nhau thì thứ tự khác nhau mỗi
+     * lần gọi.
      */
     private List<ChatProductCard> scoreAndShortlist(
             ChatProductCard base,
             List<ChatProductCard> pool,
             Long productId, Long colorId, String slotRole, int limit, String styleTag, String occasionTag) {
-        if (pool.isEmpty()) return List.of();
+        if (pool.isEmpty())
+            return List.of();
         List<ChatProductCard> copy = new ArrayList<>(pool);
         long seed = System.nanoTime()
-            ^ (productId == null ? 0 : productId)
-            ^ (colorId == null ? 0 : colorId << 8)
-            ^ slotRole.hashCode();
+                ^ (productId == null ? 0 : productId)
+                ^ (colorId == null ? 0 : colorId << 8)
+                ^ slotRole.hashCode();
         Collections.shuffle(copy, new Random(seed));
         for (ChatProductCard candidate : copy) {
-            OutfitScoringService.ScoreBreakdown breakdown = outfitScoringService.scoreWithBreakdown(base, candidate, styleTag, occasionTag);
+            OutfitScoringService.ScoreBreakdown breakdown = outfitScoringService.scoreWithBreakdown(base, candidate,
+                    styleTag, occasionTag);
             if (breakdown == null) {
                 breakdown = new OutfitScoringService.ScoreBreakdown(0, 0, 0, 0, 0, 0);
             }
-            log.info("[AI_STYLE_SCORE] baseId={} candidateId={} role={} score={} color={} fit={} stock={} style={} occasion={}",
-                base.getId(), candidate.getId(), slotRole,
-                breakdown.total(), breakdown.colorFamily(), breakdown.fitBalance(), breakdown.stock(),
-                breakdown.styleTag(), breakdown.occasionTag());
+            log.info(
+                    "[AI_STYLE_SCORE] baseId={} candidateId={} role={} score={} color={} fit={} stock={} style={} occasion={}",
+                    base.getId(), candidate.getId(), slotRole,
+                    breakdown.total(), breakdown.colorFamily(), breakdown.fitBalance(), breakdown.stock(),
+                    breakdown.styleTag(), breakdown.occasionTag());
         }
         return copy.stream()
-            .sorted(java.util.Comparator.comparingDouble(
-                (ChatProductCard c) -> -scoreTotal(base, c, styleTag, occasionTag)))
-            .limit(limit)
-            .toList();
+                .sorted(java.util.Comparator.comparingDouble(
+                        (ChatProductCard c) -> -scoreTotal(base, c, styleTag, occasionTag)))
+                .limit(limit)
+                .toList();
     }
 
     private double scoreTotal(ChatProductCard base, ChatProductCard candidate, String styleTag, String occasionTag) {
-        OutfitScoringService.ScoreBreakdown score = outfitScoringService.scoreWithBreakdown(base, candidate, styleTag, occasionTag);
+        OutfitScoringService.ScoreBreakdown score = outfitScoringService.scoreWithBreakdown(base, candidate, styleTag,
+                occasionTag);
         return score != null ? score.total() : 0;
     }
 
@@ -321,38 +347,40 @@ public class OutfitSuggestionService {
             ChatProductCard top = anchorIs(anchorRole, "top") ? base : pick(topCandidates, i);
             ChatProductCard bottom = anchorIs(anchorRole, "bottom") ? base : pick(bottomCandidates, i);
             ChatProductCard outer = shouldUseOuter(anchorRole, i, outerCandidates)
-                ? (anchorIs(anchorRole, "outer") ? base : pick(outerCandidates, i))
-                : null;
+                    ? (anchorIs(anchorRole, "outer") ? base : pick(outerCandidates, i))
+                    : null;
 
             addIfAbsent(products, top);
             addIfAbsent(products, bottom);
             addIfAbsent(products, outer);
 
             if (!hasRequiredSlots(anchorRole, top, bottom, outer)) {
-                log.debug("[OUTFIT] skip_style style={} reason=insufficient_items size={}", STYLE_PROFILES.get(i).style(), products.size());
+                log.debug("[OUTFIT] skip_style style={} reason=insufficient_items size={}",
+                        STYLE_PROFILES.get(i).style(), products.size());
                 continue;
             }
 
             StyleProfile profile = STYLE_PROFILES.get(i);
             String description = generateReason(profile.label(), products);
             combos.add(OutfitComboResponse.builder()
-                .outfitType(profile.style())
-                .style(profile.style())
-                .label(profile.label())
-                .description(description)
-                .reason(description)
-                .colorStory(buildColorStory(products))
-                .occasion(profile.occasion())
-                .provider("RULE")
-                .topSlot(slotFrom(top, "top", !anchorIs(anchorRole, "top")))
-                .bottomSlot(slotFrom(bottom, "bottom", !anchorIs(anchorRole, "bottom")))
-                .outerSlot(slotFrom(outer, "outer", !anchorIs(anchorRole, "outer")))
-                .products(products)
-                .items(products)
-                .build());
+                    .outfitType(profile.style())
+                    .style(profile.style())
+                    .label(profile.label())
+                    .description(description)
+                    .reason(description)
+                    .colorStory(buildColorStory(products))
+                    .occasion(profile.occasion())
+                    .provider("RULE")
+                    .topSlot(slotFrom(top, "top", !anchorIs(anchorRole, "top")))
+                    .bottomSlot(slotFrom(bottom, "bottom", !anchorIs(anchorRole, "bottom")))
+                    .outerSlot(slotFrom(outer, "outer", !anchorIs(anchorRole, "outer")))
+                    .products(products)
+                    .items(products)
+                    .build());
             comboCount++;
             log.debug("[OUTFIT] combo_built style={}, items={}", profile.style(), products.size());
-            if (comboCount >= 3) break;
+            if (comboCount >= 3)
+                break;
         }
 
         return combos;
@@ -372,14 +400,17 @@ public class OutfitSuggestionService {
             }
             boolean hasMain = products.stream().anyMatch(product -> productId.equals(product.getId()));
             boolean hasComplementary = products.stream()
-                .anyMatch(product -> !productId.equals(product.getId()) && (mainRole == null || !mainRole.equals(product.getRole())));
+                    .anyMatch(product -> !productId.equals(product.getId())
+                            && (mainRole == null || !mainRole.equals(product.getRole())));
             boolean genderMismatch = isStrictGender(mainGender) && products.stream()
-                .filter(product -> !productId.equals(product.getId()))
-                .anyMatch(product -> product.getGender() == null || !mainGender.equalsIgnoreCase(product.getGender()));
+                    .filter(product -> !productId.equals(product.getId()))
+                    .anyMatch(product -> product.getGender() == null
+                            || !mainGender.equalsIgnoreCase(product.getGender()));
             boolean duplicateIds = products.stream().map(ChatProductCard::getId).distinct().count() != products.size();
             boolean validStructure = hasRequiredSlots(mainRole, slotProduct(products, "top"),
-                slotProduct(products, "bottom"), slotProduct(products, "outer"));
-            if (!hasMain || (!"dress".equals(mainRole) && !hasComplementary) || genderMismatch || duplicateIds || !validStructure) {
+                    slotProduct(products, "bottom"), slotProduct(products, "outer"));
+            if (!hasMain || (!"dress".equals(mainRole) && !hasComplementary) || genderMismatch || duplicateIds
+                    || !validStructure) {
                 return false;
             }
         }
@@ -425,7 +456,6 @@ public class OutfitSuggestionService {
         return candidates.isEmpty() ? null : candidates.get(index % candidates.size());
     }
 
-
     private boolean shouldUseOuter(String anchorRole, int comboIndex, List<ChatProductCard> outerCandidates) {
         SlotPlan plan = slotPlan(normalizeRole(anchorRole));
         if (anchorIs(anchorRole, "outer")) {
@@ -450,9 +480,9 @@ public class OutfitSuggestionService {
 
     private ChatProductCard slotProduct(List<ChatProductCard> products, String slotRole) {
         return products.stream()
-            .filter(product -> roleMatchesSlot(product.getRole(), slotRole))
-            .findFirst()
-            .orElse(null);
+                .filter(product -> roleMatchesSlot(product.getRole(), slotRole))
+                .findFirst()
+                .orElse(null);
     }
 
     private boolean roleMatchesSlot(String role, String slotRole) {
@@ -465,7 +495,8 @@ public class OutfitSuggestionService {
         };
     }
 
-    private boolean hasRequiredSlots(String anchorRole, ChatProductCard top, ChatProductCard bottom, ChatProductCard outer) {
+    private boolean hasRequiredSlots(String anchorRole, ChatProductCard top, ChatProductCard bottom,
+            ChatProductCard outer) {
         String normalized = normalizeRole(anchorRole);
         return switch (normalized == null ? "" : normalized) {
             case "top" -> top != null && bottom != null;
@@ -502,25 +533,25 @@ public class OutfitSuggestionService {
             return null;
         }
         return OutfitSlot.builder()
-            .productId(product.getId())
-            .colorId(product.getColorId())
-            .productName(product.getName())
-            .colorName(product.getColorName())
-            .colorCode(product.getColorCode())
-            .colorFamily(product.getColorFamily())
-            .slotRole(slotRole)
-            .optional(optional)
-            .imageUrl(product.getImageUrl())
-            .productUrl(product.getUrl())
-            .build();
+                .productId(product.getId())
+                .colorId(product.getColorId())
+                .productName(product.getName())
+                .colorName(product.getColorName())
+                .colorCode(product.getColorCode())
+                .colorFamily(product.getColorFamily())
+                .slotRole(slotRole)
+                .optional(optional)
+                .imageUrl(product.getImageUrl())
+                .productUrl(product.getUrl())
+                .build();
     }
 
     private String buildColorStory(List<ChatProductCard> products) {
         List<String> families = products.stream()
-            .map(ChatProductCard::getColorFamily)
-            .filter(value -> value != null && !value.isBlank())
-            .distinct()
-            .toList();
+                .map(ChatProductCard::getColorFamily)
+                .filter(value -> value != null && !value.isBlank())
+                .distinct()
+                .toList();
         if (families.isEmpty()) {
             return "Phoi mau de mac dua tren cac item co san trong shop.";
         }
@@ -536,12 +567,21 @@ public class OutfitSuggestionService {
     }
 
     private String generateReason(String style, List<ChatProductCard> products) {
+        // Skip AI call immediately if Gemini already failed in this request
+        if (!geminiAvailable) {
+            String styleLabel = tagTranslationService.labelForStyle(style);
+            return "Combo " + styleLabel + " can bang mau sac va form dang, de mac va noi bat.";
+        }
+
         StringBuilder data = new StringBuilder();
         for (ChatProductCard product : products) {
             data.append("- ").append(product.getName());
-            if (product.getColorName() != null) data.append(" (mau ").append(product.getColorName()).append(")");
-            if (product.getColorFamily() != null) data.append(" [tong ").append(product.getColorFamily()).append("]");
-            if (product.getRole() != null) data.append(" - vai tro: ").append(product.getRole());
+            if (product.getColorName() != null)
+                data.append(" (mau ").append(product.getColorName()).append(")");
+            if (product.getColorFamily() != null)
+                data.append(" [tong ").append(product.getColorFamily()).append("]");
+            if (product.getRole() != null)
+                data.append(" - vai tro: ").append(product.getRole());
             data.append(" - gia: ").append(product.getDisplayPrice()).append("\n");
         }
 
@@ -564,6 +604,7 @@ public class OutfitSuggestionService {
                 return response.strip();
             }
         } catch (Exception e) {
+            geminiAvailable = false;
             log.debug("Outfit reason generation failed: {}", e.getMessage());
         }
         return "Combo " + styleLabel + " can bang mau sac va form dang, de mac va noi bat.";
@@ -578,6 +619,26 @@ public class OutfitSuggestionService {
     private boolean looksLikeJson(String value) {
         String cleaned = value == null ? "" : value.trim();
         return cleaned.startsWith("{") || cleaned.startsWith("[") || cleaned.startsWith("```");
+    }
+
+    private List<ChatProductCard> balanceCandidatesByCategory(List<ChatProductCard> candidates, int maxPerCategory) {
+        if (candidates == null || candidates.isEmpty()) {
+            return List.of();
+        }
+        java.util.Map<String, List<ChatProductCard>> grouped = new java.util.LinkedHashMap<>();
+        for (ChatProductCard card : candidates) {
+            String key = card.getCategorySlug();
+            if (key == null) {
+                key = "unknown";
+            }
+            grouped.computeIfAbsent(key, k -> new ArrayList<>()).add(card);
+        }
+
+        List<ChatProductCard> balanced = new ArrayList<>();
+        for (List<ChatProductCard> group : grouped.values()) {
+            balanced.addAll(group.stream().limit(maxPerCategory).toList());
+        }
+        return balanced;
     }
 
 }

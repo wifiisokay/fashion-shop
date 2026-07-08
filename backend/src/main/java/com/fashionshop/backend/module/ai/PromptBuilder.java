@@ -35,15 +35,25 @@ public class PromptBuilder {
     // =====================================
 
     /**
-     * Build system prompt cho authenticated user (không dùng preferences nữa).
+     * Build system prompt cho authenticated user với dữ liệu cá nhân hóa (lịch sử mua sắm).
      */
-    public String buildSystemPrompt(ChatIntent intent, String retrievedData, Long userId) {
+    public String buildSystemPrompt(ChatIntent intent, String retrievedData, Long userId, String userProfileContext) {
         StringBuilder prompt = new StringBuilder(systemPromptProvider.forIntent(intent));
+
+        // Phần 2: User Profile Context (Personalization)
+        appendUserProfileContext(prompt, userProfileContext);
 
         // Phần 3: Retrieved Data
         appendRetrievedData(prompt, retrievedData);
 
         return prompt.toString();
+    }
+
+    /**
+     * Build system prompt cho authenticated user (legacy fallback).
+     */
+    public String buildSystemPrompt(ChatIntent intent, String retrievedData, Long userId) {
+        return buildSystemPrompt(intent, retrievedData, userId, null);
     }
 
     /**
@@ -53,6 +63,14 @@ public class PromptBuilder {
         StringBuilder prompt = new StringBuilder(systemPromptProvider.forIntent(intent));
         appendRetrievedData(prompt, retrievedData);
         return prompt.toString();
+    }
+
+    private void appendUserProfileContext(StringBuilder prompt, String userProfileContext) {
+        if (userProfileContext != null && !userProfileContext.isBlank()) {
+            prompt.append("\n\n## [THÔNG TIN CÁ NHÂN HÓA KHÁCH HÀNG]\n")
+                  .append("(Hãy sử dụng thông tin này để tư vấn phong cách phù hợp, hoặc gợi ý phối hợp với các sản phẩm họ đã mua)\n")
+                  .append(userProfileContext);
+        }
     }
 
     /**

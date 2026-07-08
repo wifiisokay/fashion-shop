@@ -15,8 +15,24 @@ import org.springframework.stereotype.Component;
 public class GeminiProperties {
 
     private String apiKey;
-    private String model = "gemini-3.1-flash-lite";
+    /** Model chính — dùng cho Outfit Rerank (chất lượng cao). */
+    private String primaryModel = "gemini-2.5-flash";
+    /** Model dự phòng — dùng khi primary fail, hoặc cho các tác vụ nhẹ (AI Insight, NLU). */
+    private String fallbackModel = "gemini-3.1-flash-lite";
     private int maxOutputTokens = 800;
     private double temperature = 0.7;
     private int timeoutSeconds = 10;
+
+    public String getPrimaryModel() {
+        return (primaryModel != null && !primaryModel.isBlank()) ? primaryModel : "gemini-2.5-flash";
+    }
+
+    public String getFallbackModel() {
+        return (fallbackModel != null && !fallbackModel.isBlank()) ? fallbackModel : "gemini-3.1-flash-lite";
+    }
+
+    /** Alias cho fallbackModel — dùng cho các tác vụ nhẹ không cần model xịn. */
+    public String getLightModel() {
+        return getFallbackModel();
+    }
 }

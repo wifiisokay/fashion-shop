@@ -21,7 +21,7 @@ public class OrderStatusService {
     private static final Map<OrderStatus, Set<OrderStatus>> ALLOWED_TRANSITIONS = Map.ofEntries(
         Map.entry(AWAITING_PAYMENT, Set.of(PENDING, CANCELLED)),
         Map.entry(PENDING,          Set.of(CONFIRMED, CANCELLED)),
-        Map.entry(CONFIRMED,        Set.of(SHIPPING, CANCELLED)),
+        Map.entry(CONFIRMED,        Set.of(SHIPPING)),
         Map.entry(SHIPPING,         Set.of(COMPLETED)),
         Map.entry(COMPLETED,        Set.of(RETURN_REQUESTED)),
         Map.entry(RETURN_REQUESTED, Set.of(RETURNING, COMPLETED)),
@@ -63,8 +63,8 @@ public class OrderStatusService {
         return status == AWAITING_PAYMENT || status == PENDING;
     }
 
-    /** Staff hủy được: AWAITING_PAYMENT, PENDING, CONFIRMED */
+    /** Staff chỉ hủy được: AWAITING_PAYMENT, PENDING (không được hủy khi đã CONFIRMED) */
     public boolean canStaffCancel(OrderStatus status) {
-        return status == AWAITING_PAYMENT || status == PENDING || status == CONFIRMED;
+        return status == AWAITING_PAYMENT || status == PENDING;
     }
 }

@@ -280,21 +280,6 @@ class AuthServiceImplTest {
         verify(passwordResetMailService).sendResetPasswordEmail("exists@example.com", "reset-token");
     }
 
-    @Test
-    void forgotPassword_whenMailFails_doesNotThrow() {
-        ForgotPasswordRequest request = new ForgotPasswordRequest();
-        request.setEmail("exists@example.com");
-        User user = baseUser("exists@example.com", "encoded", UserStatus.ACTIVE);
-        when(userRepository.findByEmail("exists@example.com")).thenReturn(Optional.of(user));
-        when(passwordResetTokenService.createToken("exists@example.com")).thenReturn("reset-token");
-        when(passwordResetMailService.sendResetPasswordEmail("exists@example.com", "reset-token")).thenReturn(false);
-
-        // Mail failure should not propagate as exception
-        authService.forgotPassword(request);
-
-        verify(passwordResetMailService).sendResetPasswordEmail("exists@example.com", "reset-token");
-    }
-
     // ============================
     // resetPassword()
     // ============================
@@ -302,7 +287,7 @@ class AuthServiceImplTest {
     @Test
     void resetPassword_whenTokenInvalid_throwsBadRequest() {
         ResetPasswordRequest request = resetPasswordRequest("bad-token", "newpass123");
-        when(passwordResetTokenService.consumeToken("bad-token")).thenReturn(null);
+        when(passwordResetTokenService.validateToken("bad-token")).thenReturn(null);
 
         assertThatThrownBy(() -> authService.resetPassword(request))
                 .isInstanceOf(BusinessException.class)
@@ -315,7 +300,7 @@ class AuthServiceImplTest {
     @Test
     void resetPassword_whenUserMissing_throwsNotFound() {
         ResetPasswordRequest request = resetPasswordRequest("good-token", "newpass123");
-        when(passwordResetTokenService.consumeToken("good-token")).thenReturn("missing@example.com");
+        when(passwordResetTokenService.validateToken("good-token")).thenReturn("missing@example.com");
         when(userRepository.findByEmail("missing@example.com")).thenReturn(Optional.empty());
 
         assertThatThrownBy(() -> authService.resetPassword(request))
@@ -328,7 +313,7 @@ class AuthServiceImplTest {
     void resetPassword_whenReusePassword_throwsBadRequest() {
         ResetPasswordRequest request = resetPasswordRequest("good-token", "samepass");
         User user = baseUser("reuse@example.com", "encoded", UserStatus.ACTIVE);
-        when(passwordResetTokenService.consumeToken("good-token")).thenReturn("reuse@example.com");
+        when(passwordResetTokenService.validateToken("good-token")).thenReturn("reuse@example.com");
         when(userRepository.findByEmail("reuse@example.com")).thenReturn(Optional.of(user));
         when(passwordEncoder.matches("samepass", "encoded")).thenReturn(true);
 
@@ -338,13 +323,14 @@ class AuthServiceImplTest {
                 .hasFieldOrPropertyWithValue("status", HttpStatus.BAD_REQUEST);
 
         verify(userRepository, never()).save(any());
+        verify(passwordResetTokenService, never()).consumeToken(any());
     }
 
     @Test
     void resetPassword_whenValid_updatesPasswordAndSaves() {
         ResetPasswordRequest request = resetPasswordRequest("good-token", "newpass123");
         User user = baseUser("reset@example.com", "encoded", UserStatus.ACTIVE);
-        when(passwordResetTokenService.consumeToken("good-token")).thenReturn("reset@example.com");
+        when(passwordResetTokenService.validateToken("good-token")).thenReturn("reset@example.com");
         when(userRepository.findByEmail("reset@example.com")).thenReturn(Optional.of(user));
         when(passwordEncoder.matches("newpass123", "encoded")).thenReturn(false);
         when(passwordEncoder.encode("newpass123")).thenReturn("new-encoded");
@@ -353,6 +339,7 @@ class AuthServiceImplTest {
 
         assertThat(user.getPassword()).isEqualTo("new-encoded");
         assertThat(user.getTokenVersion()).isEqualTo(1);
+        verify(passwordResetTokenService).consumeToken("good-token");
         verify(userRepository).save(user);
     }
 
@@ -360,7 +347,7 @@ class AuthServiceImplTest {
     void resetPassword_whenValid_consumesTokenExactlyOnce() {
         ResetPasswordRequest request = resetPasswordRequest("one-time-token", "newpass123");
         User user = baseUser("reset@example.com", "encoded", UserStatus.ACTIVE);
-        when(passwordResetTokenService.consumeToken("one-time-token")).thenReturn("reset@example.com");
+        when(passwordResetTokenService.validateToken("one-time-token")).thenReturn("reset@example.com");
         when(userRepository.findByEmail("reset@example.com")).thenReturn(Optional.of(user));
         when(passwordEncoder.matches("newpass123", "encoded")).thenReturn(false);
         when(passwordEncoder.encode("newpass123")).thenReturn("new-encoded");

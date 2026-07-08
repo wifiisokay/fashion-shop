@@ -3,6 +3,7 @@ import { createContext, useContext, useState, useEffect } from 'react';
 import { authApi } from '../api/authApi';
 
 const AuthContext = createContext(null);
+const USER_CACHE_KEY = 'auth_user_cache';
 
 /**
  * Normalize user object từ backend response.
@@ -23,14 +24,32 @@ const normalizeUser = (rawUser) => {
   };
 };
 
+const readUserCache = () => {
+  try {
+    const raw = sessionStorage.getItem(USER_CACHE_KEY);
+    return raw ? JSON.parse(raw) : null;
+  } catch {
+    return null;
+  }
+};
+
+const writeUserCache = (user) => {
+  try {
+    if (user) sessionStorage.setItem(USER_CACHE_KEY, JSON.stringify(user));
+    else sessionStorage.removeItem(USER_CACHE_KEY);
+  } catch { /* ignore quota errors */ }
+};
+
 export const AuthProvider = ({ children }) => {
-  const [user, setUser] = useState(null);
+  // Khởi tạo ngay từ cache — tránh "nháy" UI trạng thái chưa đăng nhập
+  // sau khi trang load lại (VNPay redirect, F5, v.v.)
+  const [user, setUser] = useState(() => readUserCache());
   const [isLoading, setIsLoading] = useState(true);
 
   const setAuthUser = (rawUser) => {
     const nextUser = normalizeUser(rawUser);
     setUser(nextUser);
-
+    writeUserCache(nextUser);
   };
 
   useEffect(() => {
@@ -44,6 +63,7 @@ export const AuthProvider = ({ children }) => {
         }
       } catch {
         if (isMounted) {
+          // /auth/me fail → xóa cache và reset state (session thực sự hết hạn)
           setAuthUser(null);
         }
       } finally {
@@ -102,4 +122,4 @@ export const useAuth = () => {
     throw new Error('useAuth must be used within an AuthProvider');
   }
   return context;
-};
+};

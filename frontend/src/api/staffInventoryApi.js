@@ -47,6 +47,7 @@ export const staffInventoryApi = {
         }
 
         allVariants.push({
+          variantId: v.id,
           productId: prod.id,
           productName: prod.name,
           categoryName: categoryName,

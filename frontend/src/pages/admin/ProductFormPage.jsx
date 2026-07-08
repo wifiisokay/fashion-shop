@@ -27,7 +27,7 @@ import {
 } from '@/components/ui/alert-dialog';
 import { useCategories } from '@/hooks/useCategories';
 import { useAdminProduct, useCreateProduct, useUpdateProduct } from '@/hooks/useAdminProducts';
-import { useCreateVariant, useUpdateVariant, useDeleteVariant } from '@/hooks/useAdminVariants';
+import { useCreateVariant, useUpdateVariant, useUpdateVariantStock, useDeleteVariant } from '@/hooks/useAdminVariants';
 import { useUploadColorThumbnail, useUploadGalleryImage, useReorderImage, useDeleteImage } from '@/hooks/useAdminImages';
 import { useCreateColor, useUpdateColor, useDeleteColor } from '@/hooks/useAdminColors';
 import { useTagLibrary } from '@/hooks/useTagLibrary';
@@ -79,6 +79,7 @@ const ProductFormPage = () => {
   const updateProduct = useUpdateProduct();
   const createVariant = useCreateVariant();
   const updateVariantMutation = useUpdateVariant();
+  const updateVariantStockMutation = useUpdateVariantStock();
   const deleteVariant = useDeleteVariant();
   const uploadColorThumbnail = useUploadColorThumbnail();
   const uploadGalleryImage = useUploadGalleryImage();
@@ -101,7 +102,7 @@ const ProductFormPage = () => {
   // Variant dialog state
   const [variantDialog, setVariantDialog] = useState(false);
   const [editVariant, setEditVariant] = useState(null);
-  const [variantForm, setVariantForm] = useState({ colorId: '', size: '', stockQuantity: 0, price: '' });
+  const [variantForm, setVariantForm] = useState({ colorId: '', size: '', stockQuantity: 0, addedStock: '', price: '' });
   const [deleteVariantTarget, setDeleteVariantTarget] = useState(null);
   const [deleteImageTarget, setDeleteImageTarget] = useState(null);
 
@@ -244,8 +245,8 @@ const ProductFormPage = () => {
     setEditVariant(variant);
     setVariantForm(
       variant
-        ? { colorId: variant.colorId?.toString() || '', size: variant.size, stockQuantity: variant.stockQuantity, price: variant.priceAdjustment?.toString() || '' }
-        : { colorId: '', size: '', stockQuantity: 0, price: form.basePrice || '' }
+        ? { colorId: variant.colorId?.toString() || '', size: variant.size, stockQuantity: variant.stockQuantity, addedStock: '', price: variant.priceAdjustment?.toString() || '' }
+        : { colorId: '', size: '', stockQuantity: 0, addedStock: '', price: form.basePrice || '' }
     );
     setVariantDialog(true);
   };
@@ -261,6 +262,14 @@ const ProductFormPage = () => {
     };
     try {
       if (editVariant) {
+        const addedStockNum = parseInt(variantForm.addedStock);
+        if (!isNaN(addedStockNum) && addedStockNum >= 1) {
+          await updateVariantStockMutation.mutateAsync({
+            productId: parseInt(productId),
+            variantId: editVariant.id,
+            addedStock: addedStockNum,
+          });
+        }
         await updateVariantMutation.mutateAsync({ ...payload, variantId: editVariant.id });
         toast.success('Cập nhật biến thể thành công');
       } else {
@@ -268,8 +277,8 @@ const ProductFormPage = () => {
         toast.success('Thêm biến thể thành công');
       }
       setVariantDialog(false);
-    } catch {
-      toast.error('Có lỗi xảy ra');
+    } catch (err) {
+      toast.error(err.response?.data?.message || 'Có lỗi xảy ra');
     }
   };
 
@@ -357,7 +366,7 @@ const ProductFormPage = () => {
         toast.error(`Tải ảnh ${file.name} thất bại`);
       }
     }
-    
+
     if (successCount > 0) {
       toast.success(`Tải thành công ${successCount}/${files.length} ảnh`);
     }
@@ -376,7 +385,7 @@ const ProductFormPage = () => {
 
     // Current sorted images
     const colorImages = images.slice();
-    
+
     // Reorder locally
     const [movedImage] = colorImages.splice(source.index, 1);
     colorImages.splice(destination.index, 0, movedImage);
@@ -393,7 +402,7 @@ const ProductFormPage = () => {
         }
         return Promise.resolve();
       });
-      
+
       await Promise.all(promises);
       toast.success('Đã cập nhật thứ tự ảnh');
     } catch {
@@ -425,7 +434,7 @@ const ProductFormPage = () => {
           <ArrowLeft className="w-5 h-5" />
         </Button>
         <h1 className="text-2xl font-bold text-gray-900">
-          {isEdit ? 'Chỉnh sửa sản phẩm' : 'Thêm sản phẩm mới'}
+          {isEdit ? 'Chỉnh sửa sản phẩm' : 'Thêm sản phẩm mới nhất'}
         </h1>
       </div>
 
@@ -512,7 +521,7 @@ const ProductFormPage = () => {
                   onCheckedChange={(checked) => setForm({ ...form, isSale: checked })} />
                 <Label className="font-bold text-gray-900">Áp dụng chương trình giảm giá</Label>
               </div>
-              
+
               {form.isSale && (
                 <div className="grid grid-cols-1 md:grid-cols-3 gap-4 pt-2">
                   <div className="space-y-2">
@@ -530,7 +539,7 @@ const ProductFormPage = () => {
                     <Input type="datetime-local" value={form.saleEndAt}
                       onChange={(e) => setForm({ ...form, saleEndAt: e.target.value })} />
                   </div>
-                  
+
                   {form.basePrice && form.salePrice && parseFloat(form.basePrice) > 0 && (
                     <div className="md:col-span-3 text-xs font-bold text-emerald-700 bg-emerald-50 px-3 py-2.5 rounded-lg border border-emerald-200/50 flex items-center justify-between">
                       <span>Tỷ lệ giảm giá dự kiến:</span>
@@ -611,7 +620,7 @@ const ProductFormPage = () => {
               <h3 className="font-semibold text-lg">Mô tả chi tiết sản phẩm</h3>
               <p className="text-sm text-gray-500">Hỗ trợ viết theo định dạng Markdown.</p>
             </div>
-            
+
             <MarkdownEditor
               value={form.description}
               onChange={(val) => setForm({ ...form, description: val })}
@@ -715,15 +724,15 @@ const ProductFormPage = () => {
                 ) : (
                   variants.map((v) => (
                     <TableRow key={v.id}>
-                    <TableCell>
-                      <div className="flex items-center gap-2">
-                        <span className="w-4 h-4 rounded-full border" style={{ backgroundColor: colors.find(c => c.id === v.colorId)?.colorCode || '#ccc' }} />
-                        <Badge variant="secondary">{v.colorName || 'N/A'}</Badge>
-                      </div>
-                    </TableCell>
+                      <TableCell>
+                        <div className="flex items-center gap-2">
+                          <span className="w-4 h-4 rounded-full border" style={{ backgroundColor: colors.find(c => c.id === v.colorId)?.colorCode || '#ccc' }} />
+                          <Badge variant="secondary">{v.colorName || 'N/A'}</Badge>
+                        </div>
+                      </TableCell>
                       <TableCell><Badge variant="outline">{v.size}</Badge></TableCell>
                       <TableCell>{v.stockQuantity}</TableCell>
-            <TableCell>{v.priceAdjustment ? `+${v.priceAdjustment.toLocaleString()}đ` : '—'}</TableCell>
+                      <TableCell>{v.priceAdjustment ? `+${v.priceAdjustment.toLocaleString()}đ` : '—'}</TableCell>
                       <TableCell className="text-right">
                         <div className="flex justify-end gap-1">
                           <Button variant="ghost" size="icon" className="h-8 w-8 text-blue-600"
@@ -737,7 +746,7 @@ const ProductFormPage = () => {
                         </div>
                       </TableCell>
                     </TableRow>
-                  ))                  
+                  ))
                 )}
               </TableBody>
             </Table>
@@ -895,9 +904,15 @@ const ProductFormPage = () => {
             </div>
             <div className="grid grid-cols-2 gap-4">
               <div className="space-y-2">
-                <Label>Tồn kho *</Label>
-                <Input type="number" required min="0" value={variantForm.stockQuantity}
-                  onChange={(e) => setVariantForm({ ...variantForm, stockQuantity: e.target.value })} />
+                <Label>Tồn kho {editVariant && '(Chỉ đọc)'} *</Label>
+                <Input
+                  type="number"
+                  required
+                  min="0"
+                  disabled={!!editVariant}
+                  value={variantForm.stockQuantity}
+                  onChange={(e) => setVariantForm({ ...variantForm, stockQuantity: e.target.value })}
+                />
               </div>
               <div className="space-y-2">
                 <Label>Điều chỉnh giá</Label>
@@ -906,6 +921,23 @@ const ProductFormPage = () => {
                   placeholder="Để trống = dùng giá gốc" />
               </div>
             </div>
+            {editVariant && (
+              <div className="space-y-2 border-t pt-3 mt-1">
+                <Label className="text-indigo-700 font-semibold">Nhập thêm tồn kho</Label>
+                <Input
+                  type="number"
+                  min="1"
+                  value={variantForm.addedStock}
+                  onChange={(e) => setVariantForm({ ...variantForm, addedStock: e.target.value })}
+                  placeholder="Nhập số lượng để cộng thêm (tối thiểu 1)"
+                />
+                {variantForm.addedStock && parseInt(variantForm.addedStock) >= 1 && (
+                  <p className="text-xs font-semibold text-emerald-700 bg-emerald-50 px-2.5 py-1 rounded">
+                    Tồn kho sau khi lưu: <span className="font-extrabold text-sm">{parseInt(variantForm.stockQuantity || 0) + parseInt(variantForm.addedStock)}</span>
+                  </p>
+                )}
+              </div>
+            )}
             <DialogFooter>
               <Button type="button" variant="outline" onClick={() => setVariantDialog(false)}>Hủy</Button>
               <Button type="submit" disabled={createVariant.isPending || updateVariantMutation.isPending}>
